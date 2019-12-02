@@ -21,7 +21,7 @@ LpcpPrepareToWakeClient(IN PETHREAD Thread)
     PAGED_CODE();
 
     /* Make sure the thread isn't dying and it has a valid chain */
-    if (!(Thread->LpcExitThreadCalled) &&
+    if (!PspTestThreadLpcExitThreadCalledFlag(Thread) &&
         !(IsListEmpty(&Thread->LpcReplyChain)))
     {
         /* Remove it from the list and reinitialize it */

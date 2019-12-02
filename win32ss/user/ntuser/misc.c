@@ -375,9 +375,7 @@ NtUserGetGUIThreadInfo(
    NTSTATUS Status;
    PTHRDCARETINFO CaretInfo;
    GUITHREADINFO SafeGui;
-   PDESKTOP Desktop;
-   PUSER_MESSAGE_QUEUE MsgQueue;
-   PTHREADINFO W32Thread;
+   PUSER_MESSAGE_QUEUE MsgQueue = NULL;
    PETHREAD Thread = NULL;
 
    DECLARE_RETURN(BOOLEAN);
@@ -400,39 +398,43 @@ NtUserGetGUIThreadInfo(
 
    if (idThread)
    {
+      PTHREADINFO W32Thread;
+      PDESKTOP Desktop;
+
       Status = PsLookupThreadByThreadId((HANDLE)(DWORD_PTR)idThread, &Thread);
-      if(!NT_SUCCESS(Status))
+      if (!NT_SUCCESS(Status) || !Thread)
       {
          EngSetLastError(ERROR_ACCESS_DENIED);
          RETURN( FALSE);
       }
+
       W32Thread = (PTHREADINFO)Thread->Tcb.Win32Thread;
+      if (!W32Thread)
+      {
+         ObDereferenceObject(Thread);
+         EngSetLastError(ERROR_ACCESS_DENIED);
+         RETURN(FALSE);
+      }
+
       Desktop = W32Thread->rpdesk;
 
-      if (!Thread || !Desktop )
-      {
-        if(Thread)
-           ObDereferenceObject(Thread);
-        EngSetLastError(ERROR_ACCESS_DENIED);
-        RETURN( FALSE);
-      }
-      
-      if ( W32Thread->MessageQueue )
-        MsgQueue = W32Thread->MessageQueue;
-      else
-      {
-        if ( Desktop ) MsgQueue = Desktop->ActiveMessageQueue;
-      }
+      if (W32Thread->MessageQueue)
+         MsgQueue = W32Thread->MessageQueue;
+      else if (Desktop)
+         MsgQueue = Desktop->ActiveMessageQueue;
+
+      /* FIXME: Dereference Thread on success? */
    }
    else
    {  /* Get the foreground thread */
       /* FIXME: Handle NULL queue properly? */
       MsgQueue = IntGetFocusMessageQueue();
-      if(!MsgQueue)
-      {
-        EngSetLastError(ERROR_ACCESS_DENIED);
-        RETURN( FALSE);
-      }
+   }
+
+   if (!MsgQueue)
+   {
+      EngSetLastError(ERROR_ACCESS_DENIED);
+      RETURN(FALSE);
    }
 
    CaretInfo = &MsgQueue->CaretInfo;

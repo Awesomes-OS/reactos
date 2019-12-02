@@ -24,7 +24,6 @@ Author:
 //
 #include <umtypes.h>
 #include <mmtypes.h>
-#include <ldrtypes.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -476,6 +475,30 @@ typedef enum _RTL_PATH_TYPE
     RtlPathTypeRootLocalDevice,
 } RTL_PATH_TYPE;
 
+// Correct name unknown
+#pragma pack(push, 4)
+typedef struct _RTLP_PATH_INFO
+{
+    RTL_PATH_TYPE Type;
+    /* The one from relevant FILE_FS_DEVICE_INFORMATION, assigned when type is RtlPathTypeRelative */
+    /* Available flags (FILE_*), ref https://msdn.microsoft.com/library/windows/hardware/ff543147 */
+    ULONG32 Characteristics;
+} RTLP_PATH_INFO, *PRTLP_PATH_INFO;
+#pragma pack(pop)
+
+typedef union _RTLP_DosPathNameToRelativeNtPathName_FLAGS
+{
+    UINT8 Flags;
+
+    struct
+    {
+        UINT8 InputIsFullPath : 1;
+        UINT8 ReturnCurrentDirectoryReference : 1;
+        UINT8 ExplicitEnableLongPathAwareness : 1;
+        UINT8 DisableLongPathAwareness : 1;
+    };
+} RTLP_DosPathNameToRelativeNtPathName_FLAGS;
+
 #ifndef NTOS_MODE_USER
 
 //
@@ -902,6 +925,11 @@ typedef struct _TIME_FIELDS
     CSHORT Milliseconds;
     CSHORT Weekday;
 } TIME_FIELDS, *PTIME_FIELDS;
+
+//
+// Activation Context
+//
+typedef PVOID PACTIVATION_CONTEXT;
 
 //
 // Activation Context Frame
@@ -1704,8 +1732,8 @@ typedef struct _RTL_PATCH_HEADER
     struct _HOTPATCH_HEADER *HotpatchHeader;
     UNICODE_STRING TargetDllName;
     PVOID TargetDllBase;
-    PLDR_DATA_TABLE_ENTRY TargetLdrDataTableEntry;
-    PLDR_DATA_TABLE_ENTRY PatchLdrDataTableEntry;
+    struct _LDR_DATA_TABLE_ENTRY* TargetLdrDataTableEntry;
+    struct _LDR_DATA_TABLE_ENTRY* PatchLdrDataTableEntry;
     struct _SYSTEM_HOTPATCH_CODE_INFORMATION *CodeInfo;
 } RTL_PATCH_HEADER, *PRTL_PATCH_HEADER;
 

@@ -33,8 +33,6 @@ NTSTATUS
 NTAPI
 PsConvertToGuiThread(VOID)
 {
-    ULONG_PTR NewStack;
-    PVOID OldStack;
     PETHREAD Thread = PsGetCurrentThread();
     PEPROCESS Process = PsGetCurrentProcess();
     NTSTATUS Status;
@@ -49,12 +47,22 @@ PsConvertToGuiThread(VOID)
     /* Make sure win32k is here */
     if (!PspW32ProcessCallout) return STATUS_ACCESS_DENIED;
 
-    /* Make sure it's not already win32 */
+    /* Make sure it's not already Win32 thread */
+#if !defined(_WIN64)
     if (Thread->Tcb.ServiceTable != KeServiceDescriptorTable)
     {
-        /* We're already a win32 thread */
         return STATUS_ALREADY_WIN32;
     }
+#else
+    if (Thread->Tcb.GuiThread)
+    {
+        return STATUS_ALREADY_WIN32;
+    }
+#endif
+
+#if (NTDDI_VERSION < NTDDI_VISTA)
+    ULONG_PTR NewStack;
+    PVOID OldStack;
 
     /* Check if we don't already have a kernel-mode stack */
     if (!Thread->Tcb.LargeStack)
@@ -81,21 +89,31 @@ PsConvertToGuiThread(VOID)
         /* Delete the old stack */
         MmDeleteKernelStack(OldStack, FALSE);
     }
+#endif
 
     /* Always do the process callout! */
     Status = PspW32ProcessCallout(Process, TRUE);
     if (!NT_SUCCESS(Status)) return Status;
 
+#if !defined(_WIN64)
     /* Set the new service table */
     Thread->Tcb.ServiceTable = KeServiceDescriptorTableShadow;
+#else
+    // todo (andrew.boyarshin)
+#endif
+
     ASSERT(Thread->Tcb.Win32Thread == 0);
 
     /* Tell Win32k about our thread */
     Status = PspW32ThreadCallout(Thread, PsW32ThreadCalloutInitialize);
     if (!NT_SUCCESS(Status))
     {
+#if !defined(_WIN64)
         /* Revert our table */
         Thread->Tcb.ServiceTable = KeServiceDescriptorTable;
+#else
+        // todo (andrew.boyarshin)
+#endif
     }
 
     /* Return status */

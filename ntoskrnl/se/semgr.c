@@ -97,12 +97,31 @@ SepInitializationPhase0(VOID)
 {
     PAGED_CODE();
 
+    KiVBoxPrint("SepInitializationPhase0 0\n");
+
     if (!ExLuidInitialization()) return FALSE;
+
+    KiVBoxPrint("SepInitializationPhase0 0.1\n");
+
     if (!SepInitSecurityIDs()) return FALSE;
+    
+    KiVBoxPrint("SepInitializationPhase0 0.2\n");
+
     if (!SepInitDACLs()) return FALSE;
+    
+    KiVBoxPrint("SepInitializationPhase0 0.3\n");
+
     if (!SepInitSDs()) return FALSE;
+
+    KiVBoxPrint("SepInitializationPhase0 0.4\n");
+
     SepInitPrivileges();
+
+    KiVBoxPrint("SepInitializationPhase0 0.5\n");
+
     if (!SepInitExports()) return FALSE;
+
+    KiVBoxPrint("SepInitializationPhase0 1\n");
 
     /* Initialize the subject context lock */
     ExInitializeResource(&SepSubjectContextLock);
@@ -110,18 +129,24 @@ SepInitializationPhase0(VOID)
     /* Initialize token objects */
     SepInitializeTokenImplementation();
 
+    KiVBoxPrint("SepInitializationPhase0 2\n");
+
     /* Initialize logon sessions */
     if (!SeRmInitPhase0()) return FALSE;
 
+    KiVBoxPrint("SepInitializationPhase0 3\n");
+
     /* Clear impersonation info for the idle thread */
     PsGetCurrentThread()->ImpersonationInfo = NULL;
-    PspClearCrossThreadFlag(PsGetCurrentThread(),
-                            CT_ACTIVE_IMPERSONATION_INFO_BIT);
+    PspClearThreadActiveImpersonationInfoFlag(PsGetCurrentThread());
 
     /* Initialize the boot token */
     ObInitializeFastReference(&PsGetCurrentProcess()->Token, NULL);
     ObInitializeFastReference(&PsGetCurrentProcess()->Token,
                               SepCreateSystemProcessToken());
+
+    KiVBoxPrint("SepInitializationPhase0 4\n");
+
     return TRUE;
 }
 

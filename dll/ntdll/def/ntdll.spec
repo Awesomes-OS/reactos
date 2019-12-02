@@ -1427,3 +1427,58 @@
 @ stdcall -arch=arm __rt_udiv()
 @ stdcall -arch=arm __rt_udiv64()
 @ stdcall -arch=arm __rt_srsh()
+
+@ stdcall -stub TpAllocCleanupGroup(ptr) ntdll_vista.TpAllocCleanupGroup
+@ stdcall -stub TpAllocPool(ptr ptr) ntdll_vista.TpAllocPool
+@ stdcall -stub TpAllocTimer(ptr ptr ptr ptr) ntdll_vista.TpAllocTimer
+@ stdcall -stub TpAllocWait(ptr ptr ptr ptr) ntdll_vista.TpAllocWait
+@ stdcall -stub TpAllocWork(ptr ptr ptr ptr) ntdll_vista.TpAllocWork
+@ stdcall -stub TpCallbackLeaveCriticalSectionOnCompletion(ptr ptr) ntdll_vista.TpCallbackLeaveCriticalSectionOnCompletion
+@ stdcall -stub TpCallbackMayRunLong(ptr) ntdll_vista.TpCallbackMayRunLong
+@ stdcall -stub TpCallbackReleaseMutexOnCompletion(ptr long) ntdll_vista.TpCallbackReleaseMutexOnCompletion
+@ stdcall -stub TpCallbackReleaseSemaphoreOnCompletion(ptr long long) ntdll_vista.TpCallbackReleaseSemaphoreOnCompletion
+@ stdcall -stub TpCallbackSetEventOnCompletion(ptr long) ntdll_vista.TpCallbackSetEventOnCompletion
+@ stdcall -stub TpCallbackUnloadDllOnCompletion(ptr ptr) ntdll_vista.TpCallbackUnloadDllOnCompletion
+@ stdcall -stub TpDisassociateCallback(ptr) ntdll_vista.TpDisassociateCallback
+@ stdcall -stub TpIsTimerSet(ptr) ntdll_vista.TpIsTimerSet
+@ stdcall -stub TpPostWork(ptr) ntdll_vista.TpPostWork
+@ stdcall -stub TpReleaseCleanupGroup(ptr) ntdll_vista.TpReleaseCleanupGroup
+@ stdcall -stub TpReleaseCleanupGroupMembers(ptr long ptr) ntdll_vista.TpReleaseCleanupGroupMembers
+@ stdcall -stub TpReleasePool(ptr) ntdll_vista.TpReleasePool
+@ stdcall -stub TpReleaseTimer(ptr) ntdll_vista.TpReleaseTimer
+@ stdcall -stub TpReleaseWait(ptr) ntdll_vista.TpReleaseWait
+@ stdcall -stub TpReleaseWork(ptr) ntdll_vista.TpReleaseWork
+@ stdcall -stub TpSetPoolMaxThreads(ptr long) ntdll_vista.TpSetPoolMaxThreads
+@ stdcall -stub TpSetPoolMinThreads(ptr long) ntdll_vista.TpSetPoolMinThreads
+@ stdcall -stub TpSetTimer(ptr ptr long long) ntdll_vista.TpSetTimer
+@ stdcall -stub TpSetWait(ptr long ptr) ntdll_vista.TpSetWait
+@ stdcall -stub TpSimpleTryPost(ptr ptr ptr) ntdll_vista.TpSimpleTryPost
+@ stdcall -stub TpWaitForTimer(ptr long) ntdll_vista.TpWaitForTimer
+@ stdcall -stub TpWaitForWait(ptr long) ntdll_vista.TpWaitForWait
+@ stdcall -stub TpWaitForWork(ptr long) ntdll_vista.TpWaitForWork
+
+@ stdcall -stub EtwEventEnabled(int64 ptr) ntdll_vista.EtwEventEnabled
+@ stdcall -stub EtwEventRegister(ptr ptr ptr ptr) ntdll_vista.EtwEventRegister
+@ stdcall -stub EtwEventSetInformation(int64 long ptr long) ntdll_vista.EtwEventSetInformation
+@ stdcall -stub EtwEventUnregister(int64) ntdll_vista.EtwEventUnregister
+@ stdcall -stub EtwEventWrite(int64 ptr long ptr) ntdll_vista.EtwEventWrite
+
+@ stdcall RtlGetFullPathName_UEx(wstr long ptr ptr ptr)
+@ stdcall RtlGetUnloadEventTraceEx(ptr ptr ptr)
+@ stdcall NtQueueApcThreadEx(long long ptr long long long)
+@ stdcall ZwQueueApcThreadEx(long long ptr long long long) NtQueueApcThreadEx
+@ stdcall RtlExitUserProcess(long)
+@ stdcall NtGetNextProcess(ptr long long long ptr)
+@ stdcall NtGetNextThread(ptr ptr long long long ptr)
+@ stdcall NtGetCurrentProcessorNumberEx(ptr)
+@ stdcall ZwGetCurrentProcessorNumberEx(ptr) NtGetCurrentProcessorNumberEx
+@ stdcall RtlGetCurrentProcessorNumberEx(ptr)
+
+@ stdcall RtlInitializeSRWLock(ptr)
+@ stdcall RtlAcquireSRWLockShared(ptr)
+@ stdcall RtlReleaseSRWLockShared(ptr)
+@ stdcall RtlAcquireSRWLockExclusive(ptr)
+@ stdcall RtlReleaseSRWLockExclusive(ptr)
+
+@ stdcall LdrGetProcedureAddressEx(ptr ptr long ptr long)
+@ stdcall LdrGetProcedureAddressForCaller(ptr ptr long ptr long ptr)

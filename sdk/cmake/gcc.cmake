@@ -117,6 +117,7 @@ if(NOT GCC_VERSION VERSION_LESS 6.1)
 endif()
 add_compile_flags("-Wno-unused-local-typedefs")
 add_compile_flags("-Wno-deprecated")
+add_compile_flags("-Wno-missing-braces -Wno-missing-field-initializers")
 
 if(NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
     add_compile_flags("-Wno-maybe-uninitialized")

@@ -87,11 +87,18 @@ KeSetEventBoostPriority(
     _In_opt_ PKTHREAD *Thread
 );
 
-KAFFINITY
+VOID
+NTAPI
+KeQueryAffinityThread(
+    _Inout_ PKTHREAD Thread,
+    _Out_ PGROUP_AFFINITY Affinity
+);
+
+VOID
 NTAPI
 KeSetAffinityThread(
     _Inout_ PKTHREAD Thread,
-    _In_ KAFFINITY Affinity
+    _In_ PGROUP_AFFINITY Affinity
 );
 
 PKPROCESS
@@ -161,20 +168,8 @@ KeInitializeInterrupt(
     _In_ KIRQL SynchronizeIrql,
     _In_ KINTERRUPT_MODE InterruptMode,
     _In_ BOOLEAN ShareVector,
-    _In_ CHAR ProcessorNumber,
+    _In_ ULONG32 ProcessorNumber,
     _In_ BOOLEAN FloatingSave
-);
-
-BOOLEAN
-NTAPI
-KeConnectInterrupt(
-    _Inout_ PKINTERRUPT InterruptObject
-);
-
-BOOLEAN
-NTAPI
-KeDisconnectInterrupt(
-    _Inout_ PKINTERRUPT InterruptObject
 );
 
 VOID
@@ -407,6 +402,13 @@ ULONG
 NTAPI
 NtGetCurrentProcessorNumber(
     VOID
+);
+
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtGetCurrentProcessorNumberEx(
+    PPROCESSOR_NUMBER ProcNumber
 );
 
 NTSYSCALLAPI

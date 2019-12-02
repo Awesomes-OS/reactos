@@ -494,7 +494,11 @@ KDDEBUGGER_DATA64 KdDebuggerDataBlock =
     0,
     {(ULONG_PTR)RtlpBreakWithStatusInstruction},
     0,
+#if (NTDDI_VERSION < NTDDI_WIN8)
     FIELD_OFFSET(KTHREAD, CallbackStack),
+#else
+    0,
+#endif
 #if defined(_M_ARM) || defined(_M_AMD64)
     0,
     0,
@@ -665,4 +669,18 @@ KDDEBUGGER_DATA64 KdDebuggerDataBlock =
 #endif
     {(ULONG_PTR)&IopNumTriageDumpDataBlocks},
     {(ULONG_PTR)IopTriageDumpDataBlocks},
+#if (NTDDI_VERSION >= NTDDI_LONGHORN) // Longhorn/Vista and later
+    {0},
+    {0},
+    {0},
+#endif
+#if (NTDDI_VERSION >= NTDDI_WIN7) // Don't know the complete story
+    {0},
+    {0},
+    {0},
+    {0},
+    {0},
+    {0},
+#endif
+    // Windows 8.1 cut
 };

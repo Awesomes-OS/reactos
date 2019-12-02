@@ -1781,17 +1781,21 @@ PEPROCESS
 NTAPI
 IoGetRequestorProcess(IN PIRP Irp)
 {
-    /* Return the requestor process */
-    if (Irp->Tail.Overlay.Thread)
+    const PETHREAD Thread = Irp->Tail.Overlay.Thread;
+
+    if (!Thread)
     {
-        if (Irp->ApcEnvironment == OriginalApcEnvironment)
-        {
-            return Irp->Tail.Overlay.Thread->ThreadsProcess;
-        }
-        else if (Irp->ApcEnvironment == AttachedApcEnvironment)
-        {
-            return (PEPROCESS)Irp->Tail.Overlay.Thread->Tcb.ApcState.Process;
-        }
+        return NULL;
+    }
+
+    if (Irp->ApcEnvironment == OriginalApcEnvironment)
+    {
+        return (PEPROCESS)Thread->Tcb.Process;
+    }
+
+    if (Irp->ApcEnvironment == AttachedApcEnvironment)
+    {
+        return (PEPROCESS)Thread->Tcb.ApcState.Process;
     }
 
     return NULL;
@@ -1821,12 +1825,12 @@ NTAPI
 IoGetRequestorSessionId(IN PIRP Irp,
                         OUT PULONG pSessionId)
 {
-    PEPROCESS Process;
+    const PETHREAD Thread = Irp->Tail.Overlay.Thread;
 
     /* Return the session */
-    if (Irp->Tail.Overlay.Thread)
+    if (Thread)
     {
-        Process = Irp->Tail.Overlay.Thread->ThreadsProcess;
+        const PEPROCESS Process = (PEPROCESS)Thread->Tcb.Process;
         *pSessionId = MmGetSessionId(Process);
         return STATUS_SUCCESS;
     }

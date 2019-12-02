@@ -823,10 +823,10 @@ RtlDosApplyFileIsolationRedirection_Ustr(IN ULONG Flags,
                                          IN PUNICODE_STRING Extension,
                                          IN OUT PUNICODE_STRING StaticString,
                                          IN OUT PUNICODE_STRING DynamicString,
-                                         IN OUT PUNICODE_STRING *NewName,
-                                         IN PULONG NewFlags,
-                                         IN PSIZE_T FileNameSize,
-                                         IN PSIZE_T RequiredLength)
+                                         IN OUT PUNICODE_STRING *NewName OPTIONAL,
+                                         IN PULONG NewFlags OPTIONAL,
+                                         IN PSIZE_T FileNameSize OPTIONAL,
+                                         IN PSIZE_T RequiredLength OPTIONAL)
 {
     NTSTATUS Status;
     LPWSTR fullname;
@@ -920,11 +920,13 @@ RtlDosApplyFileIsolationRedirection_Ustr(IN ULONG Flags,
             if (!StaticString || StaticString->Buffer != fullname)
             {
                 RtlInitUnicodeString(DynamicString, fullname);
-                *NewName = DynamicString;
+                if (NewName)
+                    *NewName = DynamicString;
             }
             else
             {
-                *NewName = StaticString;
+                if (NewName)
+                    *NewName = StaticString;
             }
             return Status;
         }
@@ -962,6 +964,7 @@ RtlDosApplyFileIsolationRedirection_Ustr(IN ULONG Flags,
         if (pstrParam->Length + Extension->Length > sizeof(buffer))
         {
             //FIXME!
+            DPRINT1("%s doesn't support reallocation for now (%llu > %llu), failing!", __FUNCTION__, pstrParam->Length + Extension->Length, sizeof(buffer));
             return STATUS_NO_MEMORY;
         }
 
@@ -983,11 +986,13 @@ RtlDosApplyFileIsolationRedirection_Ustr(IN ULONG Flags,
     if (!StaticString || StaticString->Buffer != fullname)
     {
         RtlInitUnicodeString(DynamicString, fullname);
-        *NewName = DynamicString;
+        if (NewName)
+            *NewName = DynamicString;
     }
     else
     {
-        *NewName = StaticString;
+        if (NewName)
+            *NewName = StaticString;
     }
 
     return Status;

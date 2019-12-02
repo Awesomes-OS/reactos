@@ -13,6 +13,8 @@
 #define NDEBUG
 #include <debug.h>
 
+#include <ldrp.h>
+
 #define MODULE_INVOLVED_IN_ARM3
 #include <mm/ARM3/miarm.h>
 
@@ -383,8 +385,8 @@ MiCallDllUnloadAndUnloadDll(IN PLDR_DATA_TABLE_ENTRY LdrEntry)
     if (!NT_SUCCESS(Status)) return FALSE;
 
     /* Lie about the load count so we can unload the image */
-    ASSERT(LdrEntry->LoadCount == 0);
-    LdrEntry->LoadCount = 1;
+    ASSERT(LdrEntry->DdagNode->LoadCount == 0);
+    LdrEntry->DdagNode->LoadCount = 1;
 
     /* Unload it and return true */
     MmUnloadSystemImage(LdrEntry);
@@ -429,17 +431,17 @@ MiDereferenceImports(IN PLOAD_IMPORTS ImportList)
         DPRINT1("%wZ <%wZ>\n", &LdrEntry->FullDllName, &LdrEntry->BaseDllName);
 
         /* Skip boot loaded images */
-        if (LdrEntry->LoadedImports == MM_SYSLDR_BOOT_LOADED) continue;
+        if (LdrEntry->ReactOSLoadedImports == MM_SYSLDR_BOOT_LOADED) continue;
 
         /* Dereference the entry */
-        ASSERT(LdrEntry->LoadCount >= 1);
-        if (!--LdrEntry->LoadCount)
+        ASSERT(LdrEntry->DdagNode->LoadCount >= 1);
+        if (!--LdrEntry->DdagNode->LoadCount)
         {
             /* Save the import data in case unload fails */
-            CurrentImports = LdrEntry->LoadedImports;
+            CurrentImports = LdrEntry->ReactOSLoadedImports;
 
             /* This is the last entry */
-            LdrEntry->LoadedImports = MM_SYSLDR_NO_IMPORTS;
+            LdrEntry->ReactOSLoadedImports = MM_SYSLDR_NO_IMPORTS;
             if (MiCallDllUnloadAndUnloadDll(LdrEntry))
             {
                 /* Unloading worked, parse this DLL's imports too */
@@ -457,7 +459,7 @@ MiDereferenceImports(IN PLOAD_IMPORTS ImportList)
             else
             {
                 /* Unload failed, restore imports */
-                LdrEntry->LoadedImports = CurrentImports;
+                LdrEntry->ReactOSLoadedImports = CurrentImports;
             }
         }
     }
@@ -473,17 +475,17 @@ MiClearImports(IN PLDR_DATA_TABLE_ENTRY LdrEntry)
     PAGED_CODE();
 
     /* Check if there's no imports or we're a boot driver or only one entry */
-    if ((LdrEntry->LoadedImports == MM_SYSLDR_BOOT_LOADED) ||
-        (LdrEntry->LoadedImports == MM_SYSLDR_NO_IMPORTS) ||
-        ((ULONG_PTR)LdrEntry->LoadedImports & MM_SYSLDR_SINGLE_ENTRY))
+    if ((LdrEntry->ReactOSLoadedImports == MM_SYSLDR_BOOT_LOADED) ||
+        (LdrEntry->ReactOSLoadedImports == MM_SYSLDR_NO_IMPORTS) ||
+        ((ULONG_PTR)LdrEntry->ReactOSLoadedImports & MM_SYSLDR_SINGLE_ENTRY))
     {
         /* Nothing to do */
         return;
     }
 
     /* Otherwise, free the import list */
-    ExFreePoolWithTag(LdrEntry->LoadedImports, TAG_LDR_IMPORTS);
-    LdrEntry->LoadedImports = MM_SYSLDR_BOOT_LOADED;
+    ExFreePoolWithTag(LdrEntry->ReactOSLoadedImports, TAG_LDR_IMPORTS);
+    LdrEntry->ReactOSLoadedImports = MM_SYSLDR_BOOT_LOADED;
 }
 
 PVOID
@@ -926,17 +928,17 @@ MmUnloadSystemImage(IN PVOID ImageHandle)
                           NULL);
 
     /* Check if this driver was loaded at boot and didn't get imports parsed */
-    if (LdrEntry->LoadedImports == MM_SYSLDR_BOOT_LOADED) goto Done;
+    if (LdrEntry->ReactOSLoadedImports == MM_SYSLDR_BOOT_LOADED) goto Done;
 
     /* We should still be alive */
-    ASSERT(LdrEntry->LoadCount != 0);
-    LdrEntry->LoadCount--;
+    ASSERT(LdrEntry->DdagNode->LoadCount != 0);
+    LdrEntry->DdagNode->LoadCount--;
 
     /* Check if we're still loaded */
-    if (LdrEntry->LoadCount) goto Done;
+    if (LdrEntry->DdagNode->LoadCount) goto Done;
 
     /* We should cleanup... are symbols loaded */
-    if (LdrEntry->Flags & LDRP_DEBUG_SYMBOLS_LOADED)
+    if (LdrEntry->ReactOSLdrSymbolsLoaded)
     {
         /* Create the ANSI name */
         Status = RtlUnicodeStringToAnsiString(&TempName,
@@ -965,7 +967,7 @@ MmUnloadSystemImage(IN PVOID ImageHandle)
     }
 
     /* Dereference and clear the imports */
-    MiDereferenceImports(LdrEntry->LoadedImports);
+    MiDereferenceImports(LdrEntry->ReactOSLoadedImports);
     MiClearImports(LdrEntry);
 
     /* Check if the entry needs to go away */
@@ -979,14 +981,15 @@ MmUnloadSystemImage(IN PVOID ImageHandle)
         }
 
         /* Check if we had a section */
-        if (LdrEntry->SectionPointer)
+        if (LdrEntry->ReactOSSectionPointer)
         {
             /* Dereference it */
-            ObDereferenceObject(LdrEntry->SectionPointer);
+            ObDereferenceObject(LdrEntry->ReactOSSectionPointer);
         }
 
         /* Free the entry */
-        ExFreePoolWithTag(LdrEntry, TAG_MODULE_OBJECT);
+        LdrpFreeHeap(0, LdrEntry->DdagNode);
+        LdrpFreeHeap(0, LdrEntry);
     }
 
     /* Release the system lock and return */
@@ -1156,10 +1159,10 @@ CheckDllState:
                 if (!(Loaded) && (ReferenceNeeded))
                 {
                     /* Make sure we're not already loading */
-                    if (!(LdrEntry->Flags & LDRP_LOAD_IN_PROGRESS))
+                    if (!LdrEntry->LoadInProgress)
                     {
                         /* Increase the load count */
-                        LdrEntry->LoadCount++;
+                        LdrEntry->DdagNode->LoadCount++;
                     }
                 }
 
@@ -1282,7 +1285,7 @@ CheckDllState:
         if ((ReferenceNeeded) && (LoadedImports))
         {
             /* Make sure we're not already loading */
-            if (!(LdrEntry->Flags & LDRP_LOAD_IN_PROGRESS))
+            if (!LdrEntry->LoadInProgress)
             {
                 /* Add the entry */
                 LoadedImports->Entry[ImportCount] = LdrEntry;
@@ -1479,7 +1482,7 @@ MiFindInitializationCode(OUT PVOID *StartVa,
 
         /* Only process boot loaded images. Other drivers are processed by
            MmFreeDriverInitialization */
-        if (LdrEntry->Flags & LDRP_MM_LOADED)
+        if (LdrEntry->ReactOSKernelLoaded)
         {
             /* Keep going */
             NextEntry = NextEntry->Flink;
@@ -1860,7 +1863,7 @@ MiReloadBootLoadedDrivers(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                        LdrEntry->SizeOfImage);
 
         /* Update the loader entry */
-        LdrEntry->Flags |= LDRP_SYSTEM_MAPPED;
+        LdrEntry->ReactOSSystemMapped = TRUE;
         LdrEntry->EntryPoint = (PVOID)((ULONG_PTR)NewImageAddress +
                                 NtHeader->OptionalHeader.AddressOfEntryPoint);
         LdrEntry->SizeOfImage = PteCount << PAGE_SHIFT;
@@ -1911,28 +1914,28 @@ MiBuildImportsForBootDrivers(VOID)
         }
 
         /* Check if this is a driver DLL */
-        if (LdrEntry->Flags & LDRP_DRIVER_DEPENDENT_DLL)
+        if (LdrEntry->ReactOSDriverDependency)
         {
             /* Check if this is the HAL or kernel */
             if ((LdrEntry == HalEntry) || (LdrEntry == KernelEntry))
             {
                 /* Add a reference */
-                LdrEntry->LoadCount = 1;
+                LdrEntry->DdagNode->LoadCount = 1;
             }
             else
             {
                 /* No referencing needed */
-                LdrEntry->LoadCount = 0;
+                LdrEntry->DdagNode->LoadCount = 0;
             }
         }
         else
         {
             /* Add a reference for all other modules as well */
-            LdrEntry->LoadCount = 1;
+            LdrEntry->DdagNode->LoadCount = 1;
         }
 
         /* Remember this came from the loader */
-        LdrEntry->LoadedImports = MM_SYSLDR_BOOT_LOADED;
+        LdrEntry->ReactOSLoadedImports = MM_SYSLDR_BOOT_LOADED;
 
         /* Keep looping */
         NextEntry = NextEntry->Flink;
@@ -1971,7 +1974,7 @@ MiBuildImportsForBootDrivers(VOID)
 #endif
         {
             /* None present */
-            LdrEntry->LoadedImports = MM_SYSLDR_NO_IMPORTS;
+            LdrEntry->ReactOSLoadedImports = MM_SYSLDR_NO_IMPORTS;
             NextEntry = NextEntry->Flink;
             continue;
         }
@@ -2076,13 +2079,13 @@ MiBuildImportsForBootDrivers(VOID)
         if (!ImportSize)
         {
             /* No */
-            LdrEntry->LoadedImports = MM_SYSLDR_NO_IMPORTS;
+            LdrEntry->ReactOSLoadedImports = MM_SYSLDR_NO_IMPORTS;
         }
         else if (ImportSize == 1)
         {
             /* A single entry import */
-            LdrEntry->LoadedImports = (PVOID)((ULONG_PTR)LastEntry | MM_SYSLDR_SINGLE_ENTRY);
-            LastEntry->LoadCount++;
+            LdrEntry->ReactOSLoadedImports = (PVOID)((ULONG_PTR)LastEntry | MM_SYSLDR_SINGLE_ENTRY);
+            LastEntry->DdagNode->LoadCount++;
         }
         else
         {
@@ -2107,14 +2110,14 @@ MiBuildImportsForBootDrivers(VOID)
                     /* A valid reference */
                     //DPRINT1("Found valid entry: %p\n", EntryArray[i]);
                     LoadedImports->Entry[j] = EntryArray[i];
-                    EntryArray[i]->LoadCount++;
+                    EntryArray[i]->DdagNode->LoadCount++;
                     j++;
                 }
             }
 
             /* Should had as many entries as we expected */
             ASSERT(j == ImportSize);
-            LdrEntry->LoadedImports = LoadedImports;
+            LdrEntry->ReactOSLoadedImports = LoadedImports;
         }
 
         /* Next */
@@ -2127,8 +2130,8 @@ MiBuildImportsForBootDrivers(VOID)
     /* FIXME: Might not need to keep the HAL/Kernel imports around */
 
     /* Kernel and HAL are loaded at boot */
-    KernelEntry->LoadedImports = MM_SYSLDR_BOOT_LOADED;
-    HalEntry->LoadedImports = MM_SYSLDR_BOOT_LOADED;
+    KernelEntry->ReactOSLoadedImports = MM_SYSLDR_BOOT_LOADED;
+    HalEntry->ReactOSLoadedImports = MM_SYSLDR_BOOT_LOADED;
 
     /* All worked well */
     return STATUS_SUCCESS;
@@ -2236,11 +2239,26 @@ MiInitializeLoadedModuleList(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         EntrySize = sizeof(LDR_DATA_TABLE_ENTRY) +
                     LdrEntry->BaseDllName.MaximumLength +
                     sizeof(UNICODE_NULL);
-        NewEntry = ExAllocatePoolWithTag(NonPagedPool, EntrySize, TAG_MODULE_OBJECT);
+        NewEntry = LdrpAllocateHeap(HEAP_ZERO_MEMORY, EntrySize);
         if (!NewEntry) return FALSE;
 
         /* Copy the entry over */
         *NewEntry = *LdrEntry;
+
+#if 1
+        /* Allocate the DDAG node */
+        NewEntry->DdagNode = LdrpAllocateHeap(HEAP_ZERO_MEMORY, sizeof(LDR_DDAG_NODE));
+        if (!NewEntry->DdagNode)
+        {
+            LdrpFreeHeap(0, NewEntry);
+            return FALSE;
+        }
+
+        if (LdrEntry->DdagNode)
+            ;//*NewEntry->DdagNode = *LdrEntry->DdagNode;
+        else
+            DPRINT1("DDAG node for %wZ is missing", &LdrEntry->BaseDllName);
+#endif
 
         /* Allocate the name */
         NewEntry->FullDllName.Buffer =
@@ -2250,7 +2268,8 @@ MiInitializeLoadedModuleList(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                                   TAG_LDR_WSTR);
         if (!NewEntry->FullDllName.Buffer)
         {
-            ExFreePoolWithTag(NewEntry, TAG_MODULE_OBJECT);
+            LdrpFreeHeap(0, NewEntry->DdagNode);
+            LdrpFreeHeap(0, NewEntry);
             return FALSE;
         }
 
@@ -2548,17 +2567,20 @@ NTAPI
 MiSetPagingOfDriver(IN PMMPTE PointerPte,
                     IN PMMPTE LastPte)
 {
+#if 0
     PVOID ImageBase;
     PETHREAD CurrentThread = PsGetCurrentThread();
     PFN_COUNT PageCount = 0;
     PFN_NUMBER PageFrameIndex;
     PMMPFN Pfn1;
+#endif
     PAGED_CODE();
 
     /* The page fault handler is broken and doesn't page back in! */
     DPRINT1("WARNING: MiSetPagingOfDriver() called, but paging is broken! ignoring!\n");
     return;
 
+#if 0
     /* Get the driver's base address */
     ImageBase = MiPteToAddress(PointerPte);
     ASSERT(MI_IS_SESSION_IMAGE_ADDRESS(ImageBase) == FALSE);
@@ -2596,6 +2618,7 @@ MiSetPagingOfDriver(IN PMMPTE PointerPte,
         /* Update counters */
         InterlockedExchangeAdd((PLONG)&MmTotalSystemDriverPages, PageCount);
     }
+#endif
 }
 
 VOID
@@ -2816,7 +2839,7 @@ MmLoadSystemImage(IN PUNICODE_STRING FileName,
     PIMAGE_NT_HEADERS NtHeader;
     UNICODE_STRING BaseName, BaseDirectory, PrefixName, UnicodeTemp;
     PLDR_DATA_TABLE_ENTRY LdrEntry = NULL;
-    ULONG EntrySize, DriverSize;
+    ULONG DriverSize;
     PLOAD_IMPORTS LoadedImports = MM_SYSLDR_NO_IMPORTS;
     PCHAR MissingApiName, Buffer;
     PWCHAR MissingDriverName;
@@ -2837,7 +2860,7 @@ MmLoadSystemImage(IN PUNICODE_STRING FileName,
         ASSERT(LoadedName == NULL);
 
         /* Make sure the process is in session too */
-        if (!PsGetCurrentProcess()->ProcessInSession) return STATUS_NO_MEMORY;
+        if (!PspTestProcessInSessionFlag(PsGetCurrentProcess())) return STATUS_NO_MEMORY;
     }
 
     /* Allocate a buffer we'll use for names */
@@ -3113,13 +3136,8 @@ LoaderScan:
     /* Get the NT Header */
     NtHeader = RtlImageNtHeader(ModuleLoadBase);
 
-    /* Calculate the size we'll need for the entry and allocate it */
-    EntrySize = sizeof(LDR_DATA_TABLE_ENTRY) +
-                BaseName.Length +
-                sizeof(UNICODE_NULL);
-
     /* Allocate the entry */
-    LdrEntry = ExAllocatePoolWithTag(NonPagedPool, EntrySize, TAG_MODULE_OBJECT);
+    LdrEntry = LdrpAllocateHeap(HEAP_ZERO_MEMORY, sizeof(LDR_DATA_TABLE_ENTRY));
     if (!LdrEntry)
     {
         /* Fail */
@@ -3127,43 +3145,71 @@ LoaderScan:
         goto Quickie;
     }
 
+#if 1
+    LdrEntry->DdagNode = LdrpAllocateHeap(HEAP_ZERO_MEMORY, sizeof(LDR_DDAG_NODE));
+    if (!LdrEntry->DdagNode)
+    {
+        /* Fail */
+        Status = STATUS_INSUFFICIENT_RESOURCES;
+        LdrpFreeHeap(0, LdrEntry);
+        goto Quickie;
+    }
+#endif
+
+    LdrEntry->ProcessStaticImport = TRUE;
+
+    LdrEntry->DdagNode->LoadCount = 1u;
+    LdrEntry->ReferenceCount = 2u;
+    InitializeListHead(&LdrEntry->DdagNode->Modules);
+    InitializeListHead(&LdrEntry->NodeModuleLink);
+    InsertHeadList(&LdrEntry->DdagNode->Modules, &LdrEntry->NodeModuleLink);
+    LdrEntry->ObsoleteLoadCount = 12u; // random big enough value, to prevent misuse
+    LdrEntry->LoadReason = LoadReasonUnknown;
+
     /* Setup the entry */
-    LdrEntry->Flags = LDRP_LOAD_IN_PROGRESS;
-    LdrEntry->LoadCount = 1;
-    LdrEntry->LoadedImports = LoadedImports;
-    LdrEntry->PatchInformation = NULL;
+    LdrEntry->Flags = 0;
+    LdrEntry->LoadInProgress = TRUE;
+    LdrEntry->ObsoleteLoadCount = 42u; // to ensure the security and continuing stability
+    LdrEntry->ReactOSLoadedImports = LoadedImports;
 
     /* Check the version */
     if ((NtHeader->OptionalHeader.MajorOperatingSystemVersion >= 5) &&
         (NtHeader->OptionalHeader.MajorImageVersion >= 5))
     {
         /* Mark this image as a native image */
-        LdrEntry->Flags |= LDRP_ENTRY_NATIVE;
+        ASSERT(!LdrEntry->ReactOSSystemMapped);
+        ASSERT(!LdrEntry->ReactOSNativeMapped);
+        LdrEntry->ReactOSNativeMapped = TRUE;
     }
 
     /* Setup the rest of the entry */
     LdrEntry->DllBase = ModuleLoadBase;
-    LdrEntry->EntryPoint = (PVOID)((ULONG_PTR)ModuleLoadBase +
-                                   NtHeader->OptionalHeader.AddressOfEntryPoint);
+    LdrEntry->EntryPoint = LdrpFetchAddressOfEntryPoint(ModuleLoadBase);
     LdrEntry->SizeOfImage = DriverSize;
-    LdrEntry->CheckSum = NtHeader->OptionalHeader.CheckSum;
-    LdrEntry->SectionPointer = Section;
+    LdrEntry->ReactOSCheckSum = NtHeader->OptionalHeader.CheckSum;
+    LdrEntry->TimeDateStamp = NtHeader->FileHeader.TimeDateStamp;
+    LdrEntry->ReactOSSectionPointer = Section;
 
     /* Now write the DLL name */
-    LdrEntry->BaseDllName.Buffer = (PVOID)(LdrEntry + 1);
-    LdrEntry->BaseDllName.Length = BaseName.Length;
-    LdrEntry->BaseDllName.MaximumLength = BaseName.Length;
-
-    /* Copy and null-terminate it */
-    RtlCopyMemory(LdrEntry->BaseDllName.Buffer,
-                  BaseName.Buffer,
-                  BaseName.Length);
-    LdrEntry->BaseDllName.Buffer[BaseName.Length / sizeof(WCHAR)] = UNICODE_NULL;
+    LdrEntry->BaseDllName.MaximumLength = BaseName.Length + sizeof(UNICODE_NULL);
+    LdrEntry->BaseDllName.Buffer = ExAllocatePoolWithTag(PagedPool,
+                                                         LdrEntry->BaseDllName.MaximumLength,
+                                                         TAG_LDR_WSTR);
+    if (!LdrEntry->BaseDllName.Buffer)
+    {
+        /* Don't fail, just set it to zero */
+        LdrEntry->BaseDllName.Length = 0;
+        LdrEntry->BaseDllName.MaximumLength = 0;
+    }
+    else
+    {
+        RtlCopyUnicodeString(&LdrEntry->BaseDllName, &BaseName);
+    }
 
     /* Now allocate the full name */
+    LdrEntry->FullDllName.MaximumLength = PrefixName.Length + sizeof(UNICODE_NULL);
     LdrEntry->FullDllName.Buffer = ExAllocatePoolWithTag(PagedPool,
-                                                         PrefixName.Length +
-                                                         sizeof(UNICODE_NULL),
+                                                         LdrEntry->FullDllName.MaximumLength,
                                                          TAG_LDR_WSTR);
     if (!LdrEntry->FullDllName.Buffer)
     {
@@ -3173,15 +3219,7 @@ LoaderScan:
     }
     else
     {
-        /* Set it up */
-        LdrEntry->FullDllName.Length = PrefixName.Length;
-        LdrEntry->FullDllName.MaximumLength = PrefixName.Length;
-
-        /* Copy and null-terminate */
-        RtlCopyMemory(LdrEntry->FullDllName.Buffer,
-                      PrefixName.Buffer,
-                      PrefixName.Length);
-        LdrEntry->FullDllName.Buffer[PrefixName.Length / sizeof(WCHAR)] = UNICODE_NULL;
+        RtlCopyUnicodeString(&LdrEntry->FullDllName, &PrefixName);
     }
 
     /* Add the entry */
@@ -3227,17 +3265,17 @@ LoaderScan:
         }
 
         /* Free the entry itself */
-        ExFreePoolWithTag(LdrEntry, TAG_MODULE_OBJECT);
         LdrEntry = NULL;
         goto Quickie;
     }
 
     /* Update the loader entry */
-    LdrEntry->Flags |= (LDRP_SYSTEM_MAPPED |
-                        LDRP_ENTRY_PROCESSED |
-                        LDRP_MM_LOADED);
-    LdrEntry->Flags &= ~LDRP_LOAD_IN_PROGRESS;
-    LdrEntry->LoadedImports = LoadedImports;
+    LdrEntry->EntryProcessed = TRUE;
+    LdrEntry->ReactOSKernelLoaded = TRUE;
+    LdrEntry->ReactOSSystemMapped = TRUE;
+
+    LdrEntry->LoadInProgress = FALSE;
+    LdrEntry->ReactOSLoadedImports = LoadedImports;
 
     /* FIXME: Call driver verifier's loader function */
 
@@ -3293,7 +3331,7 @@ LoaderScan:
         DbgLoadImageSymbols(&AnsiTemp,
                             LdrEntry->DllBase,
                             (ULONG_PTR)PsGetCurrentProcessId());
-        LdrEntry->Flags |= LDRP_DEBUG_SYMBOLS_LOADED;
+        LdrEntry->ReactOSLdrSymbolsLoaded = TRUE;
     }
 
     /* Page the driver */
@@ -3378,7 +3416,7 @@ MmPageEntireDriver(IN PVOID AddressWithinSection)
     if (!LdrEntry) return NULL;
 
     /* Check if paging of kernel mode is disabled or if the driver is mapped as an image */
-    if ((MmDisablePagingExecutive) || (LdrEntry->SectionPointer))
+    if ((MmDisablePagingExecutive) || (LdrEntry->ReactOSSectionPointer))
     {
         /* Don't do anything, just return the base address */
         return LdrEntry->DllBase;

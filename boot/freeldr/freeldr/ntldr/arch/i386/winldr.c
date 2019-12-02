@@ -19,6 +19,12 @@ DBG_DEFAULT_CHANNEL(WINDOWS);
 #undef KIP0PCRADDRESS
 #define KIP0PCRADDRESS                      0xffdff000
 
+#ifdef _X86_
+#define PCR_PAGES 7 // good enough up to 1909, at least
+#elif defined(__x86_64__)
+#define PCR_PAGES 0xa // good enough up to 1909, at least
+#endif
+
 #define SELFMAP_ENTRY       0x300
 
 // This is needed only for SetProcessorContext routine
@@ -399,13 +405,18 @@ WinLdrMapSpecialPages(void)
      * The Page Tables have been setup, make special handling
      * for the boot processor PCR and KI_USER_SHARED_DATA.
      */
-    HalPageTable[(KI_USER_SHARED_DATA - 0xFFC00000) >> MM_PAGE_SHIFT].PageFrameNumber = PcrBasePage+1;
+    HalPageTable[(KI_USER_SHARED_DATA - 0xFFC00000) >> MM_PAGE_SHIFT].PageFrameNumber = PcrBasePage + PCR_PAGES;
     HalPageTable[(KI_USER_SHARED_DATA - 0xFFC00000) >> MM_PAGE_SHIFT].Valid = 1;
     HalPageTable[(KI_USER_SHARED_DATA - 0xFFC00000) >> MM_PAGE_SHIFT].Write = 1;
 
-    HalPageTable[(KIP0PCRADDRESS - 0xFFC00000) >> MM_PAGE_SHIFT].PageFrameNumber = PcrBasePage;
-    HalPageTable[(KIP0PCRADDRESS - 0xFFC00000) >> MM_PAGE_SHIFT].Valid = 1;
-    HalPageTable[(KIP0PCRADDRESS - 0xFFC00000) >> MM_PAGE_SHIFT].Write = 1;
+    LONG_PTR Index = (KIP0PCRADDRESS - 0xFFC00000) >> MM_PAGE_SHIFT;
+
+    for (PFN_COUNT Page = 0; Page < PCR_PAGES; Page++)
+    {
+        HalPageTable[Index + Page].PageFrameNumber = PcrBasePage + Page;
+        HalPageTable[Index + Page].Valid = 1;
+        HalPageTable[Index + Page].Write = 1;
+    }
 
     /* Map APIC */
     WinLdrpMapApic();
@@ -453,8 +464,8 @@ void WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock)
     LoaderBlock->u.I386.CommonDataArea = NULL; // Force No ABIOS support
     LoaderBlock->u.I386.MachineType = MACHINE_TYPE_ISA;
 
-    /* Allocate 2 pages for PCR: one for the boot processor PCR and one for KI_USER_SHARED_DATA */
-    Pcr = (ULONG_PTR)MmAllocateMemoryWithType(2 * MM_PAGE_SIZE, LoaderStartupPcrPage);
+    /* Allocate pages for PCR: PCR_PAGES for the boot processor PCR and one for KI_USER_SHARED_DATA */
+    Pcr = (ULONG_PTR)MmAllocateMemoryWithType((PCR_PAGES + 1) * MM_PAGE_SIZE, LoaderStartupPcrPage);
     PcrBasePage = Pcr >> MM_PAGE_SHIFT;
     if (Pcr == 0)
     {
@@ -535,7 +546,7 @@ WinLdrSetProcessorContext(void)
     __writecr0(__readcr0() | CR0_PG);
 
     /* The Kernel expects the boot processor PCR to be zero-filled on startup */
-    RtlZeroMemory((PVOID)Pcr, MM_PAGE_SIZE);
+    RtlZeroMemory((PVOID)Pcr, PCR_PAGES * MM_PAGE_SIZE);
 
     /* Get old values of GDT and IDT */
     Ke386GetGlobalDescriptorTable(&GdtDesc);
@@ -600,7 +611,7 @@ WinLdrSetProcessorContext(void)
      * Longhorn/Vista reports LimitLow == 0x0fff == MM_PAGE_SIZE - 1, whereas
      * Windows 7+ uses larger sizes there (not aligned on a page boundary).
      */
-#if 1
+#if 0
     /* Server 2003 way */
     KiSetGdtEntryEx(KiGetGdtEntry(pGdt, KGDT_R0_PCR), (ULONG32)Pcr, 0x1,
                     TYPE_DATA, DPL_SYSTEM, TRUE, 2);

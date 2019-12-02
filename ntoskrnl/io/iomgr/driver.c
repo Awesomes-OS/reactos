@@ -5,7 +5,7 @@
  * PURPOSE:         Driver Object Management
  * PROGRAMMERS:     Alex Ionescu (alex.ionescu@reactos.org)
  *                  Filip Navara (navaraf@reactos.org)
- *                  Hervé Poussineau (hpoussin@reactos.org)
+ *                  Hervï¿½ Poussineau (hpoussin@reactos.org)
  */
 
 /* INCLUDES *******************************************************************/
@@ -1015,7 +1015,7 @@ IopInitializeBootDrivers(VOID)
                                      InLoadOrderLinks);
 
         /* Check if the DLL needs to be initialized */
-        if (LdrEntry->Flags & LDRP_DRIVER_DEPENDENT_DLL)
+        if (LdrEntry->ReactOSDriverDependency)
         {
             /* Call its entrypoint */
             MmCallDllInitialize(LdrEntry, NULL);

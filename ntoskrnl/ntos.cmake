@@ -13,7 +13,7 @@ add_definitions(
     -D_NTOSKRNL_
     -D_NTSYSTEM_
     -D_IN_KERNEL_
-    -DNTDDI_VERSION=0x05020400)
+    )
 
 if(NOT DEFINED NEWCC)
     set(NEWCC FALSE)
@@ -167,6 +167,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/bug.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/clock.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/config.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/cpu.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/devqueue.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/dpc.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/ke/eventobj.c
@@ -206,6 +207,7 @@ list(APPEND SOURCE
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/mdlsup.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/mmdbg.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/mminit.c
+    ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/mmquery.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/mmsup.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/ncache.c
     ${REACTOS_SOURCE_DIR}/ntoskrnl/mm/ARM3/pagfault.c

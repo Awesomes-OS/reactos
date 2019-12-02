@@ -27,6 +27,7 @@
 /* add languages in numerical order of main language (last two digits)
  * it is much easier to find the missing holes that way */
 
+#if 0
 #pragma code_page(1256)
 #include "nls/ara.nls"   /* 0x0401  LANG_ARABIC, SUBLANG_ARABIC_SAUDI_ARABIA */
 #pragma code_page(1256)
@@ -96,6 +97,7 @@
 
 #pragma code_page(1253)
 #include "nls/ell.nls"   /* 0x0408  LANG_GREEK, SUBLANG_DEFAULT */
+#endif
 
 #pragma code_page(1252)
 #include "nls/enu.nls"   /* 0x0409  LANG_ENGLISH, SUBLANG_ENGLISH_US */
@@ -124,6 +126,7 @@
 #pragma code_page(1252)
 #include "nls/enp.nls"   /* 0x3409  LANG_ENGLISH, SUBLANG_ENGLISH_PHILIPPINES */
 
+#if 0
 #pragma code_page(1252)
 #include "nls/eoa.nls"   /* 0x048F  LANG_ESPERANTO, SUBLANG_ESPERANTO */
 
@@ -359,6 +362,7 @@
 
 //#pragma code_page(28604)
 //#include "nls/cym.nls"   /* 0x0452  LANG_WELSH, SUBLANG_DEFAULT */
+#endif
 
 #pragma code_page(1252)
 #include "nls/glc.nls"   /* 0x0456  LANG_GALICIAN, SUBLANG_DEFAULT */

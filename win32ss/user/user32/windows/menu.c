@@ -590,7 +590,7 @@ static BOOL MENU_NormalizeMenuItemInfoStruct( const MENUITEMINFOW *pmii_in,
 {
     /* do we recognize the size? */
     if( !pmii_in || (pmii_in->cbSize != sizeof( MENUITEMINFOW) &&
-            pmii_in->cbSize != sizeof( MENUITEMINFOW) - sizeof( pmii_in->hbmpItem)) ) {
+            pmii_in->cbSize != sizeof( MENUITEMINFOW) - sizeof(*pmii_in->hbmpItem)) ) {
         SetLastError( ERROR_INVALID_PARAMETER);
         return FALSE;
     }
@@ -996,7 +996,7 @@ GetMenuItemInfoA(
     MENUITEMINFOA mii;
 
     if( lpmii->cbSize != sizeof( mii) &&
-        lpmii->cbSize != sizeof( mii) - sizeof ( mii.hbmpItem))
+        lpmii->cbSize != sizeof( mii) - sizeof (*mii.hbmpItem))
     {
         SetLastError( ERROR_INVALID_PARAMETER);
         return FALSE;
@@ -1025,7 +1025,7 @@ GetMenuItemInfoW(
 {
    BOOL ret;
    MENUITEMINFOW mii;
-   if( lpmii->cbSize != sizeof( mii) && lpmii->cbSize != sizeof( mii) - sizeof ( mii.hbmpItem))
+   if( lpmii->cbSize != sizeof( mii) && lpmii->cbSize != sizeof( mii) - sizeof (*mii.hbmpItem))
    {
       SetLastError( ERROR_INVALID_PARAMETER);
       return FALSE;

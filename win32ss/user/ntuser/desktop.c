@@ -2642,7 +2642,19 @@ NtUserOpenInputDesktop(
     HDESK hdesk;
 
     UserEnterExclusive();
-    TRACE("Enter NtUserOpenInputDesktop gpdeskInputDesktop 0x%p\n",gpdeskInputDesktop);
+    TRACE("Enter NtUserOpenInputDesktop gpdeskInputDesktop 0x%p\n", gpdeskInputDesktop);
+
+    if (!gpdeskInputDesktop)
+    {
+        SetLastNtError(STATUS_OPEN_FAILED);
+        return NULL;
+    }
+
+    if (!UserGetProcessWindowStation())
+    {
+        SetLastNtError(STATUS_ACCESS_DENIED);
+        return NULL;
+    }
 
     hdesk = UserOpenInputDesktop(dwFlags, fInherit, dwDesiredAccess);
 

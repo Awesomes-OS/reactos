@@ -10,6 +10,9 @@
 #include "winldr.h"
 #include "registry.h"
 
+#include <ndk/ldrtypes.h>
+#include <reactos/ldrp.h>
+
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(WINDOWS);
 
@@ -37,6 +40,37 @@ BOOLEAN NoexecuteEnabled = FALSE;
 
 // debug stuff
 VOID DumpMemoryAllocMap(VOID);
+
+//#undef TRACE
+//#undef ERR
+//#define TRACE(...) UiMessageBox(__VA_ARGS__);
+//#define ERR(...) UiMessageBox(__VA_ARGS__);
+
+PVOID
+NTAPI
+LdrpWinLdrHeapAlloc(
+    IN ULONG Flags OPTIONAL,
+    IN SIZE_T Size)
+{
+    PVOID ptr = FrLdrHeapAllocateEx(FrLdrDefaultHeap, Size, TAG_WLDR_NAME);
+    if (ptr && (Flags & HEAP_ZERO_MEMORY))
+    {
+        RtlZeroMemory(ptr, Size);
+    }
+
+    return ptr;
+}
+
+BOOLEAN
+NTAPI
+LdrpWinLdrHeapFree(
+    IN ULONG Flags OPTIONAL,
+    IN PVOID BaseAddress)
+{
+    FrLdrHeapFreeEx(FrLdrDefaultHeap, BaseAddress, TAG_WLDR_NAME);
+    return TRUE;
+}
+
 
 // Init "phase 0"
 VOID
@@ -283,7 +317,10 @@ WinLdrLoadDeviceDriver(PLIST_ENTRY LoadOrderListHead,
     RtlStringCbPrintfA(FullPath, sizeof(FullPath), "%s%wZ", BootPath, FilePath);
     Success = PeLdrLoadImage(FullPath, LoaderBootDriver, &DriverBase);
     if (!Success)
+    {
+        ERR("PeLdrLoadImage() failed\n");
         return FALSE;
+    }
 
     // Allocate a DTE for it
     Success = PeLdrAllocateDataTableEntry(LoadOrderListHead, DllName, DllName, DriverBase, DriverDTE);
@@ -1019,6 +1056,9 @@ LoadAndBootWindowsCommon(
     TRACE("LoadAndBootWindowsCommon()\n");
 
     ASSERT(OperatingSystemVersion != 0);
+
+    LdrpHeapAllocProc = &LdrpWinLdrHeapAlloc;
+    LdrpHeapFreeProc = &LdrpWinLdrHeapFree;
 
 #ifdef _M_IX86
     /* Setup redirection support */

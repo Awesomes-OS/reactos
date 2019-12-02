@@ -64,7 +64,7 @@ MmAdjustWorkingSetSize(IN SIZE_T WorkingSetMinimumInBytes,
 
     /* Get the working set and lock it */
     Ws = &PsGetCurrentProcess()->Vm;
-    MiLockWorkingSet(PsGetCurrentThread(), Ws);
+    LOCK_WS(PsGetCurrentThread(), PsGetCurrentProcess());
 
     /* Calculate the actual minimum and maximum working set size to set */
     MinimumWorkingSetSize = (WorkingSetMinimumInBytes != 0) ?
@@ -150,7 +150,7 @@ MmAdjustWorkingSetSize(IN SIZE_T WorkingSetMinimumInBytes,
 Cleanup:
 
     /* Unlock the working set and return the status */
-    MiUnlockWorkingSet(PsGetCurrentThread(), Ws);
+    UNLOCK_WS(PsGetCurrentThread(), PsGetCurrentProcess());
     return Status;
 }
 
@@ -235,7 +235,18 @@ MmIsRecursiveIoFault(VOID)
     //
     // If any of these is true, this is a recursive fault
     //
-    return ((Thread->DisablePageFaultClustering) | (Thread->ForwardClusterOnly));
+    if (Thread->DisablePageFaultClustering)
+        return TRUE;
+
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
+    if (Thread->ForwardClusterOnly)
+        return TRUE;
+#else
+    if (Thread->CacheManagerActive)
+        return TRUE;
+#endif
+
+    return FALSE;
 }
 
 /*

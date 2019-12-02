@@ -155,6 +155,15 @@ CcIsThereDirtyData (
 /*
  * @unimplemented
  */
+#if (NTDDI_VERSION >= NTDDI_VISTA)
+BOOLEAN
+NTAPI
+CcPurgeCacheSection(
+    _In_ PSECTION_OBJECT_POINTERS SectionObjectPointer,
+    _In_opt_ PLARGE_INTEGER FileOffset,
+    _In_ ULONG Length,
+    _In_ ULONG Flags)
+#else
 BOOLEAN
 NTAPI
 CcPurgeCacheSection (
@@ -162,6 +171,7 @@ CcPurgeCacheSection (
     IN PLARGE_INTEGER FileOffset OPTIONAL,
     IN ULONG Length,
     IN BOOLEAN UninitializeCacheMaps)
+#endif
 {
     PROS_SHARED_CACHE_MAP SharedCacheMap;
     LONGLONG StartOffset;
@@ -172,6 +182,10 @@ CcPurgeCacheSection (
     PROS_VACB Vacb;
     LONGLONG ViewEnd;
     BOOLEAN Success;
+
+#if (NTDDI_VERSION >= NTDDI_VISTA)
+    BOOLEAN UninitializeCacheMaps = Flags & 1;
+#endif
 
     CCTRACE(CC_API_DEBUG, "SectionObjectPointer=%p\n FileOffset=%p Length=%lu UninitializeCacheMaps=%d",
         SectionObjectPointer, FileOffset, Length, UninitializeCacheMaps);

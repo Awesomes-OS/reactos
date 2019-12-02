@@ -113,14 +113,14 @@ KiRosPcToUserFileHeader(IN PVOID Pc,
     PVOID ImageBase, PcBase = NULL;
     PLDR_DATA_TABLE_ENTRY Entry;
     PLIST_ENTRY ListHead, NextEntry;
+    PKTHREAD Thread = KeGetCurrentThread();
 
     /*
      * We know this is valid because we should only be called after a
      * succesfull address from RtlWalkFrameChain for UserMode, which
      * validates everything for us.
      */
-    ListHead = &KeGetCurrentThread()->
-               Teb->ProcessEnvironmentBlock->Ldr->InLoadOrderModuleList;
+    ListHead = &Thread->Teb->ProcessEnvironmentBlock->Ldr->InLoadOrderModuleList;
 
     /* Set list pointers and make sure it's valid */
     NextEntry = ListHead->Flink;

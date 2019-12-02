@@ -169,6 +169,52 @@ PsGetNextProcess(IN PEPROCESS OldProcess)
     return FoundProcess;
 }
 
+PEPROCESS
+NTAPI
+PsGetPreviousProcess(IN PEPROCESS OldProcess)
+{
+    PLIST_ENTRY Entry;
+    PEPROCESS FoundProcess = NULL;
+    PAGED_CODE();
+    PSTRACE(PS_PROCESS_DEBUG, "Process: %p\n", OldProcess);
+
+    /* Acquire the Active Process Lock */
+    KeAcquireGuardedMutex(&PspActiveProcessMutex);
+
+    /* Check if we're already starting somewhere */
+    if (OldProcess)
+    {
+        /* Start where we left off */
+        Entry = OldProcess->ActiveProcessLinks.Blink;
+    }
+    else
+    {
+        /* Start at the beginning */
+        Entry = PsActiveProcessHead.Blink;
+    }
+
+    /* Loop the process list */
+    while (Entry != &PsActiveProcessHead)
+    {
+        /* Get the process */
+        FoundProcess = CONTAINING_RECORD(Entry, EPROCESS, ActiveProcessLinks);
+
+        /* Reference the process */
+        if (ObReferenceObjectSafe(FoundProcess)) break;
+
+        /* Nothing found, keep trying */
+        FoundProcess = NULL;
+        Entry = Entry->Blink;
+    }
+
+    /* Release the lock */
+    KeReleaseGuardedMutex(&PspActiveProcessMutex);
+
+    /* Dereference the Process we had referenced earlier */
+    if (OldProcess) ObDereferenceObject(OldProcess);
+    return FoundProcess;
+}
+
 KPRIORITY
 NTAPI
 PspComputeQuantumAndPriority(IN PEPROCESS Process,
@@ -360,8 +406,10 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
     PDEBUG_OBJECT DebugObject;
     PSECTION_OBJECT SectionObject;
     NTSTATUS Status, AccessStatus;
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
     ULONG_PTR DirectoryTableBase[2] = {0,0};
-    KAFFINITY Affinity;
+#endif
+    GROUP_AFFINITY Affinity = { 0 };
     HANDLE_TABLE_ENTRY CidEntry;
     PETHREAD CurrentThread = PsGetCurrentThread();
     KPROCESSOR_MODE PreviousMode = ExGetPreviousMode();
@@ -402,15 +450,11 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
             ObDereferenceObject(Parent);
             return STATUS_INVALID_PARAMETER;
         }
-
-        /* Inherit Parent process's Affinity. */
-        Affinity = Parent->Pcb.Affinity;
     }
     else
     {
         /* We have no parent */
         Parent = NULL;
-        Affinity = KeActiveProcessors;
     }
 
     /* Save working set data */
@@ -431,6 +475,9 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
 
     /* Clean up the Object */
     RtlZeroMemory(Process, sizeof(EPROCESS));
+
+    // todo (andrew.boyarshin): hack for ntbits-src.h asserts
+    Process->Pcb.Header.Type = ProcessObject;
 
     /* Initialize pushlock and rundown protection */
     ExInitializeRundownProtection(&Process->RundownProtect);
@@ -503,6 +550,8 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
     /* Save the pointer to the section object */
     Process->SectionObject = SectionObject;
 
+    KiVBoxPrint("PspCreateProcess 0\n");
+
     /* Check for the debug port */
     if (DebugPort)
     {
@@ -522,7 +571,7 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
         if (Flags & PROCESS_CREATE_FLAGS_NO_DEBUG_INHERIT)
         {
             /* Set the process flag */
-            InterlockedOr((PLONG)&Process->Flags, PSF_NO_DEBUG_INHERIT_BIT);
+            PspSetProcessNoDebugInheritFlagAssert(Process);
         }
     }
     else
@@ -530,6 +579,8 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
         /* Do we have a parent? Copy his debug port */
         if (Parent) DbgkCopyProcessDebugPort(Process, Parent);
     }
+
+    KiVBoxPrint("PspCreateProcess 1\n");
 
     /* Now check for an exception port */
     if (ExceptionPort)
@@ -544,7 +595,11 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
         if (!NT_SUCCESS(Status)) goto CleanupWithRef;
 
         /* Save the exception port */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+        Process->ExceptionPortData = ExceptionPortObject;
+#else
         Process->ExceptionPort = ExceptionPortObject;
+#endif
     }
 
     /* Save the pointer to the section object */
@@ -553,13 +608,47 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
     /* Set default exit code */
     Process->ExitStatus = STATUS_PENDING;
 
+    // Assign group
+    if (Parent)
+    {
+        if (PspTestProcessPropagateNodeFlag(Parent))
+        {
+            PspSetProcessPropagateNodeFlagAssert(Process);
+            Affinity.Group = KeNodeBlock[Parent->Pcb.IdealGlobalNode]->Affinity.Group;
+        }
+        else
+        {
+            if (KeForceGroupAwareness && KeQueryActiveGroupCount() > 1)
+            {
+                Affinity.Group = 1;
+            }
+            else
+            {
+                // todo (andrew.boyarshin): PspSelectNodeForProcess
+                Affinity.Group = 0;
+            }
+        }
+    }
+    else
+    {
+        // Group 0
+    }
+
+    KiVBoxPrint("PspCreateProcess 2\n");
+
+    Affinity.Mask = KeActiveProcessors.Bitmap[Affinity.Group];
+
     /* Check if this is the initial process being built */
     if (Parent)
     {
         /* Create the address space for the child */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+        if (!MmCreateProcessAddressSpace(MinWs, Process))
+#else
         if (!MmCreateProcessAddressSpace(MinWs,
                                          Process,
                                          DirectoryTableBase))
+#endif
         {
             /* Failed */
             Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -570,23 +659,37 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
     {
         /* Otherwise, we are the boot process, we're already semi-initialized */
         Process->ObjectTable = CurrentProcess->ObjectTable;
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+        Status = MmInitializeHandBuiltProcess(Process);
+#else
         Status = MmInitializeHandBuiltProcess(Process, DirectoryTableBase);
+#endif
         if (!NT_SUCCESS(Status)) goto CleanupWithRef;
     }
 
+    KiVBoxPrint("PspCreateProcess 3\n");
+
     /* We now have an address space */
-    InterlockedOr((PLONG)&Process->Flags, PSF_HAS_ADDRESS_SPACE_BIT);
+    PspSetProcessHasAddressSpaceFlag(Process);
 
     /* Set the maximum WS */
     Process->Vm.MaximumWorkingSetSize = MaxWs;
 
+    KiVBoxPrint("PspCreateProcess 4\n");
+
     /* Now initialize the Kernel Process */
-    KeInitializeProcess(&Process->Pcb,
-                        PROCESS_PRIORITY_NORMAL,
-                        Affinity,
-                        DirectoryTableBase,
-                        BooleanFlagOn(Process->DefaultHardErrorProcessing,
-                                      SEM_NOALIGNMENTFAULTEXCEPT));
+    KeInitializeProcess(
+        &Process->Pcb,
+        PROCESS_PRIORITY_NORMAL,
+        &Affinity,
+#if (NTDDI_VERSION < NTDDI_WIN8)
+        DirectoryTableBase,
+#endif
+        BooleanFlagOn(Process->DefaultHardErrorProcessing,
+                      SEM_NOALIGNMENTFAULTEXCEPT)
+    );
+
+    KiVBoxPrint("PspCreateProcess 5\n");
 
     /* Duplicate Parent Token */
     Status = PspInitializeProcessSecurity(Process, Parent);
@@ -618,6 +721,8 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
         Status = MmInitializeHandBuiltProcess2(Process);
         if (!NT_SUCCESS(Status)) goto CleanupWithRef;
     }
+
+    KiVBoxPrint("PspCreateProcess 6\n");
 
     /* Set success for now */
     Status = STATUS_SUCCESS;
@@ -689,6 +794,8 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
     if (Process->WorkingSetPage) memcpy(MiGetPfnEntry(Process->WorkingSetPage)->ProcessName, Process->ImageFileName, 16);
 #endif
 
+    KiVBoxPrint("PspCreateProcess 7\n");
+
     /* Check if we have a section object and map the system DLL */
     if (SectionObject) PspMapSystemDll(Process, NULL, FALSE);
 
@@ -715,6 +822,8 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
         /* FIXME: We need to insert this process */
         DPRINT1("Jobs not yet supported\n");
     }
+
+    KiVBoxPrint("PspCreateProcess 8\n");
 
     /* Create PEB only for User-Mode Processes */
     if ((Parent) && (NeedsPeb))
@@ -785,8 +894,12 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
                                             &Quantum);
     Process->Pcb.QuantumReset = Quantum;
 
+    KiVBoxPrint("PspCreateProcess 9\n");
+
     /* Check if we have a parent other then the initial system process */
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
     Process->GrantedAccess = PROCESS_TERMINATE;
+#endif
     if ((Parent) && (Parent != PsInitialSystemProcess))
     {
         /* Get the process's SD */
@@ -805,6 +918,10 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
         SubjectContext.PrimaryToken = PsReferencePrimaryToken(Process);
         SubjectContext.ClientToken = NULL;
 
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+        ACCESS_MASK GrantedAccess;
+#endif
+
         /* Do the access check */
         Result = SeAccessCheck(SecurityDescriptor,
                                &SubjectContext,
@@ -814,7 +931,11 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
                                NULL,
                                &PsProcessType->TypeInfo.GenericMapping,
                                PreviousMode,
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+                               &GrantedAccess,
+#else
                                &Process->GrantedAccess,
+#endif
                                &AccessStatus);
 
         /* Dereference the token and let go the SD */
@@ -822,6 +943,7 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
                                 SubjectContext.PrimaryToken);
         ObReleaseObjectSecurity(SecurityDescriptor, SdAllocated);
 
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
         /* Remove access if it failed */
         if (!Result) Process->GrantedAccess = 0;
 
@@ -829,6 +951,7 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
         Process->GrantedAccess |= (PROCESS_VM_OPERATION |
                                    PROCESS_VM_READ |
                                    PROCESS_VM_WRITE |
+                                   PROCESS_QUERY_LIMITED_INFORMATION |
                                    PROCESS_QUERY_INFORMATION |
                                    PROCESS_TERMINATE |
                                    PROCESS_CREATE_THREAD |
@@ -837,11 +960,14 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
                                    PROCESS_SET_INFORMATION |
                                    STANDARD_RIGHTS_ALL |
                                    PROCESS_SET_QUOTA);
+#endif
     }
     else
     {
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
         /* Set full granted access */
         Process->GrantedAccess = PROCESS_ALL_ACCESS;
+#endif
     }
 
     /* Set the Creation Time */
@@ -865,6 +991,8 @@ PspCreateProcess(OUT PHANDLE ProcessHandle,
        Status = _SEH2_GetExceptionCode();
     }
     _SEH2_END;
+
+    KiVBoxPrint("PspCreateProcess 10\n");
 
     /* Run the Notification Routines */
     PspRunCreateProcessNotifyRoutines(Process, TRUE);
@@ -990,7 +1118,7 @@ PsLookupProcessThreadByCid(IN PCLIENT_ID Cid,
                 if (Process)
                 {
                     /* Return it and reference it */
-                    *Process = FoundThread->ThreadsProcess;
+                    *Process = (PEPROCESS)FoundThread->Tcb.Process;
                     ObReferenceObject(*Process);
                 }
             }
@@ -1042,7 +1170,7 @@ BOOLEAN
 NTAPI
 PsGetProcessExitProcessCalled(PEPROCESS Process)
 {
-    return (BOOLEAN)Process->ProcessExiting;
+    return PspTestProcessExitingFlag(Process);
 }
 
 /*
@@ -1272,7 +1400,7 @@ PsSetProcessWin32Process(
     if (Win32Process != NULL)
     {
         /* Check if the process is in the right state */
-        if (((Process->Flags & PSF_PROCESS_DELETE_BIT) == 0) &&
+        if (!PspTestProcessDeleteFlag(Process) &&
             (Process->Win32Process == NULL))
         {
             /* Set the new win32 process */
@@ -1334,6 +1462,22 @@ PsSetProcessPriorityByClass(IN PEPROCESS Process,
 
     /* Set them */
     KeSetPriorityAndQuantumProcess(&Process->Pcb, Priority, Quantum);
+}
+
+NTSTATUS
+NTAPI
+PspOpenProcess(
+    IN OB_OPEN_REASON Reason,
+    IN KPROCESSOR_MODE PreviousMode,
+    IN PEPROCESS Process OPTIONAL,
+    IN PVOID ObjectBody,
+    IN PACCESS_MASK GrantedAccess,
+    IN ULONG HandleCount
+)
+{
+    if (*GrantedAccess & PROCESS_QUERY_INFORMATION)
+        *GrantedAccess |= PROCESS_QUERY_LIMITED_INFORMATION;
+    return STATUS_SUCCESS;
 }
 
 /*
@@ -1612,6 +1756,354 @@ NtOpenProcess(OUT PHANDLE ProcessHandle,
     }
 
     /* Return status */
+    return Status;
+}
+
+PEPROCESS PspGetAdjacentProcess(BOOLEAN IsBackwards, PEPROCESS Current)
+{
+    return !IsBackwards
+               ? PsGetNextProcess(Current)
+               : PsGetPreviousProcess(Current);
+}
+
+NTSTATUS
+NTAPI
+NtGetNextProcess(
+    _In_ HANDLE ProcessHandle,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_ ULONG HandleAttributes,
+    _In_ ULONG Flags,
+    _Out_ PHANDLE NewProcessHandle
+)
+{
+    const KPROCESSOR_MODE PreviousMode = KeGetPreviousMode();
+
+    /* Validate user attributes */
+    HandleAttributes = ObpValidateAttributes(HandleAttributes, PreviousMode);
+
+    /* Check if we came from user mode */
+    if (PreviousMode != KernelMode)
+    {
+        _SEH2_TRY
+        {
+            /* Probe process handle */
+            ProbeForWriteHandle(NewProcessHandle);
+
+            *NewProcessHandle = NULL;
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            /* Return the exception code */
+            _SEH2_YIELD(return _SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+    }
+    else
+    {
+        *NewProcessHandle = NULL;
+    }
+
+    const BOOLEAN isBackwards = Flags & 1;
+    Flags &= ~1;
+    if (Flags)
+    {
+        DPRINT1("NtGetNextProcess flags (%#X) unsupported\n", Flags);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    PEPROCESS currentProcess = NULL;
+    if (ProcessHandle)
+    {
+        /* Reference it */
+        const NTSTATUS status = ObReferenceObjectByHandle(ProcessHandle,
+                                                          0,
+                                                          PsProcessType,
+                                                          PreviousMode,
+                                                          (PVOID*)&currentProcess,
+                                                          NULL);
+        if (!NT_SUCCESS(status))
+        {
+            DPRINT1("NtGetNextProcess ObReferenceObjectByHandle -> %#X\n", status);
+            return status;
+        }
+    }
+
+    for (PEPROCESS target = PspGetAdjacentProcess(isBackwards, currentProcess);
+         target;
+         target = PspGetAdjacentProcess(isBackwards, target))
+    {
+        currentProcess = NULL;
+        _SEH2_TRY
+        {
+            ACCESS_STATE accessState;
+            AUX_ACCESS_DATA auxData;
+            {
+                /* Create an access state */
+                const NTSTATUS status = SeCreateAccessState(&accessState,
+                                                            &auxData,
+                                                            DesiredAccess,
+                                                            &PsProcessType->TypeInfo.GenericMapping);
+                if (!NT_SUCCESS(status))
+                    return status;
+
+                /* Check if this is a debugger */
+                if (SeSinglePrivilegeCheck(SeDebugPrivilege, PreviousMode))
+                {
+                    /* Did he want full access? */
+                    if (accessState.RemainingDesiredAccess & MAXIMUM_ALLOWED)
+                    {
+                        /* Give it to him */
+                        accessState.PreviouslyGrantedAccess |= PROCESS_ALL_ACCESS;
+                    }
+                    else
+                    {
+                        /* Otherwise just give every other access he could want */
+                        accessState.PreviouslyGrantedAccess |=
+                            accessState.RemainingDesiredAccess;
+                    }
+
+                    /* The caller desires nothing else now */
+                    accessState.RemainingDesiredAccess = 0;
+                }
+            }
+
+            {
+                HANDLE hProcess;
+                /* Open the Process Object */
+                const NTSTATUS status = ObOpenObjectByPointer(target,
+                                                              HandleAttributes,
+                                                              &accessState,
+                                                              0,
+                                                              PsProcessType,
+                                                              PreviousMode,
+                                                              &hProcess);
+
+                /* Delete the access state */
+                SeDeleteAccessState(&accessState);
+
+                if (!NT_SUCCESS(status))
+                {
+                    DPRINT1("NtGetNextProcess ObOpenObjectByPointer -> %#X\n", status);
+                    _SEH2_YIELD(return status);
+                }
+
+                /* Use SEH for write back */
+                _SEH2_TRY
+                {
+                    /* Write back the handle */
+                    *NewProcessHandle = hProcess;
+                    _SEH2_YIELD(return STATUS_SUCCESS);
+                }
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    DPRINT1("NtGetNextProcess *NewProcessHandle SEH -> %#X\n", _SEH2_GetExceptionCode());
+                    /* Return the exception code */
+                    _SEH2_YIELD(return _SEH2_GetExceptionCode());
+                }
+                _SEH2_END;
+            }
+        }
+        _SEH2_FINALLY
+        {
+            /* Dereference the Process */
+            ObDereferenceObject(target);
+        }
+        _SEH2_END
+    }
+    return STATUS_NO_MORE_ENTRIES;
+}
+
+NTSTATUS
+NTAPI
+NtGetNextThread(
+    _In_ HANDLE ProcessHandle,
+    _In_ HANDLE ThreadHandle,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_ ULONG HandleAttributes,
+    _In_ ULONG Flags,
+    _Out_ PHANDLE NewThreadHandle
+)
+{
+    const KPROCESSOR_MODE PreviousMode = KeGetPreviousMode();
+
+    /* Validate user attributes */
+    HandleAttributes = ObpValidateAttributes(HandleAttributes, PreviousMode);
+
+    /* Check if we came from user mode */
+    if (PreviousMode != KernelMode)
+    {
+        _SEH2_TRY
+        {
+            /* Probe process handle */
+            ProbeForWriteHandle(NewThreadHandle);
+
+            *NewThreadHandle = NULL;
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            /* Return the exception code */
+            _SEH2_YIELD(return _SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+    }
+    else
+    {
+        *NewThreadHandle = NULL;
+    }
+
+    if (Flags)
+    {
+        DPRINT1("NtGetNextThread flags (%#X) unsupported\n");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    PEPROCESS currentProcess = NULL;
+    if (ProcessHandle)
+    {
+        /* Reference it */
+        const NTSTATUS status = ObReferenceObjectByHandle(ProcessHandle,
+                                                          0,
+                                                          PsProcessType,
+                                                          PreviousMode,
+                                                          (PVOID*)&currentProcess,
+                                                          NULL);
+        if (!NT_SUCCESS(status))
+            return status;
+    }
+
+    _SEH2_TRY
+    {
+        DPRINT1("NtGetNextThread STUBPLEMENTED\n");
+
+        _SEH2_YIELD(return STATUS_NO_MORE_ENTRIES);
+    }
+    _SEH2_FINALLY
+    {
+        if (currentProcess)
+        {
+            /* Dereference the Process */
+            ObDereferenceObject(currentProcess);
+        }
+    }
+    _SEH2_END
+}
+
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+BOOLEAN
+NTAPI
+PsFreezeProcess(PEPROCESS Process, BOOLEAN DeepFreeze)
+{
+    if (Process->ProcessDelete)
+        return FALSE;
+
+    KeFreezeProcess(&Process->Pcb, DeepFreeze);
+
+    if (Process->ProcessDelete)
+    {
+        KeForceResumeProcess(&Process->Pcb);
+        return FALSE;
+    }
+
+    if (DeepFreeze)
+    {
+        /* Lock the process */
+        PspLockProcessSecurityExclusive(Process);
+
+        Process->LastFreezeInterruptTime = KiQueryUnbiasedInterruptTime(TRUE);
+
+        /* Release the process lock */
+        PspUnlockProcessSecurityExclusive(Process);
+
+        if (Process->Win32Process)
+        {
+            // todo: Win32 Callout
+        }
+    }
+
+    return TRUE;
+}
+
+void
+NTAPI
+PsThawProcess(PEPROCESS Process, BOOLEAN DeepUnfreeze)
+{
+    if (DeepUnfreeze)
+    {
+        UINT64 FrozenTime = 0;
+
+        if (Process->Win32Process && !(Process->Flags & 8))
+        {
+            // todo: Win32 Callout
+        }
+
+        /* Lock the process */
+        PspLockProcessSecurityExclusive(Process);
+
+        if (Process->LastFreezeInterruptTime)
+        {
+            FrozenTime = KiQueryUnbiasedInterruptTime(TRUE) - Process->LastFreezeInterruptTime;
+
+            Process->LastFreezeInterruptTime = 0;
+            Process->TotalUnbiasedFrozenTime += FrozenTime;
+        }
+
+        /* Release the process lock */
+        PspUnlockProcessSecurityExclusive(Process);
+    }
+
+    KeThawProcess(&Process->Pcb, DeepUnfreeze);
+}
+#endif
+
+NTSTATUS
+NTAPI
+PspSetProcessAffinitySafe(PEPROCESS Process, PSP_SET_PROCESS_AFFINITY_FLAGS Flags, PKAFFINITY_EX FullAffinity, PGROUP_AFFINITY GroupAffinity, PBOOLEAN AffinitySet)
+{
+    KAFFINITY_EX AffinityBuffer = { 0 };
+    KAFFINITY_EX* Affinity = FullAffinity ? FullAffinity : &AffinityBuffer;
+    PEJOB Job;
+    NTSTATUS Status = STATUS_SUCCESS;
+    BOOLEAN WithinEffectiveLimits = TRUE;
+
+    if (GroupAffinity)
+    {
+        Affinity->Size = MAX_PROC_GROUPS;
+        Affinity->Count = GroupAffinity->Group + 1;
+        Affinity->Bitmap[GroupAffinity->Group] = GroupAffinity->Mask;
+    }
+
+    if (Flags.SkipJobLimitsCheck || PspTestProcessSystemProcessFlag(Process))
+    {
+        Job = NULL;
+    }
+    else
+    {
+        Job = Process->Job;
+        if (Job)
+        {
+            ExAcquireResourceSharedLite(&Job->JobLock, TRUE);
+
+            // todo: check if job restrains the affinity set
+            // if it does, check that the assigned process affinity conforms to the restraint.
+            UNIMPLEMENTED;
+        }
+    }
+
+    if (WithinEffectiveLimits)
+    {
+        Status = KeSetAffinityProcess(&Process->Pcb, 0, Affinity);
+    }
+
+    if (Job)
+    {
+        ExReleaseResourceLite(&Job->JobLock);
+    }
+
+    if (NT_SUCCESS(Status) && AffinitySet)
+    {
+        *AffinitySet = WithinEffectiveLimits;
+    }
+
     return Status;
 }
 

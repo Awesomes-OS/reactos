@@ -1178,6 +1178,7 @@ MmGetPfnForProcess(
     PVOID Address
 );
 
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
 BOOLEAN
 NTAPI
 MmCreateProcessAddressSpace(
@@ -1193,6 +1194,21 @@ MmInitializeHandBuiltProcess(
     IN PEPROCESS Process,
     IN PULONG_PTR DirectoryTableBase
 );
+#else
+BOOLEAN
+NTAPI
+MmCreateProcessAddressSpace(
+    IN ULONG MinWs,
+    IN PEPROCESS Dest
+);
+
+INIT_FUNCTION
+NTSTATUS
+NTAPI
+MmInitializeHandBuiltProcess(
+    IN PEPROCESS Process
+);
+#endif
 
 INIT_FUNCTION
 NTSTATUS

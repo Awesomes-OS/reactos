@@ -486,7 +486,8 @@ DefWndGetIcon(PWND pWnd, WPARAM wParam, LPARAM lParam)
         case ICON_SMALL2:
             hIconRet = UserGetProp(pWnd, gpsi->atomIconSmProp, TRUE);
             break;
-        default:
+        DEFAULT_UNREACHABLE;
+            hIconRet = NULL;
             break;
     }
     return (LRESULT)hIconRet;
@@ -526,6 +527,75 @@ DefWndScreenshot(PWND pWnd)
 }
 
 /*
+ * Copy of RtlUnicodeStringToAnsiString with much more convenient API
+ *
+ * NOTES
+ *  This function always writes a terminating '\0'.
+ *  It performs a partial copy if ansi is too small.
+ */
+NTSTATUS
+NTAPI
+RtlpUnicodeStringToAnsiString(
+    IN OUT PSTR AnsiDest,
+    IN ULONG AnsiMaximumLength,
+    IN PLARGE_UNICODE_STRING UniSource,
+    OUT PULONG ResultLength)
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+    ULONG Length;
+    ULONG Index;
+    NTSTATUS RealStatus;
+
+    PAGED_CODE();
+
+    ASSERT(!(UniSource->Length & 1));
+
+    if (NlsMbCodePageTag == FALSE)
+    {
+        Length = (UniSource->Length + sizeof(WCHAR)) / sizeof(WCHAR);
+    }
+    else
+    {
+        ASSERT(!(UniSource->Length & 1));
+
+        /* Convert the Unicode String to Mb Size */
+        RtlUnicodeToMultiByteSize(&Length,
+                                  UniSource->Buffer,
+                                  UniSource->Length);
+
+        Length += sizeof(CHAR);
+    }
+
+    if (Length > MAXUSHORT) return STATUS_INVALID_PARAMETER_2;
+
+    *ResultLength = Length - sizeof(CHAR);
+
+    if (*ResultLength >= AnsiMaximumLength)
+    {
+        if (!AnsiMaximumLength) return STATUS_BUFFER_OVERFLOW;
+
+        Status = STATUS_BUFFER_OVERFLOW;
+        *ResultLength = AnsiMaximumLength - 1;
+    }
+
+    RealStatus = RtlUnicodeToMultiByteN(AnsiDest,
+                                        *ResultLength,
+                                        &Index,
+                                        UniSource->Buffer,
+                                        UniSource->Length);
+
+    // Behavior difference from upstream function RtlUnicodeStringToAnsiString
+    // When we do not allocate buffer, real conversion status is ignored.
+    if (!NT_SUCCESS(RealStatus) && NT_SUCCESS(Status))
+    {
+        Status = RealStatus;
+    }
+
+    AnsiDest[Index] = ANSI_NULL;
+    return Status;
+}
+
+/*
    Win32k counterpart of User DefWindowProc
  */
 LRESULT FASTCALL
@@ -552,63 +622,87 @@ IntDefWindowProc(
 
       case WM_GETTEXTLENGTH:
       {
-            PWSTR buf;
-            ULONG len;
-
-            if (Wnd != NULL && Wnd->strName.Length != 0)
+         lResult = 0L;
+         if (Wnd != NULL && Wnd->strName.Length != 0 && Wnd->strName.Buffer)
+         {
+            if (Ansi)
             {
-                buf = Wnd->strName.Buffer;
-                if (buf != NULL &&
-                    NT_SUCCESS(RtlUnicodeToMultiByteSize(&len,
-                                                         buf,
-                                                         Wnd->strName.Length)))
-                {
-                    lResult = (LRESULT) (Wnd->strName.Length / sizeof(WCHAR));
-                }
+               ULONG len;
+               if (NT_SUCCESS(RtlUnicodeToMultiByteSize(&len,
+                     Wnd->strName.Buffer,
+                     Wnd->strName.Length)))
+               {
+                  lResult = len;
+               }
             }
-            else lResult = 0L;
+            else
+            {
+               lResult = Wnd->strName.Length / sizeof(WCHAR);
+            }
+         }
 
-            break;
+         break;
       }
 
-      case WM_GETTEXT: // FIXME: Handle Ansi
+      case WM_GETTEXT:
       {
-            PWSTR buf = NULL;
-            PWSTR outbuf = (PWSTR)lParam;
-
-            if (Wnd != NULL && wParam != 0)
+         lResult = 0L;
+         if (Wnd != NULL && wParam != 0 && lParam != 0)
+         {
+            const BOOL isOperable = Wnd->strName.Buffer && Wnd->strName.Length;
+            if (Ansi)
             {
-                if (Wnd->strName.Buffer != NULL)
-                    buf = Wnd->strName.Buffer;
-                else
-                    outbuf[0] = L'\0';
+               ULONG resultLength = 0;
+               const PSTR outbuf = (PSTR)lParam;
+               if (!isOperable)
+               {
+                  *outbuf = 0;
+                  break;
+               }
 
-                if (buf != NULL)
-                {
-                    if (Wnd->strName.Length != 0)
-                    {
-                        lResult = min(Wnd->strName.Length / sizeof(WCHAR), wParam - 1);
-                        RtlCopyMemory(outbuf,
-                                      buf,
-                                      lResult * sizeof(WCHAR));
-                        outbuf[lResult] = L'\0';
-                    }
-                    else
-                        outbuf[0] = L'\0';
-                }
+               lResult = NT_SUCCESS(RtlpUnicodeStringToAnsiString(outbuf, wParam, &Wnd->strName, &resultLength))
+                             ? resultLength
+                             : 0;
             }
-            break;
+            else
+            {
+               const PWSTR outbuf = (PWSTR)lParam;
+               if (!isOperable)
+               {
+                  *outbuf = 0;
+                  break;
+               }
+
+               if (wParam >= 1)
+                  --wParam;
+               lResult = min(Wnd->strName.Length / sizeof(WCHAR), wParam);
+               RtlCopyMemory(outbuf, Wnd->strName.Buffer, lResult * sizeof(WCHAR));
+               outbuf[lResult] = 0;
+            }
+         }
+         break;
       }
 
-      case WM_SETTEXT: // FIXME: Handle Ansi
+      case WM_SETTEXT:
       {
-            DefSetText(Wnd, (PCWSTR)lParam);
+          if (Ansi)
+          {
+              LARGE_ANSI_STRING AnsiString;
 
-            if ((Wnd->style & WS_CAPTION) == WS_CAPTION)
-                UserPaintCaption(Wnd, DC_TEXT);
-            IntNotifyWinEvent(EVENT_OBJECT_NAMECHANGE, Wnd, OBJID_WINDOW, CHILDID_SELF, 0);
-            lResult = 1;
-            break;
+              RtlInitLargeAnsiString(&AnsiString, (PCSTR)lParam, 0);
+
+              IntDefSetText(Wnd, (PLARGE_STRING)&AnsiString);
+          }
+          else
+          {
+              DefSetText(Wnd, (PCWSTR)lParam);
+          }
+
+          if ((Wnd->style & WS_CAPTION) == WS_CAPTION)
+              UserPaintCaption(Wnd, DC_TEXT);
+          IntNotifyWinEvent(EVENT_OBJECT_NAMECHANGE, Wnd, OBJID_WINDOW, CHILDID_SELF, 0);
+          lResult = 1;
+          break;
       }
 
       case WM_SYSCOMMAND:
@@ -620,13 +714,11 @@ IntDefWindowProc(
 
       case WM_SHOWWINDOW:
       {
+         if (!LOWORD(lParam)) break;
          if ((Wnd->style & WS_VISIBLE) && wParam) break;
          if (!(Wnd->style & WS_VISIBLE) && !wParam) break;
-         if (!Wnd->spwndOwner) break;
-         if (LOWORD(lParam))
-         {
-            co_WinPosShowWindow(Wnd, wParam ? SW_SHOWNOACTIVATE : SW_HIDE);
-         }
+         if (!Wnd->spwndOwner && !(Wnd->style & WS_POPUP)) break;
+         co_WinPosShowWindow(Wnd, wParam ? SW_SHOWNOACTIVATE : SW_HIDE);
          break;
       }
 
@@ -1067,11 +1159,14 @@ IntDefWindowProc(
       {
          RECT Rect;
          HBRUSH hBrush = Wnd->pcls->hbrBackground;
-         if (!hBrush) return 0;
+         if (!hBrush)
+            return FALSE;
+
          if (hBrush <= (HBRUSH)COLOR_MENUBAR)
          {
             hBrush = IntGetSysColorBrush(HandleToUlong(hBrush));
          }
+
          if (Wnd->pcls->style & CS_PARENTDC)
          {
             /* can't use GetClipBox with a parent DC or we fill the whole parent */
@@ -1083,7 +1178,7 @@ IntDefWindowProc(
             GdiGetClipBox((HDC)wParam, &Rect);
          }
          FillRect((HDC)wParam, &Rect, hBrush);
-         return (1);
+         return TRUE;
       }
 
       case WM_GETHOTKEY:

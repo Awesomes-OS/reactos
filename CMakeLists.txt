@@ -1,10 +1,5 @@
-
 cmake_minimum_required(VERSION 3.2.1)
 cmake_policy(VERSION 3.2.1)
-
-if(NOT CMAKE_VERSION MATCHES "ReactOS")
-    message(WARNING "Building with \"${CMAKE_COMMAND}\", which is not the custom CMake included in RosBE, might cause build issues...")
-endif()
 
 if(POLICY CMP0058)
     # Ninja requires custom command byproducts to be explicit
@@ -153,12 +148,22 @@ else()
     endif()
 
     # Version Options
-    add_definitions(-DWINVER=0x502
-                    -D_WIN32_IE=0x600
-                    -D_WIN32_WINNT=0x502
-                    -D_WIN32_WINDOWS=0x502
-                    -D_SETUPAPI_VER=0x502
-                    -DMINGW_HAS_SECURE_API=1)
+    if (TARGET_WIN10)
+        add_definitions(-DWINVER=0x0A00
+                        -D_WIN32_IE=0x0A00
+                        -D_WIN32_WINNT=0x0A00
+                        -D_WIN32_WINDOWS=0x0A00
+                        -D_SETUPAPI_VER=0x0A00
+                        -DNTDDI_VERSION=0x0A000007
+                        -DMINGW_HAS_SECURE_API=1)
+    else()
+        add_definitions(-DWINVER=0x502
+                        -D_WIN32_IE=0x600
+                        -D_WIN32_WINNT=0x502
+                        -D_WIN32_WINDOWS=0x502
+                        -D_SETUPAPI_VER=0x502
+                        -DMINGW_HAS_SECURE_API=1)
+    endif()
 
     # Arch Options
     if(ARCH STREQUAL "i386")
@@ -264,23 +269,31 @@ else()
 
     #begin with boot so reactos_cab target is defined before all other modules
     add_subdirectory(boot)
+    if (NOT NTDLL_WORK)
     add_subdirectory(base)
+    endif()
     add_subdirectory(dll)
     add_subdirectory(drivers)
     add_subdirectory(hal)
     add_subdirectory(sdk/lib)
+    if (NOT NTDLL_WORK)
     add_subdirectory(media)
     add_subdirectory(modules)
+    endif()
     add_subdirectory(ntoskrnl)
+    if (NOT NTDLL_WORK)
     add_subdirectory(subsystems)
     add_subdirectory(sdk/tools/wpp)
     add_subdirectory(win32ss)
+    endif()
 
+    if (NOT NTDLL_WORK)
     # Create the registry hives
     create_registry_hives()
 
     # Create {bootcd, livecd, bootcdregtest}.lst
     create_iso_lists()
+    endif()
 
     file(MAKE_DIRECTORY ${REACTOS_BINARY_DIR}/sdk/include/reactos)
 

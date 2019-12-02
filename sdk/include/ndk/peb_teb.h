@@ -17,6 +17,7 @@ Author:
 --*/
 
 #include <rtltypes.h>
+#include <ldrtypes.h>
 
 #define PASTE2(x,y)       x##y
 #define PASTE(x,y)         PASTE2(x,y)
@@ -57,15 +58,39 @@ typedef struct STRUCT(_PEB)
         BOOLEAN BitField;
         struct
         {
-            BOOLEAN ImageUsesLargePages:1;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
-            BOOLEAN IsProtectedProcess:1;
-            BOOLEAN IsLegacyProcess:1;
-            BOOLEAN IsImageDynamicallyRelocated:1;
-            BOOLEAN SkipPatchingUser32Forwarders:1;
-            BOOLEAN SpareBits:3;
+            BOOLEAN ImageUsesLargePages : 1;
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS1)
+            BOOLEAN IsProtectedProcess : 1;
+            BOOLEAN IsImageDynamicallyRelocated : 1;
+            BOOLEAN SkipPatchingUser32Forwarders : 1;
+            BOOLEAN IsPackagedProcess : 1;
+            BOOLEAN IsAppContainer : 1;
+            BOOLEAN IsProtectedProcessLight : 1;
+            BOOLEAN IsLongPathAwareProcess : 1;
+#elif (NTDDI_VERSION >= NTDDI_WINBLUE)
+            BOOLEAN IsProtectedProcess : 1;
+            BOOLEAN IsImageDynamicallyRelocated : 1;
+            BOOLEAN SkipPatchingUser32Forwarders : 1;
+            BOOLEAN IsPackagedProcess : 1;
+            BOOLEAN IsAppContainer : 1;
+            BOOLEAN IsProtectedProcessLight : 1;
+            BOOLEAN SpareBits : 1;
+#elif (NTDDI_VERSION >= NTDDI_WIN8)
+            BOOLEAN IsProtectedProcess : 1;
+            BOOLEAN IsLegacyProcess : 1;
+            BOOLEAN IsImageDynamicallyRelocated : 1;
+            BOOLEAN SkipPatchingUser32Forwarders : 1;
+            BOOLEAN IsPackagedProcess : 1;
+            BOOLEAN IsAppContainer : 1;
+            BOOLEAN SpareBits : 1;
+#elif (NTDDI_VERSION >= NTDDI_LONGHORN)
+            BOOLEAN IsProtectedProcess : 1;
+            BOOLEAN IsLegacyProcess : 1;
+            BOOLEAN IsImageDynamicallyRelocated : 1;
+            BOOLEAN SkipPatchingUser32Forwarders : 1;
+            BOOLEAN SpareBits : 3;
 #else
-            BOOLEAN SpareBits:7;
+            BOOLEAN SpareBits : 7;
 #endif
         };
     };

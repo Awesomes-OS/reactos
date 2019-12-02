@@ -237,6 +237,26 @@ KiExitDispatcher(IN KIRQL OldIrql)
 
     /* Switch threads in PRCB */
     Prcb->NextThread = NULL;
+
+    _disable();
+
+    {
+        ASSERT(Prcb == KeGetCurrentPrcb());
+
+        // todo (andrew.boyarshin): proper cycle End/Begin accumulation
+        // PKTHREAD Thread = Prcb->CurrentThread;
+
+        ULONGLONG Counter = KeQueryPerformanceCounter(NULL).QuadPart;
+
+        ULONGLONG NewCycles = Counter - Prcb->StartCycles;
+
+        Prcb->CycleTime += NewCycles;
+
+        Prcb->StartCycles = Counter;
+    }
+
+    _enable();
+
     Prcb->CurrentThread = NextThread;
 
     /* Set thread to running */

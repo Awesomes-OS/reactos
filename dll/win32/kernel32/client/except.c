@@ -1062,4 +1062,75 @@ GetLastError(VOID)
     return NtCurrentTeb()->LastErrorValue;
 }
 
+/*
+ * @implemented
+ */
+VOID
+WINAPI
+RaiseFailFastException(
+    IN PEXCEPTION_RECORD pExceptionRecord OPTIONAL,
+    IN PCONTEXT pContextRecord OPTIONAL,
+    IN DWORD dwFlags)
+{
+    EXCEPTION_RECORD createdExceptionRecord;
+    CONTEXT context;
+    HANDLE debugPort;
+    BOOL isUnderDebugger = IsDebuggerPresent();
+
+    if (pExceptionRecord)
+    {
+        if (dwFlags & FAIL_FAST_GENERATE_EXCEPTION_ADDRESS)
+            pExceptionRecord->ExceptionAddress = _ReturnAddress();
+    }
+    else
+    {
+        pExceptionRecord = &createdExceptionRecord;
+
+        /* Setup the exception record */
+        pExceptionRecord->ExceptionCode = STATUS_FAIL_FAST_EXCEPTION;
+        pExceptionRecord->ExceptionRecord = NULL;
+        pExceptionRecord->ExceptionAddress = _ReturnAddress();
+        pExceptionRecord->ExceptionFlags = 0;
+    }
+    pExceptionRecord->ExceptionFlags |= EXCEPTION_NONCONTINUABLE;
+
+    if (!pContextRecord)
+    {
+        RtlCaptureContext(&context);
+        pContextRecord = &context;
+    }
+
+    if (!isUnderDebugger)
+    {
+        const NTSTATUS status = NtQueryInformationProcess(NtCurrentProcess(),
+                                                          ProcessDebugPort,
+                                                          &debugPort,
+                                                          sizeof(debugPort),
+                                                          NULL);
+        isUnderDebugger = NT_SUCCESS(status) && debugPort;
+    }
+
+    if (isUnderDebugger)
+    {
+        /* If the process is being debugged, pass the exception to the debugger */
+        NtRaiseException(pExceptionRecord, pContextRecord, FALSE);
+    }
+    else
+    {
+        if (!(dwFlags & FAIL_FAST_NO_HARD_ERROR_DLG))
+        {
+            ULONG errorResponse;
+
+            NtRaiseHardError(pExceptionRecord->ExceptionCode | HARDERROR_OVERRIDE_ERRORMODE,
+                             0,
+                             0,
+                             0,
+                             OptionOk,
+                             &errorResponse);
+        }
+
+        TerminateProcess(NtCurrentProcess(), pExceptionRecord->ExceptionCode);
+    }
+}
+
 /* EOF */

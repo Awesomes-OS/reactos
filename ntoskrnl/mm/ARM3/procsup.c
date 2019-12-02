@@ -863,7 +863,11 @@ MiInitializeWorkingSetList(IN PEPROCESS CurrentProcess)
     MmWorkingSetList->LastInitializedWsle = 4;
 
     /* The rule is that the owner process is always in the FLINK of the PDE's PFN entry */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+    Pfn1 = MiGetPfnEntry(CurrentProcess->Pcb.DirectoryTableBase >> PAGE_SHIFT);
+#else
     Pfn1 = MiGetPfnEntry(CurrentProcess->Pcb.DirectoryTableBase[0] >> PAGE_SHIFT);
+#endif
     ASSERT(Pfn1->u4.PteFrame == MiGetPfnEntryIndex(Pfn1));
     Pfn1->u1.Event = (PKEVENT)CurrentProcess;
 
@@ -897,15 +901,18 @@ MmInitializeProcessAddressSpace(IN PEPROCESS Process,
     MMPTE TempPte;
 
     /* We should have a PDE */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+    ASSERT(Process->Pcb.DirectoryTableBase != 0);
+#else
     ASSERT(Process->Pcb.DirectoryTableBase[0] != 0);
-    ASSERT(Process->PdeUpdateNeeded == FALSE);
+#endif
+    ASSERT(!PspTestProcessPdeUpdateNeededFlag(Process));
 
     /* Attach to the process */
     KeAttachProcess(&Process->Pcb);
 
     /* The address space should now been in phase 1 or 0 */
-    ASSERT(Process->AddressSpaceInitialized <= 1);
-    Process->AddressSpaceInitialized = 2;
+    ASSERT(PspSetProcessAddressSpaceInitialized(Process, 2) <= 1);
 
     /* Initialize the Addresss Space lock */
     KeInitializeGuardedMutex(&Process->AddressCreationLock);
@@ -925,7 +932,11 @@ MmInitializeProcessAddressSpace(IN PEPROCESS Process,
     PointerPte = MiAddressToPte(PDE_BASE);
 #endif
     PageFrameNumber = PFN_FROM_PTE(PointerPte);
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+    ASSERT(Process->Pcb.DirectoryTableBase == PageFrameNumber * PAGE_SIZE);
+#else
     ASSERT(Process->Pcb.DirectoryTableBase[0] == PageFrameNumber * PAGE_SIZE);
+#endif
     MiInitializePfn(PageFrameNumber, PointerPte, TRUE);
 
     /* Do the same for hyperspace */
@@ -1027,17 +1038,26 @@ MmInitializeProcessAddressSpace(IN PEPROCESS Process,
     return Status;
 }
 
+
 INIT_FUNCTION
 NTSTATUS
 NTAPI
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
 MmInitializeHandBuiltProcess(IN PEPROCESS Process,
                              IN PULONG_PTR DirectoryTableBase)
+#else
+MmInitializeHandBuiltProcess(IN PEPROCESS Process)
+#endif
 {
     /* Share the directory base with the idle process */
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
     DirectoryTableBase[0] = PsGetCurrentProcess()->Pcb.DirectoryTableBase[0];
     DirectoryTableBase[1] = PsGetCurrentProcess()->Pcb.DirectoryTableBase[1];
+#else
+    Process->Pcb.DirectoryTableBase = PsGetCurrentProcess()->Pcb.DirectoryTableBase;
+#endif
 
-    /* Initialize the Addresss Space */
+    /* Initialize the Address Space */
     KeInitializeGuardedMutex(&Process->AddressCreationLock);
     KeInitializeSpinLock(&Process->HyperSpaceLock);
     Process->Vm.WorkingSetExpansionLinks.Flink = NULL;
@@ -1047,8 +1067,17 @@ MmInitializeHandBuiltProcess(IN PEPROCESS Process,
     /* Use idle process Working set */
     Process->Vm.VmWorkingSetList = PsGetCurrentProcess()->Vm.VmWorkingSetList;
 
+    KiVBoxPrint("MmInitializeHandBuiltProcess 0 : ");
+
+    KiVBoxPrintInteger(Process->Pcb.Header.Type & KOBJECT_TYPE_MASK);
+
+    KiVBoxPrint("\n");
+
     /* Done */
-    Process->HasAddressSpace = TRUE;//??
+    PspSetProcessHasAddressSpaceFlag(Process); //??
+
+    KiVBoxPrint("MmInitializeHandBuiltProcess 1\n");
+
     return STATUS_SUCCESS;
 }
 
@@ -1065,9 +1094,14 @@ MmInitializeHandBuiltProcess2(IN PEPROCESS Process)
 /* FIXME: Evaluate ways to make this portable yet arch-specific */
 BOOLEAN
 NTAPI
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
 MmCreateProcessAddressSpace(IN ULONG MinWs,
                             IN PEPROCESS Process,
                             OUT PULONG_PTR DirectoryTableBase)
+#else
+MmCreateProcessAddressSpace(IN ULONG MinWs,
+                            IN PEPROCESS Process)
+#endif
 {
     KIRQL OldIrql;
     PFN_NUMBER PdeIndex, HyperIndex, WsListIndex;
@@ -1077,6 +1111,8 @@ MmCreateProcessAddressSpace(IN ULONG MinWs,
     PMMPTE SystemTable, HyperTable;
     ULONG Color;
     PMMPFN Pfn1;
+
+    KiVBoxPrint("MmCreateProcessAddressSpace 0\n");
 
     /* Choose a process color */
     Process->NextPageColor = (USHORT)RtlRandom(&MmProcessColorSeed);
@@ -1136,21 +1172,34 @@ MmCreateProcessAddressSpace(IN ULONG MinWs,
         MiReleasePfnLock(OldIrql);
     }
 
+    KiVBoxPrint("MmCreateProcessAddressSpace 1\n");
+
     /* Switch to phase 1 initialization */
-    ASSERT(Process->AddressSpaceInitialized == 0);
-    Process->AddressSpaceInitialized = 1;
+    ASSERT(PspSetProcessAddressSpaceInitialized(Process, 1) == 0);
+
+    KiVBoxPrint("MmCreateProcessAddressSpace 2\n");
+
+    /* Make sure we don't already have a page directory setup */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+    ASSERT(Process->Pcb.DirectoryTableBase == 0);
+#else
+    ASSERT(Process->Pcb.DirectoryTableBase[0] == 0);
+#endif
 
     /* Set the base directory pointers */
     Process->WorkingSetPage = WsListIndex;
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+    Process->Pcb.DirectoryTableBase = PdeIndex << PAGE_SHIFT;
+#else
     DirectoryTableBase[0] = PdeIndex << PAGE_SHIFT;
     DirectoryTableBase[1] = HyperIndex << PAGE_SHIFT;
-
-    /* Make sure we don't already have a page directory setup */
-    ASSERT(Process->Pcb.DirectoryTableBase[0] == 0);
+#endif
 
     /* Get a PTE to map hyperspace */
     PointerPte = MiReserveSystemPtes(1, SystemPteSpace);
     ASSERT(PointerPte != NULL);
+
+    KiVBoxPrint("MmCreateProcessAddressSpace 3\n");
 
     /* Build it */
     MI_MAKE_HARDWARE_PTE_KERNEL(&PdePte,
@@ -1161,6 +1210,8 @@ MmCreateProcessAddressSpace(IN ULONG MinWs,
     /* Set it dirty and map it */
     MI_MAKE_DIRTY_PAGE(&PdePte);
     MI_WRITE_VALID_PTE(PointerPte, PdePte);
+
+    KiVBoxPrint("MmCreateProcessAddressSpace 4\n");
 
     /* Now get hyperspace's page table */
     HyperTable = MiPteToAddress(PointerPte);
@@ -1193,6 +1244,8 @@ MmCreateProcessAddressSpace(IN ULONG MinWs,
                                 MM_READWRITE,
                                 PdeIndex);
 
+    KiVBoxPrint("MmCreateProcessAddressSpace 5\n");
+
     /* Set it dirty and map it */
     MI_MAKE_DIRTY_PAGE(&PdePte);
     MI_WRITE_VALID_PTE(PointerPte, PdePte);
@@ -1224,8 +1277,11 @@ MmCreateProcessAddressSpace(IN ULONG MinWs,
     /* Let go of the system PTE */
     MiReleaseSystemPtes(PointerPte, 1, SystemPteSpace);
 
+    KiVBoxPrint("MmCreateProcessAddressSpace 6\n");
+
     /* Add the process to the session */
     MiSessionAddProcess(Process);
+
     return TRUE;
 }
 #endif
@@ -1239,7 +1295,7 @@ MmCleanProcessAddressSpace(IN PEPROCESS Process)
     PETHREAD Thread = PsGetCurrentThread();
 
     /* Only support this */
-    ASSERT(Process->AddressSpaceInitialized == 2);
+    ASSERT(PspGetProcessAddressSpaceInitialized(Process) == 2);
 
     /* Remove from the session */
     MiSessionRemoveProcess();
@@ -1249,7 +1305,7 @@ MmCleanProcessAddressSpace(IN PEPROCESS Process)
     MiLockProcessWorkingSetUnsafe(Process, Thread);
 
     /* VM is deleted now */
-    Process->VmDeleted = TRUE;
+    PspSetProcessVmDeletedFlagAssert(Process);
     MiUnlockProcessWorkingSetUnsafe(Process, Thread);
 
     /* Enumerate the VADs */
@@ -1335,7 +1391,7 @@ MmDeleteProcessAddressSpace2(IN PEPROCESS Process)
     OldIrql = MiAcquirePfnLock();
 
     /* Check for fully initialized process */
-    if (Process->AddressSpaceInitialized == 2)
+    if (PspGetProcessAddressSpaceInitialized(Process) == 2)
     {
         /* Map the working set page and its page table */
         Pfn1 = MiGetPfnEntry(Process->WorkingSetPage);
@@ -1349,9 +1405,13 @@ MmDeleteProcessAddressSpace2(IN PEPROCESS Process)
         MiReleaseSystemPtes(MiAddressToPte(Process->Vm.VmWorkingSetList), 1, SystemPteSpace);
 
         /* Now map hyperspace and its page table */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+        ASSERT(FALSE);
+#else
         PageFrameIndex = Process->Pcb.DirectoryTableBase[1] >> PAGE_SHIFT;
         Pfn1 = MiGetPfnEntry(PageFrameIndex);
         Pfn2 = MiGetPfnEntry(Pfn1->u4.PteFrame);
+#endif
 
         /* Nuke it */
         MI_SET_PFN_DELETED(Pfn1);
@@ -1360,7 +1420,11 @@ MmDeleteProcessAddressSpace2(IN PEPROCESS Process)
         ASSERT((Pfn1->u3.e2.ReferenceCount == 0) || (Pfn1->u3.e1.WriteInProgress));
 
         /* Finally, nuke the PDE itself */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+        PageFrameIndex = Process->Pcb.DirectoryTableBase >> PAGE_SHIFT;
+#else
         PageFrameIndex = Process->Pcb.DirectoryTableBase[0] >> PAGE_SHIFT;
+#endif
         Pfn1 = MiGetPfnEntry(PageFrameIndex);
         MI_SET_PFN_DELETED(Pfn1);
         MiDecrementShareCount(Pfn1, PageFrameIndex);
@@ -1382,8 +1446,12 @@ MmDeleteProcessAddressSpace2(IN PEPROCESS Process)
     if (Process->Session) MiReleaseProcessReferenceToSessionDataPage(Process->Session);
 
     /* Clear out the PDE pages */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+    Process->Pcb.DirectoryTableBase = 0;
+#else
     Process->Pcb.DirectoryTableBase[0] = 0;
     Process->Pcb.DirectoryTableBase[1] = 0;
+#endif
 }
 
 

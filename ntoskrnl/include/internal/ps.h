@@ -113,6 +113,12 @@ PsGetNextProcess(
     IN PEPROCESS OldProcess OPTIONAL
 );
 
+PEPROCESS
+NTAPI
+PsGetPreviousProcess(
+    IN PEPROCESS OldProcess OPTIONAL
+);
+
 NTSTATUS
 NTAPI
 PspMapSystemDll(
@@ -256,6 +262,17 @@ NTAPI
 PsTerminateProcess(
     IN PEPROCESS Process,
     IN NTSTATUS ExitStatus
+);
+
+NTSTATUS
+NTAPI
+PspOpenProcess(
+    IN OB_OPEN_REASON Reason,
+    IN KPROCESSOR_MODE PreviousMode,
+    IN PEPROCESS Process OPTIONAL,
+    IN PVOID ObjectBody,
+    IN PACCESS_MASK GrantedAccess,
+    IN ULONG HandleCount
 );
 
 VOID
@@ -426,6 +443,26 @@ ApphelpCacheInitialize(VOID);
 VOID
 NTAPI
 ApphelpCacheShutdown(VOID);
+
+///
+///
+///
+typedef struct _PSP_SET_PROCESS_AFFINITY_FLAGS
+{
+    union
+    {
+        UINT8 Flags;
+
+        struct
+        {
+            UINT8 SkipJobLimitsCheck : 1;
+        };
+    };
+} PSP_SET_PROCESS_AFFINITY_FLAGS;
+
+NTSTATUS
+NTAPI
+PspSetProcessAffinitySafe(PEPROCESS Process, PSP_SET_PROCESS_AFFINITY_FLAGS Flags, PKAFFINITY_EX FullAffinity, PGROUP_AFFINITY GroupAffinity, PBOOLEAN AffinitySet);
 
 //
 // Global data inside the Process Manager

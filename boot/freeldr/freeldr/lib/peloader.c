@@ -20,6 +20,7 @@
 
 #include <freeldr.h>
 #include <debug.h>
+#include <reactos/ldrp.h>
 
 DBG_DEFAULT_CHANNEL(PELOADER);
 
@@ -360,7 +361,7 @@ PeLdrpLoadAndScanReferencedDll(
     Success = PeLdrLoadImage(FullDllName, LoaderBootDriver, &BasePA);
     if (!Success)
     {
-        ERR("PeLdrLoadImage() failed\n");
+        ERR("PeLdrLoadImage(%p, %p %s, LoaderBootDriver, *) failed\n", DirectoryPath, ImportName, ImportName);
         return Success;
     }
 
@@ -376,7 +377,7 @@ PeLdrpLoadAndScanReferencedDll(
         return Success;
     }
 
-    (*DataTableEntry)->Flags |= LDRP_DRIVER_DEPENDENT_DLL;
+    (*DataTableEntry)->ReactOSDriverDependency = TRUE;
 
     /* Scan its dependencies too */
     TRACE("PeLdrScanImportDescriptorTable() calling ourselves for %S\n",
@@ -492,7 +493,7 @@ PeLdrCheckForLoadedDll(
             /* Yes, found it, report pointer to the loaded module's DTE
                to the caller and increase load count for it */
             *LoadedEntry = DataTableEntry;
-            DataTableEntry->LoadCount++;
+            DataTableEntry->DdagNode->LoadCount++;
             TRACE("PeLdrCheckForLoadedDll: LoadedEntry %X\n", DataTableEntry);
             return TRUE;
         }
@@ -605,6 +606,12 @@ PeLdrAllocateDataTableEntry(
         return FALSE;
     RtlZeroMemory(DataTableEntry, sizeof(LDR_DATA_TABLE_ENTRY));
 
+    DataTableEntry->DdagNode = FrLdrHeapAlloc(sizeof(LDR_DDAG_NODE),
+                                              TAG_WLDR_DDAG);
+    if (DataTableEntry->DdagNode == NULL)
+        return FALSE;
+    RtlZeroMemory(DataTableEntry->DdagNode, sizeof(LDR_DDAG_NODE));
+
     /* Get NT headers from the image */
     NtHeaders = RtlImageNtHeader(BasePA);
 
@@ -612,8 +619,8 @@ PeLdrAllocateDataTableEntry(
     DataTableEntry->DllBase = BaseVA;
     DataTableEntry->SizeOfImage = NtHeaders->OptionalHeader.SizeOfImage;
     DataTableEntry->EntryPoint = RVA(BaseVA, NtHeaders->OptionalHeader.AddressOfEntryPoint);
-    DataTableEntry->SectionPointer = 0;
-    DataTableEntry->CheckSum = NtHeaders->OptionalHeader.CheckSum;
+    DataTableEntry->ReactOSSectionPointer = 0;
+    DataTableEntry->ReactOSCheckSum = NtHeaders->OptionalHeader.CheckSum;
 
     /* Initialize BaseDllName field (UNICODE_STRING) from the Ansi BaseDllName
        by simple conversion - copying each character */
@@ -655,8 +662,12 @@ PeLdrAllocateDataTableEntry(
 
     /* Initialize what's left - LoadCount which is 1, and set Flags so that
        we know this entry is processed */
-    DataTableEntry->Flags = LDRP_ENTRY_PROCESSED;
-    DataTableEntry->LoadCount = 1;
+    DataTableEntry->Flags = 0;
+    DataTableEntry->EntryProcessed = TRUE;
+    DataTableEntry->ObsoleteLoadCount = 1;
+    DataTableEntry->DdagNode->LoadCount = 1;
+
+    DataTableEntry->DdagNode = PaToVa(DataTableEntry->DdagNode);
 
     /* Honour the FORCE_INTEGRITY flag */
     if (NtHeaders->OptionalHeader.DllCharacteristics & IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY)
@@ -673,7 +684,7 @@ PeLdrAllocateDataTableEntry(
          * If not callbacks will not work.
          * (See Windows Internals Part 1, 6th edition, p. 176.)
          */
-        DataTableEntry->Flags |= LDRP_IMAGE_INTEGRITY_FORCED;
+        DataTableEntry->ProcessStaticImport = TRUE;
     }
 
     /* Insert this DTE to a list in the LPB */

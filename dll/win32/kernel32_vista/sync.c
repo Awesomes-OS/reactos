@@ -1,53 +1,9 @@
 #include "k32_vista.h"
 
-#define NDEBUG
-#include <debug.h>
+#include <ndk/exfuncs.h>
 
-VOID
-NTAPI
-RtlInitializeConditionVariable(OUT PRTL_CONDITION_VARIABLE ConditionVariable);
-
-VOID
-NTAPI
-RtlWakeConditionVariable(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable);
-
-VOID
-NTAPI
-RtlWakeAllConditionVariable(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable);
-
-NTSTATUS
-NTAPI
-RtlSleepConditionVariableCS(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
-                            IN OUT PRTL_CRITICAL_SECTION CriticalSection,
-                            IN PLARGE_INTEGER TimeOut OPTIONAL);
-
-NTSTATUS
-NTAPI
-RtlSleepConditionVariableSRW(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
-                             IN OUT PRTL_SRWLOCK SRWLock,
-                             IN PLARGE_INTEGER TimeOut OPTIONAL,
-                             IN ULONG Flags);
-
-VOID
-NTAPI
-RtlInitializeSRWLock(OUT PRTL_SRWLOCK SRWLock);
-
-VOID
-NTAPI
-RtlAcquireSRWLockShared(IN OUT PRTL_SRWLOCK SRWLock);
-
-VOID
-NTAPI
-RtlReleaseSRWLockShared(IN OUT PRTL_SRWLOCK SRWLock);
-
-VOID
-NTAPI
-RtlAcquireSRWLockExclusive(IN OUT PRTL_SRWLOCK SRWLock);
-
-VOID
-NTAPI
-RtlReleaseSRWLockExclusive(IN OUT PRTL_SRWLOCK SRWLock);
-
+#include "../kernel32/include/kernel32.h"
+#include "../kernel32/include/base_x.h"
 
 VOID
 WINAPI
@@ -173,3 +129,60 @@ BOOL WINAPI InitializeCriticalSectionEx(OUT LPCRITICAL_SECTION lpCriticalSection
     return TRUE;
 }
 
+
+/***********************************************************************
+ *           CreateMutexExA   (KERNEL32.@)
+ * 
+ * @implemented
+ */
+HANDLE WINAPI DECLSPEC_HOTPATCH CreateMutexExA( SECURITY_ATTRIBUTES *sa, LPCSTR name, DWORD flags, DWORD access )
+{
+    ConvertAnsiToUnicodePrologue
+    if (!name) return CreateMutexExW(sa, NULL, flags, access);
+    ConvertAnsiToUnicodeBody(name)
+    if (NT_SUCCESS(Status)) return CreateMutexExW(sa, UnicodeCache->Buffer, flags, access);
+    ConvertAnsiToUnicodeEpilogue
+}
+
+
+/***********************************************************************
+ *           CreateMutexExW   (KERNEL32.@)
+ * 
+ * @implemented
+ */
+HANDLE WINAPI DECLSPEC_HOTPATCH CreateMutexExW( SECURITY_ATTRIBUTES *sa, LPCWSTR name, DWORD flags, DWORD access )
+{
+    CreateNtObjectFromWin32ApiPrologue
+    CreateNtObjectFromWin32ApiBody(Mutant, sa, name, access, (flags & CREATE_MUTEX_INITIAL_OWNER) != 0);
+    CreateNtObjectFromWin32ApiEpilogue
+}
+
+
+/***********************************************************************
+ *           CreateSemaphoreExA   (KERNEL32.@)
+ * 
+ * @implemented
+ */
+HANDLE WINAPI DECLSPEC_HOTPATCH CreateSemaphoreExA( SECURITY_ATTRIBUTES *sa, LONG initial, LONG max,
+                                                    LPCSTR name, DWORD flags, DWORD access )
+{
+    ConvertAnsiToUnicodePrologue
+    if (!name) return CreateSemaphoreExW(sa, initial, max, NULL, flags, access);
+    ConvertAnsiToUnicodeBody(name)
+    if (NT_SUCCESS(Status)) return CreateSemaphoreExW(sa, initial, max, UnicodeCache->Buffer, flags, access);
+    ConvertAnsiToUnicodeEpilogue
+}
+
+
+/***********************************************************************
+ *           CreateSemaphoreExW   (KERNEL32.@)
+ * 
+ * @implemented
+ */
+HANDLE WINAPI DECLSPEC_HOTPATCH CreateSemaphoreExW( SECURITY_ATTRIBUTES *sa, LONG initial, LONG max,
+                                                    LPCWSTR name, DWORD flags, DWORD access )
+{
+    CreateNtObjectFromWin32ApiPrologue
+    CreateNtObjectFromWin32ApiBody(Semaphore, sa, name, access, initial, max);
+    CreateNtObjectFromWin32ApiEpilogue
+}

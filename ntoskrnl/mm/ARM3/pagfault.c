@@ -37,7 +37,13 @@ MiCheckForUserStackOverflow(IN PVOID Address,
     NTSTATUS Status;
 
     /* Do we own the address space lock? */
+#if (NTDDI_VERSION >= NTDDI_WIN10)
+    if (CurrentThread->OwnsVadExclusive || CurrentThread->OwnsVadShared || CurrentThread->OwnsProcessAddressSpaceExclusive || CurrentThread->OwnsProcessAddressSpaceShared)
+#elif 1
+    if (PspTestThreadOwnsProcessAddressSpaceExclusiveFlag(CurrentThread) || PspTestThreadOwnsProcessAddressSpaceSharedFlag(CurrentThread))
+#else
     if (CurrentThread->AddressSpaceOwner == 1)
+#endif
     {
         /* This isn't valid */
         DPRINT1("Process owns address space lock\n");
@@ -1871,16 +1877,15 @@ _WARN("Session space stuff is not implemented yet!")
             CurrentProcess = NULL;
 
             /* Make sure we don't have a recursive working set lock */
-            if ((CurrentThread->OwnsProcessWorkingSetExclusive) ||
-                (CurrentThread->OwnsProcessWorkingSetShared) ||
-                (CurrentThread->OwnsSystemWorkingSetExclusive) ||
-                (CurrentThread->OwnsSystemWorkingSetShared) ||
-                (CurrentThread->OwnsSessionWorkingSetExclusive) ||
-                (CurrentThread->OwnsSessionWorkingSetShared))
+            if (MM_ANY_WS_LOCK_HELD(CurrentThread))
             {
                 /* Fail */
                 return STATUS_IN_PAGE_ERROR | 0x10000000;
             }
+
+            /* Acquire the working set lock */
+            KeRaiseIrql(APC_LEVEL, &LockIrql);
+            LOCK_SYSTEM_CACHE_WS(CurrentThread);
         }
         else
         {
@@ -1889,17 +1894,16 @@ _WARN("Session space stuff is not implemented yet!")
             WorkingSet = &MmSessionSpace->GlobalVirtualAddress->Vm;
 
             /* Make sure we don't have a recursive working set lock */
-            if ((CurrentThread->OwnsSessionWorkingSetExclusive) ||
-                (CurrentThread->OwnsSessionWorkingSetShared))
+            if (PspTestThreadOwnsSessionWorkingSetExclusiveFlag(CurrentThread) || PspTestThreadOwnsSessionWorkingSetSharedFlag(CurrentThread))
             {
                 /* Fail */
                 return STATUS_IN_PAGE_ERROR | 0x10000000;
             }
-        }
 
-        /* Acquire the working set lock */
-        KeRaiseIrql(APC_LEVEL, &LockIrql);
-        MiLockWorkingSet(CurrentThread, WorkingSet);
+            /* Acquire the working set lock */
+            KeRaiseIrql(APC_LEVEL, &LockIrql);
+            LOCK_WORKING_SET(CurrentThread, WorkingSet);
+        }
 
         /* Re-read PTE now that we own the lock */
         TempPte = *PointerPte;
@@ -1961,7 +1965,15 @@ _WARN("Session space stuff is not implemented yet!")
             }
 
             /* Release the working set */
-            MiUnlockWorkingSet(CurrentThread, WorkingSet);
+            if (!IsSessionAddress)
+            {
+                UNLOCK_SYSTEM_CACHE_WS(CurrentThread);
+            }
+            else
+            {
+                UNLOCK_WORKING_SET(CurrentThread, WorkingSet);
+            }
+
             KeLowerIrql(LockIrql);
 
             /* Otherwise, the PDE was probably invalid, and all is good now */
@@ -2060,7 +2072,16 @@ _WARN("Session space stuff is not implemented yet!")
 
         /* Release the working set */
         ASSERT(KeAreAllApcsDisabled() == TRUE);
-        MiUnlockWorkingSet(CurrentThread, WorkingSet);
+
+        if (!IsSessionAddress)
+        {
+            UNLOCK_SYSTEM_CACHE_WS(CurrentThread);
+        }
+        else
+        {
+            UNLOCK_WORKING_SET(CurrentThread, WorkingSet);
+        }
+
         KeLowerIrql(LockIrql);
 
         /* We are done! */
@@ -2317,7 +2338,9 @@ UserFault:
 
             /* Not supported */
             ASSERT(ProtoPte == NULL);
-            ASSERT(CurrentThread->ApcNeeded == 0);
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
+            ASSERT(!PspTestThreadApcNeededFlag(CurrentThread));
+#endif
 
             /* Drop the working set lock */
             MiUnlockProcessWorkingSet(CurrentProcess, CurrentThread);
@@ -2481,8 +2504,10 @@ UserFault:
                                FALSE);
         if (Status != STATUS_SUCCESS)
         {
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
             /* Not supported */
-            ASSERT(CurrentThread->ApcNeeded == 0);
+            ASSERT(!PspTestThreadApcNeededFlag(CurrentThread));
+#endif
 
             /* Drop the working set lock */
             MiUnlockProcessWorkingSet(CurrentProcess, CurrentThread);

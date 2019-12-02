@@ -186,7 +186,7 @@ IrpStub(
 			{
 				ERR_(CLASS_NAME, "Port DO stub for major function 0x%lx\n",
 					IoGetCurrentIrpStackLocation(Irp)->MajorFunction);
-				ASSERT(FALSE);
+				//ASSERT(FALSE);
 			}
 		}
 	}
@@ -194,7 +194,7 @@ IrpStub(
 	{
 		ERR_(CLASS_NAME, "Class DO stub for major function 0x%lx\n",
 			IoGetCurrentIrpStackLocation(Irp)->MajorFunction);
-		ASSERT(FALSE);
+		//ASSERT(FALSE);
 	}
 
 	Irp->IoStatus.Status = Status;

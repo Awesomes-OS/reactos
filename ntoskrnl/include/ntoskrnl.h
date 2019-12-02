@@ -123,4 +123,6 @@ C_ASSERT(MAX_WIN32_PATH == MAX_PATH);
 #include "internal/probe.h"
 #include "resource.h"
 
+#include <ndk/ntbits.h>
+
 #endif /* _NTOSKRNL_PCH */

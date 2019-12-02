@@ -95,7 +95,7 @@ MiMapLockedPagesInUserSpace(
         /* We get to pick the address */
         MmLockAddressSpace(&Process->Vm);
         AddressSpaceLocked = TRUE;
-        if (Process->VmDeleted)
+        if (PspTestProcessVmDeletedFlag(Process))
         {
             Status = STATUS_PROCESS_IS_TERMINATING;
             goto Error;
@@ -131,7 +131,7 @@ MiMapLockedPagesInUserSpace(
 
         MmLockAddressSpace(&Process->Vm);
         AddressSpaceLocked = TRUE;
-        if (Process->VmDeleted)
+        if (PspTestProcessVmDeletedFlag(Process))
         {
             Status = STATUS_PROCESS_IS_TERMINATING;
             goto Error;

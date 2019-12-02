@@ -111,9 +111,10 @@ Author:
 #define KTHREAD_CALLBACK_STACK                  0x114
 #define KTHREAD_APC_STATE_INDEX                 0x11C
 #define KTHREAD_STACK_BASE                      0x158
-#define KTHREAD_QUANTUM                         0x15D
+//#define KTHREAD_QUANTUM                         0x15D
 #define KTHREAD_KERNEL_TIME                     0x160
 #define KTHREAD_USER_TIME                       0x18C
+#define KTHREAD_QuantumTarget 0x1c8
 
 //
 // KPROCESS Offsets
@@ -124,8 +125,10 @@ Author:
 #define KPROCESS_INT21_DESCRIPTOR0              0x28
 #define KPROCESS_INT21_DESCRIPTOR1              0x2C
 #define KPROCESS_IOPM_OFFSET                    0x30
-#define KPROCESS_ACTIVE_PROCESSORS              0x34
-#define EPROCESS_VDM_OBJECTS                    0x144
+//#define KPROCESS_ACTIVE_PROCESSORS              0x34
+//#define EPROCESS_VDM_OBJECTS                    0x144
+#define KPROCESS_ACTIVE_PROCESSORS 0x80
+#define EPROCESS_VDM_OBJECTS 0x174
 
 //
 // KTIMER_TABLE Offsets
@@ -140,14 +143,18 @@ Author:
 //
 // KPRCB Offsets
 //
-#define KPRCB_DR0                               0x2F8
-#define KPRCB_DR1                               0x2FC
-#define KPRCB_DR2                               0x300
-#define KPRCB_DR3                               0x304
-#define KPRCB_DR6                               0x308
-#define KPRCB_DR7                               0x30C
-#define KPRCB_TIMER_HAND                        0x964
-#define KPRCB_TIMER_REQUEST                     0x968
+#define KPRCB_DR0 (0x0020 + 0x02cc + 0x0010)
+#define KPRCB_DR1 (0x0020 + 0x02cc + 0x0014)
+#define KPRCB_DR2 (0x0020 + 0x02cc + 0x0018)
+#define KPRCB_DR3 (0x0020 + 0x02cc + 0x001c)
+#define KPRCB_DR6 (0x0020 + 0x02cc + 0x0020)
+#define KPRCB_DR7 (0x0020 + 0x02cc + 0x0024)
+#define KPRCB_TIMER_HAND 0x0968
+#define KPRCB_TIMER_REQUEST 0x096c
+
+#define KPRCB_CURRENT_THREAD 0x0004
+//#define KPRCB_PROCESSOR_NUMBER 0x10
+//#define KPRCB_SET_MEMBER 0x14
 
 //
 // KPCR Offsets
@@ -174,38 +181,11 @@ Author:
 #define KPCR_NUMBER                             0x51
 #define KPCR_VDM_ALERT                          0x54
 #define KPCR_PRCB_DATA                          0x120
-#define KPCR_CURRENT_THREAD                     0x124
-#define KPCR_PRCB_NEXT_THREAD                   0x128
-#define KPCR_PRCB_IDLE_THREAD                   0x12C
-#define KPCR_PROCESSOR_NUMBER                   0x130
-#define KPCR_PRCB_SET_MEMBER                    0x134
-#define KPCR_PRCB_CPU_TYPE                      0x138
-#define KPCR_PRCB_PRCB_LOCK                     0xA7C
-#define KPCR_NPX_THREAD                         0x640
-#define KPCR_DR6                                0x428
-#define KPCR_DR7                                0x42C
-#define KPCR_PRCB_INTERRUPT_COUNT               0x644
-#define KPCR_PRCB_KERNEL_TIME                   0x648
-#define KPCR_PRCB_USER_TIME                     0x64C
-#define KPCR_PRCB_DPC_TIME                      0x650
-#define KPCR_PRCB_DEBUG_DPC_TIME                0x654
-#define KPCR_PRCB_INTERRUPT_TIME                0x658
-#define KPCR_PRCB_ADJUST_DPC_THRESHOLD          0x65C
-#define KPCR_PRCB_SKIP_TICK                     0x664
-#define KPCR_SYSTEM_CALLS                       0x6B8
-#define KPCR_PRCB_DPC_QUEUE_DEPTH               0xA4C
-#define KPCR_PRCB_DPC_COUNT                     0xA50
-#define KPCR_PRCB_DPC_STACK                     0xA68
-#define KPCR_PRCB_MAXIMUM_DPC_QUEUE_DEPTH       0xA6C
-#define KPCR_PRCB_DPC_REQUEST_RATE              0xA70
-#define KPCR_PRCB_DPC_INTERRUPT_REQUESTED       0xA78
-#define KPCR_PRCB_DPC_ROUTINE_ACTIVE            0xA7A
-#define KPCR_PRCB_DPC_LAST_COUNT                0xA80
-#define KPCR_PRCB_TIMER_REQUEST                 0xA88
-#define KPCR_PRCB_QUANTUM_END                   0xAA1
-#define KPCR_PRCB_IDLE_SCHEDULE                 0xAA3
-#define KPCR_PRCB_DEFERRED_READY_LIST_HEAD      0xC10
-#define KPCR_PRCB_POWER_STATE_IDLE_FUNCTION     0xEC0
+#define KPCR_CURRENT_THREAD (KPCR_PRCB_DATA + KPRCB_CURRENT_THREAD)
+//#define KPCR_PROCESSOR_NUMBER                   0x130
+//#define KPCR_PRCB_SET_MEMBER                    0x134
+#define KPCR_DR6 (KPCR_PRCB_DATA + KPRCB_DR6)
+#define KPCR_DR7 (KPCR_PRCB_DATA + KPRCB_DR7)
 
 //
 // KINTERRUPT Offsets
@@ -219,8 +199,8 @@ Author:
 #define KINTERRUPT_VECTOR                       0x24
 #define KINTERRUPT_IRQL                         0x28
 #define KINTERRUPT_SYNCHRONIZE_IRQL             0x29
-#define KINTERRUPT_DISPATCH_COUNT               0x38
-#define KINTERRUPT_DISPATCH_CODE                0x3C
+#define KINTERRUPT_DISPATCH_COUNT 0x003c
+#define KINTERRUPT_DISPATCH_CODE 0x0040
 
 //
 // KGDTENTRY Offsets

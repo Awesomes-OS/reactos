@@ -1453,7 +1453,7 @@ KeFlushEntireTb(IN BOOLEAN Invalid,
 {
     KIRQL OldIrql;
 #ifdef CONFIG_SMP
-    KAFFINITY TargetAffinity;
+    ULONG Count;
     PKPRCB Prcb = KeGetCurrentPrcb();
 #endif
 
@@ -1464,14 +1464,15 @@ KeFlushEntireTb(IN BOOLEAN Invalid,
     /* FIXME: Use KiTbFlushTimeStamp to synchronize TB flush */
 
     /* Get the current processor affinity, and exclude ourselves */
-    TargetAffinity = KeActiveProcessors;
-    TargetAffinity &= ~Prcb->SetMember;
+    /* Get current processor count */
+    Count = KeQueryActiveProcessorCountEx(ALL_PROCESSOR_GROUPS);
 
     /* Make sure this is MP */
-    if (TargetAffinity)
+    if (Count > 1)
     {
         /* Send an IPI TB flush to the other processors */
-        KiIpiSendPacket(TargetAffinity,
+        KiIpiSendPacket(IpiAllButSelf,
+                        NULL,
                         KiFlushTargetEntireTb,
                         NULL,
                         0,
@@ -1484,7 +1485,7 @@ KeFlushEntireTb(IN BOOLEAN Invalid,
 
 #ifdef CONFIG_SMP
     /* If this is MP, wait for the other processors to finish */
-    if (TargetAffinity)
+    if (Count > 1)
     {
         /* Sanity check */
         ASSERT(Prcb == KeGetCurrentPrcb());
@@ -1520,7 +1521,7 @@ KeQueryActiveProcessors(VOID)
     PAGED_CODE();
 
     /* Simply return the number of active processors */
-    return KeActiveProcessors;
+    return KeActiveProcessors.Bitmap[0];
 }
 
 /*

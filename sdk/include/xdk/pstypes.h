@@ -21,17 +21,8 @@ $if (_WDMDDK_)
 
 #define PROCESS_DUP_HANDLE               (0x0040)
 
-#if (NTDDI_VERSION >= NTDDI_VISTA)
 #define PROCESS_ALL_ACCESS  (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0xFFFF)
-#else
-#define PROCESS_ALL_ACCESS  (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0xFFF)
-#endif
-
-#if (NTDDI_VERSION >= NTDDI_VISTA)
 #define THREAD_ALL_ACCESS   (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0xFFFF)
-#else
-#define THREAD_ALL_ACCESS   (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0x3FF)
-#endif
 
 #define LOW_PRIORITY                      0
 #define LOW_REALTIME_PRIORITY             16
@@ -350,7 +341,12 @@ typedef struct _PROCESS_EXTENDED_BASIC_INFORMATION {
       ULONG IsWow64Process:1;
       ULONG IsProcessDeleting:1;
       ULONG IsCrossSessionCreate:1;
-      ULONG SpareBits:28;
+      ULONG IsFrozen:1;
+      ULONG IsBackground:1;
+      ULONG IsStronglyNamed:1;
+      ULONG IsSecureProcess:1;
+      ULONG IsSubsystemProcess:1;
+      ULONG SpareBits:23;
     } DUMMYSTRUCTNAME;
   } DUMMYUNIONNAME;
 } PROCESS_EXTENDED_BASIC_INFORMATION, *PPROCESS_EXTENDED_BASIC_INFORMATION;

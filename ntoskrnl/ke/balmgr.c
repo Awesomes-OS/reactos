@@ -35,7 +35,7 @@ KiScanReadyQueues(IN PKDPC Dpc,
     ULONG Summary;
     KIRQL OldIrql;
     PLIST_ENTRY ListHead, NextEntry;
-    PKTHREAD Thread;
+    PSINGLE_LIST_ENTRY DeferredListEntry = NULL;
 
     /* Lock the dispatcher and PRCB */
     OldIrql = KiAcquireDispatcherLock();
@@ -62,6 +62,8 @@ KiScanReadyQueues(IN PKDPC Dpc,
                 NextEntry = ListHead->Flink;
                 do
                 {
+                    PKTHREAD Thread;
+
                     /* Select a thread */
                     Thread = CONTAINING_RECORD(NextEntry,
                                                KTHREAD,
@@ -80,21 +82,8 @@ KiScanReadyQueues(IN PKDPC Dpc,
                             Prcb->ReadySummary ^= PRIORITY_MASK(Index);
                         }
 
-                        /* Verify priority decrement and set the new one */
-                        ASSERT((Thread->PriorityDecrement >= 0) &&
-                               (Thread->PriorityDecrement <=
-                                Thread->Priority));
-                        Thread->PriorityDecrement += (THREAD_BOOST_PRIORITY -
-                                                      Thread->Priority);
-                        ASSERT((Thread->PriorityDecrement >= 0) &&
-                               (Thread->PriorityDecrement <=
-                                THREAD_BOOST_PRIORITY));
-
-                        /* Update priority and insert into ready list */
-                        Thread->Priority = THREAD_BOOST_PRIORITY;
-                        Thread->Quantum = WAIT_QUANTUM_DECREMENT * 4;
                         KiInsertDeferredReadyList(Thread);
-                        Count --;
+                        Count--;
                     }
 
                     /* Go to the next entry */
@@ -108,9 +97,65 @@ KiScanReadyQueues(IN PKDPC Dpc,
         } while ((Summary) && (Number) && (Count));
     }
 
+    ASSERT_IRQL_GREATER_OR_EQUAL(DISPATCH_LEVEL);
+
+    /* Get the first entry and clear the list */
+    DeferredListEntry = Prcb->DeferredReadyListHead.Next;
+    Prcb->DeferredReadyListHead.Next = NULL;
+
     /* Release the locks and dispatcher */
     KiReleasePrcbLock(Prcb);
     KiReleaseDispatcherLock(OldIrql);
+
+    while (DeferredListEntry)
+    {
+        // Similar to KiProcessDeferredReadyList with additional logic to initialize threads
+
+        PKTHREAD Thread;
+        THREAD_PRIORITY_VALUES Value;
+
+        /* Get the thread and advance to the next entry */
+        Thread = CONTAINING_RECORD(DeferredListEntry, KTHREAD, SwapListEntry);
+        DeferredListEntry = DeferredListEntry->Next;
+
+        ASSERT_THREAD(Thread);
+        ASSERT(Thread->State == Ready || Thread->State == DeferredReady);
+        ASSERT_IRQL_EQUAL(DISPATCH_LEVEL);
+
+        const ULONGLONG CycleTime = KiCaptureThreadCycleTime(Thread).QuadPart;
+
+        /* Lock the thread */
+        KiAcquireThreadLock(Thread);
+
+        ASSERT_IRQL_EQUAL(DISPATCH_LEVEL);
+
+        /* Verify priority decrement and set the new one */
+        Value = KiExtractThreadPriorityValues(Thread->PriorityDecrement);
+        ASSERT(Value.Major + Value.Minor <= Thread->Priority);
+        ASSERT(Thread->PriorityDecrement >= 0);
+        ASSERT(Thread->PriorityDecrement <= Thread->Priority);
+
+        Thread->PriorityDecrement += THREAD_BOOST_PRIORITY - Thread->Priority;
+
+        Value = KiExtractThreadPriorityValues(Thread->PriorityDecrement);
+        ASSERT(Thread->PriorityDecrement >= 0);
+        ASSERT(Thread->PriorityDecrement <= THREAD_BOOST_PRIORITY);
+        ASSERT(Value.Major + Value.Minor <= THREAD_BOOST_PRIORITY);
+
+        // Update priority and quantum
+        Thread->Priority = THREAD_BOOST_PRIORITY;
+
+        const ULONGLONG QuantumTarget = Thread->QuantumTarget;
+        const ULONGLONG NewQuantumTarget = KiLockQuantumTarget + CycleTime;
+        if (CycleTime > QuantumTarget || QuantumTarget < NewQuantumTarget)
+            Thread->QuantumTarget = NewQuantumTarget;
+
+        /* Release the lock */
+        KiReleaseThreadLock(Thread);
+
+        /* Make the thread ready */
+        KiDeferredReadyThread(Thread);
+    }
 
     /* Update the queue index for next time */
     if ((Count) && (Number))

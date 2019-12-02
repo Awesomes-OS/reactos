@@ -82,10 +82,6 @@ extern "C" {
 //
 // Virtual Memory Flags
 //
-#define MEM_WRITE_WATCH                                     0x200000
-#define MEM_PHYSICAL                                        0x400000
-#define MEM_ROTATE                                          0x800000
-#define MEM_IMAGE                                           SEC_IMAGE
 #define MEM_DOS_LIM                                         0x40000000
 
 //
@@ -874,11 +870,63 @@ typedef struct _MMWSL
     ULONG CommittedPageTables[24];
 } MMWSL, *PMMWSL;
 
+typedef enum _WORKING_SET_TYPE
+{
+    WorkingSetTypeUser = 0,
+    WorkingSetTypeSession = 1,
+    WorkingSetTypeSystemTypes = 2,
+    WorkingSetTypeSystemCache = 2,
+    WorkingSetTypePagedPool = 3,
+    WorkingSetTypeSystemViews = 4,
+    WorkingSetTypePagableMaximum = 4,
+    WorkingSetTypeSystemPtes = 5,
+    WorkingSetTypeKernelStacks = 6,
+    WorkingSetTypeNonPagedPool = 7,
+    WorkingSetTypeMaximum = 8
+} WORKING_SET_TYPE, *PWORKING_SET_TYPE;
+
 //
 // Flags for Memory Support Structure
 //
 typedef struct _MMSUPPORT_FLAGS
 {
+#if 1 || (NTDDI_VERSION >= NTDDI_WIN10)
+    union
+    {
+        struct
+        {
+            struct
+            {
+                UINT8        WorkingSetType : 3;
+                UINT8        Reserved0 : 3;
+                UINT8        MaximumWorkingSetHard : 1;
+                UINT8        MinimumWorkingSetHard : 1;
+            };
+            struct
+            {
+                UINT8        SessionMaster : 1;
+                UINT8        TrimmerState : 2;
+                UINT8        Reserved : 1;
+                UINT8        PageStealers : 4;
+            };
+        };
+        UINT16       u1;
+    };
+    UINT8        MemoryPriority;
+    union
+    {
+        struct
+        {
+            UINT8        WsleDeleted : 1;
+            UINT8        SvmEnabled : 1;
+            UINT8        ForceAge : 1;
+            UINT8        ForceTrim : 1;
+            UINT8        NewMaximum : 1;
+            UINT8        CommitReleaseState : 2;
+        };
+        UINT8        u2;
+    };
+#else
     ULONG SessionSpace:1;
     ULONG BeingTrimmed:1;
     ULONG SessionLeader:1;
@@ -891,6 +939,7 @@ typedef struct _MMSUPPORT_FLAGS
     ULONG GrowWsleHash:1;
     ULONG AcquiredUnsafe:1;
     ULONG Available:14;
+#endif
 } MMSUPPORT_FLAGS, *PMMSUPPORT_FLAGS;
 
 //
@@ -898,6 +947,39 @@ typedef struct _MMSUPPORT_FLAGS
 //
 typedef struct _MMSUPPORT
 {
+#if (NTDDI_VERSION >= NTDDI_WIN10)
+    ULONG32 NextPageColor;
+    ULONG32 PageFaultCount;
+    UINT64 TrimmedPageCount;
+    MMWSL* VmWorkingSetList;
+    LIST_ENTRY WorkingSetExpansionLinks;
+    UINT64 AgeDistribution[8];
+    KGATE* ExitOutswapGate;
+    UINT64 MinimumWorkingSetSize;
+    UINT64 WorkingSetLeafSize;
+    UINT64 WorkingSetLeafPrivateSize;
+    UINT64 WorkingSetSize;
+    UINT64 WorkingSetPrivateSize;
+    UINT64 MaximumWorkingSetSize;
+    UINT64 PeakWorkingSetSize;
+    ULONG32 HardFaultCount;
+    UINT16 LastTrimStamp;
+    UINT16 PartitionId;
+    UINT64 SelfmapLock;
+    MMSUPPORT_FLAGS Flags;
+    EX_PUSH_LOCK WorkingSetMutex;
+    //LONG32 WorkingSetLock;
+    LONG32 GoodCitizenWaiting;
+    UINT64 ReleasedCommitDebt;
+    UINT64 ResetPagesRepurposedCount;
+    VOID* WsSwapSupport;
+    VOID* CommitReleaseContext;
+    VOID* AccessLog;
+    UINT64 ChargedWslePages;
+    UINT64 ActualWslePages;
+    KSPIN_LOCK WorkingSetCoreLock;
+    VOID* ShadowMapping;
+#else
 #if (NTDDI_VERSION >= NTDDI_WS03)
     LIST_ENTRY WorkingSetExpansionLinks;
 #endif
@@ -938,6 +1020,7 @@ typedef struct _MMSUPPORT
     EX_PUSH_LOCK WorkingSetMutex;
 #if (NTDDI_VERSION >= NTDDI_LONGHORN)
     PVOID AccessLog;
+#endif
 #endif
 } MMSUPPORT, *PMMSUPPORT;
 

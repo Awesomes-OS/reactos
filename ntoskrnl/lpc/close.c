@@ -32,7 +32,7 @@ LpcExitThread(IN PETHREAD Thread)
     }
 
     /* Set the thread in exit mode */
-    Thread->LpcExitThreadCalled = TRUE;
+    PspSetThreadLpcExitThreadCalledFlagAssert(Thread);
     Thread->LpcReplyMessageId = 0;
 
     /* Check if there's a reply message */
@@ -154,7 +154,7 @@ LpcpDestroyPortQueue(IN PLPCP_PORT_OBJECT Port,
         Thread = CONTAINING_RECORD(NextEntry, ETHREAD, LpcReplyChain);
 
         /* Make sure we're not in exit */
-        if (Thread->LpcExitThreadCalled) break;
+        if (PspTestThreadLpcExitThreadCalledFlag(Thread)) break;
 
         /* Move to the next entry */
         NextEntry = NextEntry->Flink;

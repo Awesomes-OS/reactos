@@ -239,14 +239,16 @@ KeUpdateRunTime(IN PKTRAP_FRAME TrapFrame,
         }
     }
 
-    /* Decrement the thread quantum */
-    Thread->Quantum -= CLOCK_QUANTUM_DECREMENT;
-
-    /* Check if the time expired */
-    if ((Thread->Quantum <= 0) && (Thread != Prcb->IdleThread))
+    if (Thread != Prcb->IdleThread)
     {
-        /* Schedule a quantum end */
-        Prcb->QuantumEnd = 1;
-        HalRequestSoftwareInterrupt(DISPATCH_LEVEL);
+        const ULARGE_INTEGER CycleTime = KiCaptureThreadCycleTime(Thread);
+
+        /* Check if the time expired */
+        if (CycleTime.QuadPart >= Thread->QuantumTarget)
+        {
+            /* Schedule a quantum end */
+            Prcb->QuantumEnd = TRUE;
+            HalRequestSoftwareInterrupt(DISPATCH_LEVEL);
+        }
     }
 }

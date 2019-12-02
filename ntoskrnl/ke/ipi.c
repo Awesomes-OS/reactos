@@ -40,7 +40,8 @@ KiIpiSend(IN KAFFINITY TargetProcessors,
 
 VOID
 NTAPI
-KiIpiSendPacket(IN KAFFINITY TargetProcessors,
+KiIpiSendPacket(IN IPI_TYPE IpiType,
+                IN PKAFFINITY_EX TargetProcessors,
                 IN PKIPI_WORKER WorkerFunction,
                 IN PKIPI_BROADCAST_WORKER BroadcastFunction,
                 IN ULONG_PTR Context,
@@ -199,7 +200,6 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
     ULONG_PTR Status;
     KIRQL OldIrql, OldIrql2;
 #ifdef CONFIG_SMP
-    KAFFINITY Affinity;
     ULONG Count;
     PKPRCB Prcb = KeGetCurrentPrcb();
 #endif
@@ -209,12 +209,8 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
     if (OldIrql < DISPATCH_LEVEL) KeRaiseIrql(DISPATCH_LEVEL, &OldIrql);
 
 #ifdef CONFIG_SMP
-    /* Get current processor count and affinity */
-    Count = KeNumberProcessors;
-    Affinity = KeActiveProcessors;
-
-    /* Exclude ourselves */
-    Affinity &= ~Prcb->SetMember;
+    /* Get current processor count */
+    Count = KeQueryActiveProcessorCountEx(ALL_PROCESSOR_GROUPS);
 #endif
 
     /* Acquire the IPI lock */
@@ -222,10 +218,11 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
 
 #ifdef CONFIG_SMP
     /* Make sure this is MP */
-    if (Affinity)
+    if (Count > 1)
     {
         /* Send an IPI */
-        KiIpiSendPacket(Affinity,
+        KiIpiSendPacket(IpiAllButSelf,
+                        NULL,
                         KiIpiGenericCallTarget,
                         Function,
                         Argument,
@@ -253,7 +250,7 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
 
 #ifdef CONFIG_SMP
     /* If this is MP, wait for the other processors to finish */
-    if (Affinity)
+    if (Count > 1)
     {
         /* Sanity check */
         ASSERT(Prcb == KeGetCurrentPrcb());

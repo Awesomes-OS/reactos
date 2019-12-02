@@ -479,20 +479,24 @@ KiQuantumEnd(VOID)
     KiAcquireThreadLock(Thread);
     KiAcquirePrcbLock(Prcb);
 
+    ULONG64 CycleTime = Thread->CycleTime;
+
     /* Check if Quantum expired */
-    if (Thread->Quantum <= 0)
+    if (CycleTime >= Thread->QuantumTarget)
     {
+        UCHAR Quantum;
+
         /* Check if we're real-time and with quantums disabled */
         if ((Thread->Priority >= LOW_REALTIME_PRIORITY) &&
-            (Thread->ApcState.Process->DisableQuantum))
+            KiTestProcessDisableQuantumFlag(Thread->ApcState.Process))
         {
             /* Otherwise, set maximum quantum */
-            Thread->Quantum = MAX_QUANTUM;
+            Quantum = MAX_QUANTUM;
         }
         else
         {
             /* Reset the new Quantum */
-            Thread->Quantum = Thread->QuantumReset;
+            Quantum = Thread->QuantumReset;
 
             /* Calculate new priority */
             Thread->Priority = KiComputeNewPriority(Thread, 1);
@@ -515,13 +519,18 @@ KiQuantumEnd(VOID)
                 Thread->Preempted = FALSE;
             }
         }
+
+        Thread->QuantumTarget = CycleTime + Quantum * KiCyclesPerClockQuantum;
     }
 
     /* Release the thread lock */
     KiReleaseThreadLock(Thread);
 
+    /* Get the next thread now */
+    NextThread = Prcb->NextThread;
+
     /* Check if there's no thread scheduled */
-    if (!Prcb->NextThread)
+    if (!NextThread || Thread == Prcb->IdleThread)
     {
         /* Just leave now */
         KiReleasePrcbLock(Prcb);
@@ -529,14 +538,20 @@ KiQuantumEnd(VOID)
         return;
     }
 
-    /* Get the next thread now */
-    NextThread = Prcb->NextThread;
-
+#if (NTDDI_VERSION < NTDDI_WIN8)
     /* Set current thread's swap busy to true */
     KiSetThreadSwapBusy(Thread);
+#endif
 
     /* Switch threads in PRCB */
     Prcb->NextThread = NULL;
+
+    _disable();
+
+    KiEndThreadCycleAccumulation(Prcb, Thread, NULL);
+
+    _enable();
+
     Prcb->CurrentThread = NextThread;
 
     /* Set thread to running and the switch reason to Quantum End */
@@ -722,8 +737,8 @@ KeInitializeDpc(IN PKDPC Dpc,
 BOOLEAN
 NTAPI
 KeInsertQueueDpc(IN PKDPC Dpc,
-                 IN PVOID SystemArgument1,
-                 IN PVOID SystemArgument2)
+                 IN PVOID SystemArgument1 OPTIONAL,
+                 IN PVOID SystemArgument2 OPTIONAL)
 {
     KIRQL OldIrql;
     PKPRCB Prcb, CurrentPrcb;
@@ -742,6 +757,9 @@ KeInsertQueueDpc(IN PKDPC Dpc,
         /* Then substract the maximum and get that PRCB. */
         Cpu = Dpc->Number - MAXIMUM_PROCESSORS;
         Prcb = KiProcessorBlock[Cpu];
+
+        if (!Prcb)
+            KeBugCheckEx(TIMER_OR_DPC_INVALID, 0x3, (ULONG_PTR)Dpc, Dpc->Number, KeNumberProcessors_0);
     }
     else
     {
@@ -803,21 +821,15 @@ KeInsertQueueDpc(IN PKDPC Dpc,
         else
         {
             /* Make sure a DPC isn't executing already */
-            if (!(Prcb->DpcRoutineActive) && !(Prcb->DpcInterruptRequested))
+            if (!(Prcb->DpcRoutineActive) && !(Prcb->DpcInterruptRequested) &&
+                (DpcData->DpcQueueDepth >= Prcb->MaximumDpcQueueDepth))
             {
+#ifdef CONFIG_SMP
                 /* Check if this is the same CPU */
                 if (Prcb != CurrentPrcb)
                 {
-                    /*
-                     * Check if the DPC is of high importance or above the
-                     * maximum depth. If it is, then make sure that the CPU
-                     * isn't idle, or that it's sleeping.
-                     */
-                    if (((Dpc->Importance == HighImportance) ||
-                        (DpcData->DpcQueueDepth >=
-                         Prcb->MaximumDpcQueueDepth)) &&
-                        (!(AFFINITY_MASK(Cpu) & KiIdleSummary) ||
-                         (Prcb->Sleeping)))
+                    /* Check if the DPC is of high importance */
+                    if ((Dpc->Importance == HighImportance) || (Dpc->Importance == MediumHighImportance))
                     {
                         /* Set interrupt requested */
                         Prcb->DpcInterruptRequested = TRUE;
@@ -827,11 +839,10 @@ KeInsertQueueDpc(IN PKDPC Dpc,
                     }
                 }
                 else
+#endif
                 {
                     /* Check if the DPC is of anything but low importance */
                     if ((Dpc->Importance != LowImportance) ||
-                        (DpcData->DpcQueueDepth >=
-                         Prcb->MaximumDpcQueueDepth) ||
                         (Prcb->DpcRequestRate < Prcb->MinimumDpcRate))
                     {
                         /* Set interrupt requested */
@@ -851,13 +862,18 @@ KeInsertQueueDpc(IN PKDPC Dpc,
     /* Check if the DPC was inserted */
     if (DpcInserted)
     {
+#ifdef CONFIG_SMP
         /* Check if this was SMP */
         if (Prcb != CurrentPrcb)
         {
-            /* It was, request and IPI */
-            KiIpiSend(AFFINITY_MASK(Cpu), IPI_DPC);
+            /* It was, request an IPI */
+            if (Prcb->CurrentThread != Prcb->IdleThread)
+            {
+                KiIpiSend(AFFINITY_MASK(Cpu), IPI_DPC);
+            }
         }
         else
+#endif
         {
             /* It wasn't, request an interrupt from HAL */
             HalRequestSoftwareInterrupt(DISPATCH_LEVEL);
@@ -921,7 +937,7 @@ KeFlushQueuedDpcs(VOID)
     PAGED_CODE();
 
     /* Check if this is an UP machine */
-    if (KeActiveProcessors == 1)
+    if (KeQueryActiveProcessorCountEx(ALL_PROCESSOR_GROUPS) == 1)
     {
         /* Check if there are DPCs on either queues */
         if ((CurrentPrcb->DpcData[DPC_NORMAL].DpcQueueDepth > 0) ||
@@ -986,7 +1002,7 @@ KeGenericCallDpc(IN PKDEFERRED_ROUTINE Routine,
     ULONG Barrier = KeNumberProcessors;
     KIRQL OldIrql;
     DEFERRED_REVERSE_BARRIER ReverseBarrier;
-    ASSERT(KeGetCurrentIrql () < DISPATCH_LEVEL);
+    ASSERT_IRQL_LESS(DISPATCH_LEVEL);
 
     //
     // The barrier is the number of processors, each processor will decrement it

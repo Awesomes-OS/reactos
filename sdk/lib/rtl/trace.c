@@ -12,6 +12,7 @@
 
 static RTL_UNLOAD_EVENT_TRACE RtlpUnloadEventTrace[RTL_UNLOAD_EVENT_TRACE_NUMBER];
 static UINT RtlpUnloadEventTraceIndex = 0;
+static ULONG RtlpUnloadEventTraceIndexSize = sizeof(RTL_UNLOAD_EVENT_TRACE);
 
 /* FUNCTIONS ******************************************************************/
 
@@ -21,6 +22,19 @@ RtlGetUnloadEventTrace(VOID)
 {
     /* Just return a pointer to an array, according to MSDN */
     return RtlpUnloadEventTrace;
+}
+
+VOID
+NTAPI
+RtlGetUnloadEventTraceEx(
+    _Out_ PULONG *ElementSize,
+    _Out_ PULONG *ElementCount,
+    _Out_ PVOID *EventTrace
+)
+{
+    *ElementSize = &RtlpUnloadEventTraceIndexSize;
+    *ElementCount = &RtlpUnloadEventTraceIndex;
+    *EventTrace = RtlpUnloadEventTrace;
 }
 
 VOID

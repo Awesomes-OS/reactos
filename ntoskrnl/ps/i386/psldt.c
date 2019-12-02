@@ -104,7 +104,7 @@ PspQueryDescriptorThread(IN PETHREAD Thread,
     else
     {
         /* This is only supported for VDM, which we don't implement */
-        ASSERT(Thread->ThreadsProcess->LdtInformation == NULL);
+        ASSERT(((PEPROCESS)Thread->Tcb.Process)->LdtInformation == NULL);
         Status = STATUS_NO_LDT;
     }
 

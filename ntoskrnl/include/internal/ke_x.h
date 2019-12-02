@@ -181,7 +181,10 @@ KiInsertDeferredReadyList(IN PKTHREAD Thread)
 {
     /* Set the thread to deferred state and boot CPU */
     Thread->State = DeferredReady;
+
+#if (NTDDI_VERSION < NTDDI_WIN10)
     Thread->DeferredProcessor = 0;
+#endif
 
     /* Make the thread ready immediately */
     KiDeferredReadyThread(Thread);
@@ -389,7 +392,9 @@ KiInsertDeferredReadyList(IN PKTHREAD Thread)
 
     /* Set the thread to deferred state and CPU */
     Thread->State = DeferredReady;
+#if (NTDDI_VERSION < NTDDI_WIN10)
     Thread->DeferredProcessor = Prcb->Number;
+#endif
 
     /* Add it on the list */
     PushEntryList(&Prcb->DeferredReadyListHead, &Thread->SwapListEntry);
@@ -408,6 +413,7 @@ KiRescheduleThread(IN BOOLEAN NewThread,
     }
 }
 
+#if (NTDDI_VERSION < NTDDI_WIN8)
 //
 // This routine sets the current thread in a swap busy state, which ensure that
 // nobody else tries to swap it concurrently.
@@ -422,6 +428,7 @@ KiSetThreadSwapBusy(IN PKTHREAD Thread)
     /* Set it ourselves */
     Thread->SwapBusy = TRUE;
 }
+#endif
 
 //
 // This routine acquires the PRCB lock so that only one caller can touch
@@ -603,7 +610,14 @@ KiAcquireApcLockRaiseToSynch(IN PKTHREAD Thread,
                  IN PKLOCK_QUEUE_HANDLE Handle)
 {
     /* Acquire the lock and raise to synchronization level */
-    KeAcquireInStackQueuedSpinLockRaiseToSynch(&Thread->ApcQueueLock, Handle);
+    PKSPIN_LOCK Lock;
+#if (NTDDI_VERSION < NTDDI_WIN8)
+    Lock = &Thread->ApcQueueLock;
+#else
+    Lock = &Thread->ThreadLock;
+#endif
+
+    KeAcquireInStackQueuedSpinLockRaiseToSynch(Lock, Handle);
 }
 
 FORCEINLINE
@@ -613,7 +627,15 @@ KiAcquireApcLockAtSynchLevel(IN PKTHREAD Thread,
 {
     /* Acquire the lock */
     ASSERT(KeGetCurrentIrql() >= SYNCH_LEVEL);
-    KeAcquireInStackQueuedSpinLockAtDpcLevel(&Thread->ApcQueueLock, Handle);
+    
+    PKSPIN_LOCK Lock;
+#if (NTDDI_VERSION < NTDDI_WIN8)
+    Lock = &Thread->ApcQueueLock;
+#else
+    Lock = &Thread->ThreadLock;
+#endif
+
+    KeAcquireInStackQueuedSpinLockAtDpcLevel(Lock, Handle);
 }
 
 FORCEINLINE
@@ -622,7 +644,14 @@ KiAcquireApcLockRaiseToDpc(IN PKTHREAD Thread,
                            IN PKLOCK_QUEUE_HANDLE Handle)
 {
     /* Acquire the lock */
-    KeAcquireInStackQueuedSpinLock(&Thread->ApcQueueLock, Handle);
+    PKSPIN_LOCK Lock;
+#if (NTDDI_VERSION < NTDDI_WIN8)
+    Lock = &Thread->ApcQueueLock;
+#else
+    Lock = &Thread->ThreadLock;
+#endif
+
+    KeAcquireInStackQueuedSpinLock(Lock, Handle);
 }
 
 FORCEINLINE
@@ -1356,10 +1385,14 @@ KxQueueReadyThread(IN PKTHREAD Thread,
     ASSERT(Thread->NextProcessor == Prcb->Number);
 
     /* Check if this thread is allowed to run in this CPU */
-#ifdef CONFIG_SMP
+#if defined(CONFIG_SMP) && (1 || (NTDDI_VERSION >= NTDDI_WIN7))
+    if ((Thread->Affinity.Group & Prcb->Group) && (Thread->Affinity.Mask & Prcb->GroupSetMember))
+#elif defined(CONFIG_SMP) && (NTDDI_VERSION < NTDDI_WIN7)
     if ((Thread->Affinity) & (Prcb->SetMember))
-#else
+#elif !defined(CONFIG_SMP)
     if (TRUE)
+#else
+#error Unexpected configuration
 #endif
     {
         /* Set thread ready for execution */
@@ -1395,7 +1428,10 @@ KxQueueReadyThread(IN PKTHREAD Thread,
     {
         /* Otherwise, prepare this thread to be deferred */
         Thread->State = DeferredReady;
+
+#if (NTDDI_VERSION < NTDDI_WINBLUE)
         Thread->DeferredProcessor = Prcb->Number;
+#endif
 
         /* Release the lock and defer scheduling */
         KiReleasePrcbLock(Prcb);
@@ -1426,8 +1462,11 @@ KiSelectReadyThread(IN KPRIORITY Priority,
     ASSERT((PrioritySet & PRIORITY_MASK(HighPriority)) != 0);
     HighPriority += Priority;
 
+    ASSERT(HighPriority < MAXIMUM_PRIORITY);
+    ASSERT(PRIORITY_MASK(HighPriority) & Prcb->ReadySummary);
+
     /* Make sure the list isn't empty at the highest priority */
-    ASSERT(IsListEmpty(&Prcb->DispatcherReadyListHead[HighPriority]) == FALSE);
+    ASSERT(!IsListEmpty(&Prcb->DispatcherReadyListHead[HighPriority]));
 
     /* Get the first thread on the list */
     ListEntry = Prcb->DispatcherReadyListHead[HighPriority].Flink;
@@ -1435,8 +1474,14 @@ KiSelectReadyThread(IN KPRIORITY Priority,
 
     /* Make sure this thread is here for a reason */
     ASSERT(HighPriority == Thread->Priority);
+#if 1 || (NTDDI_VERSION >= NTDDI_LONGHORN)
+    ASSERT(Thread->Affinity.Mask & AFFINITY_MASK(Prcb->Number)); // Thread->Affinity.Mask & Prcb->GroupSetMember
+    ASSERT(Thread->Affinity.Group == Prcb->Group);
+#else
     ASSERT(Thread->Affinity & AFFINITY_MASK(Prcb->Number));
+#endif
     ASSERT(Thread->NextProcessor == Prcb->Number);
+    ASSERT(Thread->NextProcessor >= 0);
 
     /* Remove it from the list */
     if (RemoveEntryList(&Thread->WaitListEntry))
@@ -1514,10 +1559,12 @@ _KeAcquireGuardedMutexUnsafe(IN OUT PKGUARDED_MUTEX GuardedMutex)
     PKTHREAD Thread = KeGetCurrentThread();
 
     /* Sanity checks */
+    ASSERT(GuardedMutex);
+    ASSERT(KeGetCurrentIrql() <= APC_LEVEL);
     ASSERT((KeGetCurrentIrql() == APC_LEVEL) ||
            (Thread->SpecialApcDisable < 0) ||
            (Thread->Teb == NULL) ||
-           (Thread->Teb >= (PTEB)MM_SYSTEM_RANGE_START));
+           ((ULONG_PTR)Thread->Teb >= (ULONG_PTR)MM_SYSTEM_RANGE_START));
     ASSERT(GuardedMutex->Owner != Thread);
 
     /* Remove the lock */
@@ -1541,7 +1588,7 @@ _KeReleaseGuardedMutexUnsafe(IN OUT PKGUARDED_MUTEX GuardedMutex)
     ASSERT((KeGetCurrentIrql() == APC_LEVEL) ||
            (KeGetCurrentThread()->SpecialApcDisable < 0) ||
            (KeGetCurrentThread()->Teb == NULL) ||
-           (KeGetCurrentThread()->Teb >= (PTEB)MM_SYSTEM_RANGE_START));
+           ((ULONG_PTR)KeGetCurrentThread()->Teb >= (ULONG_PTR)MM_SYSTEM_RANGE_START));
     ASSERT(GuardedMutex->Owner == KeGetCurrentThread());
 
     /* Destroy the Owner */

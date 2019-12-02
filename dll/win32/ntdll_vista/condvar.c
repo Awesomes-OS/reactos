@@ -349,19 +349,6 @@ InternalWake(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
     InternalUnlockCondVar(ConditionVariable, RemoveOnUnlockEntry);
 }
 
-VOID
-NTAPI
-RtlAcquireSRWLockExclusive(IN OUT PRTL_SRWLOCK SRWLock);
-VOID
-NTAPI
-RtlAcquireSRWLockShared(IN OUT PRTL_SRWLOCK SRWLock);
-VOID
-NTAPI
-RtlReleaseSRWLockExclusive(IN OUT PRTL_SRWLOCK SRWLock);
-VOID
-NTAPI
-RtlReleaseSRWLockShared(IN OUT PRTL_SRWLOCK SRWLock);
-
 static
 NTSTATUS
 InternalSleep(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
@@ -497,7 +484,7 @@ NTSTATUS
 NTAPI
 RtlSleepConditionVariableCS(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
                             IN OUT PRTL_CRITICAL_SECTION CriticalSection,
-                            IN const LARGE_INTEGER * TimeOut OPTIONAL)
+                            IN PLARGE_INTEGER TimeOut OPTIONAL)
 {
     return InternalSleep(ConditionVariable,
                          CriticalSection,
@@ -510,7 +497,7 @@ NTSTATUS
 NTAPI
 RtlSleepConditionVariableSRW(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
                              IN OUT PRTL_SRWLOCK SRWLock,
-                             IN const LARGE_INTEGER * TimeOut OPTIONAL,
+                             IN PLARGE_INTEGER TimeOut OPTIONAL,
                              IN ULONG Flags)
 {
     return InternalSleep(ConditionVariable,

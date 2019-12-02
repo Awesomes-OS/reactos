@@ -39,7 +39,10 @@ Author:
 #define OBJ_OPENLINK                            0x00000100L
 #define OBJ_KERNEL_HANDLE                       0x00000200L
 #define OBJ_FORCE_ACCESS_CHECK                  0x00000400L
-#define OBJ_VALID_ATTRIBUTES                    0x000007F2L
+// ref: https://github.com/googleprojectzero/sandbox-attacksurface-analysis-tools/blob/b4e252cd3b538d18a2510faf6e0c2ab0143c55a8/NtApiDotNet/ObjectAttributes.cs#L62
+#define OBJ_IGNORE_IMPERSONATED_DEVICEMAP       0x00000800L
+#define OBJ_DONT_REPARSE                        0x00001000L
+#define OBJ_VALID_ATTRIBUTES                    0x00001FF2L
 
 #define InitializeObjectAttributes(p,n,a,r,s) { \
     (p)->Length = sizeof(OBJECT_ATTRIBUTES);    \
@@ -191,9 +194,10 @@ typedef VOID
 typedef NTSTATUS
 (NTAPI *OB_OPEN_METHOD)(
     _In_ OB_OPEN_REASON Reason,
+    _In_ KPROCESSOR_MODE PreviousMode,
     _In_opt_ PEPROCESS Process,
     _In_ PVOID ObjectBody,
-    _In_ ACCESS_MASK GrantedAccess,
+    _In_ PACCESS_MASK GrantedAccess,
     _In_ ULONG HandleCount
 );
 

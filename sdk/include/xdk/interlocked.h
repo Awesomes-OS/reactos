@@ -17,6 +17,31 @@
 #define BitTestAndReset64 _bittestandreset64
 #endif /* _WIN64 */
 
+#ifdef _M_IX86
+
+#undef _InterlockedExchange64
+#define _InterlockedExchange64 _InlineInterlockedExchange64
+#undef _InterlockedAdd64
+#define _InterlockedAdd64 _InlineInterlockedAdd64
+#undef _InterlockedExchangeAdd64
+#define _InterlockedExchangeAdd64 _InlineInterlockedExchangeAdd64
+#undef _InterlockedAnd64
+#define _InterlockedAnd64 _InlineInterlockedAnd64
+#undef _InterlockedOr64
+#define _InterlockedOr64 _InlineInterlockedOr64
+#undef _InterlockedXor64
+#define _InterlockedXor64 _InlineInterlockedXor64
+#undef _InterlockedIncrement64
+#define _InterlockedIncrement64 _InlineInterlockedIncrement64
+#undef _InterlockedDecrement64
+#define _InterlockedDecrement64 _InlineInterlockedDecrement64
+#undef _InterlockedExchangePointer
+#define _InterlockedExchangePointer _InlineInterlockedExchangePointer
+#undef _InterlockedCompareExchangePointer
+#define _InterlockedCompareExchangePointer _InlineInterlockedCompareExchangePointer
+
+#endif
+
 #if defined(_M_ARM) || defined(_M_IA64)
 #define __ACQ_(x) x##_acq
 #define __REL_(x) x##_rel
@@ -303,7 +328,7 @@
 
 FORCEINLINE
 LONG64
-_InterlockedExchange64(
+_InlineInterlockedExchange64(
     _Inout_ _Interlocked_operand_ volatile LONG64 *Target,
     _In_ LONG64 Value)
 {
@@ -318,7 +343,7 @@ _InterlockedExchange64(
 
 FORCEINLINE
 LONG64
-_InterlockedAdd64(
+_InlineInterlockedAdd64(
     _Inout_ _Interlocked_operand_ volatile LONG64 *Target,
     _In_ LONG64 Value)
 {
@@ -334,7 +359,7 @@ _InterlockedAdd64(
 
 FORCEINLINE
 LONG64
-_InterlockedExchangeAdd64 (
+_InlineInterlockedExchangeAdd64(
     _Inout_ _Interlocked_operand_ volatile LONG64 *Target,
     _In_ LONG64 Value
     )
@@ -351,7 +376,7 @@ _InterlockedExchangeAdd64 (
 
 FORCEINLINE
 LONG64
-_InterlockedAnd64(
+_InlineInterlockedAnd64(
     _Inout_ _Interlocked_operand_ volatile LONG64 *Target,
     _In_ LONG64 Value)
 {
@@ -367,7 +392,7 @@ _InterlockedAnd64(
 
 FORCEINLINE
 LONG64
-_InterlockedOr64(
+_InlineInterlockedOr64(
     _Inout_ _Interlocked_operand_ volatile LONG64 *Target,
     _In_ LONG64 Value)
 {
@@ -383,7 +408,7 @@ _InterlockedOr64(
 
 FORCEINLINE
 LONG64
-_InterlockedXor64(
+_InlineInterlockedXor64(
     _Inout_ _Interlocked_operand_ volatile LONG64 *Target,
     _In_ LONG64 Value)
 {
@@ -399,7 +424,7 @@ _InterlockedXor64(
 
 FORCEINLINE
 LONG64
-_InterlockedIncrement64(
+_InlineInterlockedIncrement64(
     _Inout_ _Interlocked_operand_ volatile LONG64 *Target)
 {
     return _InterlockedAdd64(Target, 1);
@@ -407,18 +432,16 @@ _InterlockedIncrement64(
 
 FORCEINLINE
 LONG64
-_InterlockedDecrement64(
+_InlineInterlockedDecrement64(
     _Inout_ _Interlocked_operand_ volatile LONG64 *Target)
 {
     return _InterlockedAdd64(Target, -1);
 }
 
-#undef _InterlockedExchangePointer
-#define _InterlockedExchangePointer _InlineInterlockedExchangePointer
 FORCEINLINE
 _Ret_writes_(_Inexpressible_(Unknown))
 PVOID
-_InterlockedExchangePointer(
+_InlineInterlockedExchangePointer(
     _Inout_ _At_(*Destination, _Pre_writable_byte_size_(_Inexpressible_(Unknown))
         _Post_writable_byte_size_(_Inexpressible_(Unknown)))
         _Interlocked_operand_ volatile PVOID *Destination,
@@ -427,12 +450,10 @@ _InterlockedExchangePointer(
     return (PVOID)InterlockedExchange((volatile long *)Destination, (long)Value);
 }
 
-#undef _InterlockedCompareExchangePointer
-#define _InterlockedCompareExchangePointer _InlineInterlockedCompareExchangePointer
 FORCEINLINE
 _Ret_writes_(_Inexpressible_(Unknown))
 PVOID
-_InterlockedCompareExchangePointer(
+_InlineInterlockedCompareExchangePointer(
     _Inout_ _At_(*Destination, _Pre_writable_byte_size_(_Inexpressible_(Unknown))
         _Post_writable_byte_size_(_Inexpressible_(Unknown)))
         _Interlocked_operand_ volatile PVOID *Destination,

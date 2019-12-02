@@ -87,6 +87,12 @@ FatalListEntryError(
   UNREFERENCED_PARAMETER(P2);
   UNREFERENCED_PARAMETER(P3);
 
+#if defined(_IN_KERNEL_)
+  void NTAPI KiVBoxPrint(const char *s);
+
+  KiVBoxPrint("FatalListEntryError\n");
+#endif
+
   RtlFailFast(FAST_FAIL_CORRUPT_LIST_ENTRY);
 }
 

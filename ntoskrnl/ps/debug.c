@@ -350,7 +350,7 @@ NtGetContextThread(IN HANDLE ThreadHandle,
     if (!NT_SUCCESS(Status)) return Status;
 
     /* Make sure it's not a system thread */
-    if (Thread->SystemThread)
+    if (KiTestThreadSystemThreadFlag(&Thread->Tcb))
     {
         /* Fail */
         Status = STATUS_INVALID_HANDLE;
@@ -387,7 +387,7 @@ NtSetContextThread(IN HANDLE ThreadHandle,
     if (!NT_SUCCESS(Status)) return Status;
 
     /* Make sure it's not a system thread */
-    if (Thread->SystemThread)
+    if (KiTestThreadSystemThreadFlag(&Thread->Tcb))
     {
         /* Fail */
         Status = STATUS_INVALID_HANDLE;

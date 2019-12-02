@@ -13,8 +13,12 @@
 #include <ntoskrnl.h>
 #include <wmidata.h>
 #include <wmistr.h>
+
 #define NDEBUG
 #include <debug.h>
+
+#include <mm/ARM3/miarm.h>
+#include <intsafe.h>
 
 /* The maximum size of an environment value (in bytes) */
 #define MAX_ENVVAL_SIZE 1024
@@ -45,7 +49,7 @@ ExpConvertLdrModuleToRtlModule(IN ULONG ModuleCount,
     ModuleInfo->ImageBase = LdrEntry->DllBase;
     ModuleInfo->ImageSize = LdrEntry->SizeOfImage;
     ModuleInfo->Flags = LdrEntry->Flags;
-    ModuleInfo->LoadCount = LdrEntry->LoadCount;
+    ModuleInfo->LoadCount = min(LdrEntry->DdagNode->LoadCount, USHORT_MAX - 1);
     ModuleInfo->LoadOrderIndex = (USHORT)ModuleCount;
     ModuleInfo->InitOrderIndex = 0;
 
@@ -635,8 +639,12 @@ QSI_DEF(SystemBasicInformation)
     Sbi->AllocationGranularity = MM_VIRTMEM_GRANULARITY; /* hard coded on Intel? */
     Sbi->MinimumUserModeAddress = 0x10000; /* Top of 64k */
     Sbi->MaximumUserModeAddress = (ULONG_PTR)MmHighestUserAddress;
-    Sbi->ActiveProcessorsAffinityMask = KeActiveProcessors;
-    Sbi->NumberOfProcessors = KeNumberProcessors;
+
+    const UINT8 Group = KeGetCurrentPrcb()->Group;
+
+    Sbi->ActiveProcessorsAffinityMask = Group >= KeActiveProcessors.Count ? 0u : KeActiveProcessors.Bitmap[Group];
+    // todo: expose and use popcount directly?
+    Sbi->NumberOfProcessors = KeQueryActiveProcessorCountEx(Group);
 
     return STATUS_SUCCESS;
 }
@@ -695,6 +703,21 @@ QSI_DEF(SystemPerformanceInformation)
     Spi->IoReadOperationCount = IoReadOperationCount;
     Spi->IoWriteOperationCount = IoWriteOperationCount;
     Spi->IoOtherOperationCount = IoOtherOperationCount;
+
+    Spi->PageFaultCount = 0;
+    Spi->CopyOnWriteCount = 0;
+    Spi->TransitionCount = 0;
+    Spi->CacheTransitionCount = 0;
+    Spi->DemandZeroCount = 0;
+    Spi->PageReadCount = 0;
+    Spi->PageReadIoCount = 0;
+    Spi->CacheReadCount = 0;
+    Spi->CacheIoCount = 0;
+    Spi->DirtyPagesWriteCount = 0;
+    Spi->DirtyWriteIoCount = 0;
+    Spi->MappedPagesWriteCount = 0;
+    Spi->MappedWriteIoCount = 0;
+
     for (i = 0; i < KeNumberProcessors; i ++)
     {
         Prcb = KiProcessorBlock[i];
@@ -706,6 +729,20 @@ QSI_DEF(SystemPerformanceInformation)
             Spi->IoReadOperationCount += Prcb->IoReadOperationCount;
             Spi->IoWriteOperationCount += Prcb->IoWriteOperationCount;
             Spi->IoOtherOperationCount += Prcb->IoOtherOperationCount;
+
+            Spi->PageFaultCount += Prcb->MmPageFaultCount;
+            Spi->CopyOnWriteCount += Prcb->MmCopyOnWriteCount;
+            Spi->TransitionCount += Prcb->MmTransitionCount;
+            Spi->CacheTransitionCount += Prcb->MmCacheTransitionCount;
+            Spi->DemandZeroCount += Prcb->MmDemandZeroCount;
+            Spi->PageReadCount += Prcb->MmPageReadCount;
+            Spi->PageReadIoCount += Prcb->MmPageReadIoCount;
+            Spi->CacheReadCount += Prcb->MmCacheReadCount;
+            Spi->CacheIoCount += Prcb->MmCacheIoCount;
+            Spi->DirtyPagesWriteCount += Prcb->MmDirtyPagesWriteCount;
+            Spi->DirtyWriteIoCount += Prcb->MmDirtyWriteIoCount;
+            Spi->MappedPagesWriteCount += Prcb->MmMappedPagesWriteCount;
+            Spi->MappedWriteIoCount += Prcb->MmMappedWriteIoCount;
         }
     }
 
@@ -725,20 +762,7 @@ QSI_DEF(SystemPerformanceInformation)
      */
     Spi->CommitLimit = MmNumberOfPhysicalPages + MiFreeSwapPages + MiUsedSwapPages;
 
-    Spi->PeakCommitment = 0; /* FIXME */
-    Spi->PageFaultCount = 0; /* FIXME */
-    Spi->CopyOnWriteCount = 0; /* FIXME */
-    Spi->TransitionCount = 0; /* FIXME */
-    Spi->CacheTransitionCount = 0; /* FIXME */
-    Spi->DemandZeroCount = 0; /* FIXME */
-    Spi->PageReadCount = 0; /* FIXME */
-    Spi->PageReadIoCount = 0; /* FIXME */
-    Spi->CacheReadCount = 0; /* FIXME */
-    Spi->CacheIoCount = 0; /* FIXME */
-    Spi->DirtyPagesWriteCount = 0; /* FIXME */
-    Spi->DirtyWriteIoCount = 0; /* FIXME */
-    Spi->MappedPagesWriteCount = 0; /* FIXME */
-    Spi->MappedWriteIoCount = 0; /* FIXME */
+    Spi->PeakCommitment = MmPeakCommitment;
 
     Spi->PagedPoolPages = 0;
     Spi->NonPagedPoolPages = 0;
@@ -760,7 +784,7 @@ QSI_DEF(SystemPerformanceInformation)
 
     Spi->ResidentSystemCodePage = 0; /* FIXME */
 
-    Spi->TotalSystemDriverPages = 0; /* FIXME */
+    Spi->TotalSystemDriverPages = MmTotalSystemDriverPages;
     Spi->Spare3Count = 0; /* FIXME */
 
     Spi->ResidentSystemCachePage = MiMemoryConsumers[MC_CACHE].PagesUsed;
@@ -803,8 +827,8 @@ QSI_DEF(SystemPerformanceInformation)
     Spi->CcDataPages = CcDataPages;
 
     Spi->ContextSwitches = 0;
-    Spi->FirstLevelTbFills = 0;
-    Spi->SecondLevelTbFills = 0;
+    Spi->FirstLevelTbFills = 0; // pre-Vista only
+    Spi->SecondLevelTbFills = 0; // pre-Vista only
     Spi->SystemCalls = 0;
     for (i = 0; i < KeNumberProcessors; i ++)
     {
@@ -812,9 +836,12 @@ QSI_DEF(SystemPerformanceInformation)
         if (Prcb)
         {
             Spi->ContextSwitches += KeGetContextSwitches(Prcb);
+            Spi->SystemCalls += Prcb->KeSystemCalls;
+
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
             Spi->FirstLevelTbFills += Prcb->KeFirstLevelTbFills;
             Spi->SecondLevelTbFills += Prcb->KeSecondLevelTbFills;
-            Spi->SystemCalls += Prcb->KeSystemCalls;
+#endif
         }
     }
 
@@ -918,7 +945,7 @@ QSI_DEF(SystemProcessInformation)
             KeEnterCriticalRegion();
             ExAcquirePushLockShared(&Process->ProcessLock);
 
-            if ((Process->ProcessExiting) &&
+            if (PspTestProcessExitingFlag(Process) &&
                 (Process->Pcb.Header.SignalState) &&
                 !(Process->ActiveThreads) &&
                 (IsListEmpty(&Process->Pcb.ThreadListHead)))
@@ -1762,7 +1789,6 @@ QSI_DEF(SystemExceptionInformation)
 {
     PSYSTEM_EXCEPTION_INFORMATION ExceptionInformation =
         (PSYSTEM_EXCEPTION_INFORMATION)Buffer;
-    PKPRCB Prcb;
     ULONG AlignmentFixupCount = 0, ExceptionDispatchCount = 0;
     ULONG FloatingEmulationCount = 0, ByteWordEmulationCount = 0;
     CHAR i;
@@ -1774,14 +1800,14 @@ QSI_DEF(SystemExceptionInformation)
     /* Sum up exception count information from all processors */
     for (i = 0; i < KeNumberProcessors; i++)
     {
-        Prcb = KiProcessorBlock[i];
+        PKPRCB Prcb = KiProcessorBlock[i];
         if (Prcb)
         {
             AlignmentFixupCount += Prcb->KeAlignmentFixupCount;
             ExceptionDispatchCount += Prcb->KeExceptionDispatchCount;
-#ifndef _M_ARM
+#if (NTDDI_VERSION < NTDDI_LONGHORN) && !defined(_M_ARM)
             FloatingEmulationCount += Prcb->KeFloatingEmulationCount;
-#endif // _M_ARM
+#endif
         }
     }
 
@@ -2359,12 +2385,13 @@ SSI_DEF(SystemLoadGdiDriverInSystemSpaceInformation)
 /* Class 55 - NUMA processor information  */
 QSI_DEF(SystemNumaProcessorMap)
 {
-    ULONG MaxEntries, Node;
+    ULONG MaxEntries;
     PSYSTEM_NUMA_INFORMATION NumaInformation = (PSYSTEM_NUMA_INFORMATION)Buffer;
 
     /* Validate input size */
     if (Size < sizeof(ULONG))
     {
+        if (ReqSize) *ReqSize = sizeof(ULONG);
         return STATUS_INFO_LENGTH_MISMATCH;
     }
 
@@ -2372,7 +2399,7 @@ QSI_DEF(SystemNumaProcessorMap)
     NumaInformation->HighestNodeNumber = KeNumberNodes - 1;
 
     /* Compute how much entries we will be able to put in output structure */
-    MaxEntries = (Size - FIELD_OFFSET(SYSTEM_NUMA_INFORMATION, ActiveProcessorsAffinityMask)) / sizeof(ULONGLONG);
+    MaxEntries = (Size - FIELD_OFFSET(SYSTEM_NUMA_INFORMATION, ActiveProcessorsGroupAffinity)) / sizeof(ULONGLONG);
     /* Make sure we don't overflow KeNodeBlock */
     if (MaxEntries > KeNumberNodes)
     {
@@ -2380,17 +2407,17 @@ QSI_DEF(SystemNumaProcessorMap)
     }
 
     /* If we have entries to write, and room for it */
-    if (Size >= FIELD_OFFSET(SYSTEM_NUMA_INFORMATION, ActiveProcessorsAffinityMask) &&
+    if (Size >= FIELD_OFFSET(SYSTEM_NUMA_INFORMATION, ActiveProcessorsGroupAffinity) &&
         MaxEntries != 0)
     {
         /* Already set size we return */
-        *ReqSize = FIELD_OFFSET(SYSTEM_NUMA_INFORMATION, ActiveProcessorsAffinityMask) +
+        *ReqSize = FIELD_OFFSET(SYSTEM_NUMA_INFORMATION, ActiveProcessorsGroupAffinity) +
                    MaxEntries * sizeof(ULONGLONG);
 
         /* For each node, return processor mask */
-        for (Node = 0; Node < MaxEntries; ++Node)
+        for (ULONG Node = 0; Node < MaxEntries; ++Node)
         {
-            NumaInformation->ActiveProcessorsAffinityMask[Node] = KeNodeBlock[Node]->ProcessorMask;
+            KeQueryNodeActiveAffinity(Node, &NumaInformation->ActiveProcessorsGroupAffinity[Node], NULL);
         }
     }
     else
@@ -2631,38 +2658,120 @@ QSI_DEF(SystemObjectSecurityMode)
     return STATUS_SUCCESS;
 }
 
-/* Class 73 - Logical processor information  */
-QSI_DEF(SystemLogicalProcessorInformation)
+NTSTATUS
+NTAPI
+KeBuildLogicalProcessorSystemInformation(
+    const UINT8 TargetGroup,
+    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION CurrentInfo,
+    const ULONG Size,
+    const PULONG SizeOut
+)
 {
-    LONG i;
-    PKPRCB Prcb;
-    KAFFINITY CurrentProc;
     NTSTATUS Status = STATUS_SUCCESS;
-    ULONG DataSize = 0, ProcessorFlags;
-    PSYSTEM_LOGICAL_PROCESSOR_INFORMATION CurrentInfo;
+    ULONG DataSize = 0;
 
-    /* First, browse active processors, thanks to the map */
-    i = 0;
-    CurrentInfo = Buffer;
-    CurrentProc = KeActiveProcessors;
-    do
+    GROUP_AFFINITY GroupAffinity = { 0 };
+    GroupAffinity.Group = TargetGroup;
+
+    for (ULONG_PTR i = 0; i < KeNumberProcessors_0; ++i)
     {
-        /* If current processor is active and is main in case of HT/MC, return it */
-        Prcb = KiProcessorBlock[i];
-        if ((CurrentProc & 1) &&
-            Prcb == Prcb->MultiThreadSetMaster)
+        PKPRCB Prcb = KiProcessorBlock[i];
+
+        // Is the processor "master" in case of HT/MC?
+        if (Prcb->Group != TargetGroup)
         {
-            /* Assume processor can do HT or multicore */
-            ProcessorFlags = 1;
+            continue;
+        }
 
-            /* If set is the same for PRCB and multithread, then
-             * actually, the processor is single core
-             */
-            if (Prcb->SetMember == Prcb->MultiThreadProcessorSet)
+        GroupAffinity.Mask = Prcb->PackageProcessorSet.Bitmap[GroupAffinity.Group];
+
+        if (Prcb->Number == KeFindFirstSetLeftGroupAffinity(&GroupAffinity))
+        {
+            /* Check we have enough room to return */
+            DataSize += sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+
+            if (DataSize > Size)
             {
-                ProcessorFlags = 0;
+                Status = STATUS_INFO_LENGTH_MISMATCH;
             }
+            else
+            {
+                /* Zero output and return */
+                RtlZeroMemory(CurrentInfo, sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+                CurrentInfo->ProcessorMask = GroupAffinity.Mask;
 
+                CurrentInfo->Relationship = RelationProcessorPackage;
+
+                ++CurrentInfo;
+            }
+        }
+
+        GroupAffinity.Mask = Prcb->CoreProcessorSet;
+
+        if (Prcb->Number == KeFindFirstSetLeftGroupAffinity(&GroupAffinity))
+        {
+            /* Check we have enough room to return */
+            DataSize += sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+
+            if (DataSize > Size)
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+            }
+            else
+            {
+                /* Zero output and return */
+                RtlZeroMemory(CurrentInfo, sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+                CurrentInfo->ProcessorMask = GroupAffinity.Mask;
+
+                CurrentInfo->Relationship = RelationProcessorCore;
+
+                //
+                // If set is the same for PRCB and multithread, then
+                // actually, the processor is single core
+                //
+                CurrentInfo->ProcessorCore.Flags = GroupAffinity.Mask != Prcb->GroupSetMember;
+
+                ++CurrentInfo;
+            }
+        }
+
+        for (ULONG j = 0; j < Prcb->CacheCount; ++j)
+        {
+            const PCACHE_DESCRIPTOR CacheDescriptor = Prcb->Cache + j;
+            const KAFFINITY Mask = Prcb->CacheProcessorMask[j];
+
+            GroupAffinity.Mask = Mask ? Mask : Prcb->GroupSetMember;
+
+            if (!Mask || Prcb->Number == KeFindFirstSetLeftGroupAffinity(&GroupAffinity))
+            {
+                /* Check we have enough room to return */
+                DataSize += sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+
+                if (DataSize > Size)
+                {
+                    Status = STATUS_INFO_LENGTH_MISMATCH;
+                }
+                else
+                {
+                    /* Zero output and return */
+                    RtlZeroMemory(CurrentInfo, sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+                    CurrentInfo->ProcessorMask = GroupAffinity.Mask;
+
+                    CurrentInfo->Relationship = RelationCache;
+
+                    CurrentInfo->Cache = *CacheDescriptor;
+
+                    ++CurrentInfo;
+                }
+            }
+        }
+    }
+
+    /* Now, return the NUMA nodes */
+    for (UINT16 i = 0; i < KeNumberNodes; ++i)
+    {
+        if (KeNodeBlock[i]->Affinity.Mask && KeNodeBlock[i]->Affinity.Group == TargetGroup)
+        {
             /* Check we have enough room to return */
             DataSize += sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
             if (DataSize > Size)
@@ -2673,44 +2782,40 @@ QSI_DEF(SystemLogicalProcessorInformation)
             {
                 /* Zero output and return */
                 RtlZeroMemory(CurrentInfo, sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-                CurrentInfo->ProcessorMask = Prcb->MultiThreadProcessorSet;
+                CurrentInfo->ProcessorMask = KeNodeBlock[i]->Affinity.Mask;
 
-                /* Processor core needs 1 if HT/MC is supported */
-                CurrentInfo->Relationship = RelationProcessorCore;
-                CurrentInfo->ProcessorCore.Flags = ProcessorFlags;
+                /* NUMA node needs its ID */
+                CurrentInfo->Relationship = RelationNumaNode;
+                CurrentInfo->NumaNode.NodeNumber = i;
                 ++CurrentInfo;
             }
         }
-
-        /* Move to the next proc */
-        CurrentProc >>= 1;
-        ++i;
-    /* Loop while there's someone in the bitmask */
-    } while (CurrentProc != 0);
-
-    /* Now, return the NUMA nodes */
-    for (i = 0; i < KeNumberNodes; ++i)
-    {
-        /* Check we have enough room to return */
-        DataSize += sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
-        if (DataSize > Size)
-        {
-            Status = STATUS_INFO_LENGTH_MISMATCH;
-        }
-        else
-        {
-            /* Zero output and return */
-            RtlZeroMemory(CurrentInfo, sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-            CurrentInfo->ProcessorMask = KeActiveProcessors;
-
-            /* NUMA node needs its ID */
-            CurrentInfo->Relationship = RelationNumaNode;
-            CurrentInfo->NumaNode.NodeNumber = i;
-            ++CurrentInfo;
-        }
     }
 
-    *ReqSize = DataSize;
+    *SizeOut = DataSize;
+
+    return Status;
+}
+
+/* Class 73 - Logical processor information  */
+QSI_DEF(SystemLogicalProcessorInformation)
+{
+    PROCESSOR_NUMBER ProcNumber;
+
+    // todo: Win7+:
+    // Ideally this should be in user-mode KERNELBASE routine, calling RtlGetCurrentProcessorNumberEx.
+    // Then, using NtQSIEx and passing the Group USHORT as an input buffer.
+    NTSTATUS Status = NtGetCurrentProcessorNumberEx(&ProcNumber);
+;
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    Status = KeBuildLogicalProcessorSystemInformation(
+        ProcNumber.Group,
+        Buffer,
+        Size,
+        ReqSize
+    );
 
     return Status;
 }
@@ -2815,6 +2920,45 @@ QSI_DEF(SystemFirmwareTableInformation)
     return Status;
 }
 
+/* Class 80 - System Memory Lists information  */
+QSI_DEF(SystemMemoryListInformation)
+{
+    const PSYSTEM_MEMORY_LIST_INFORMATION memoryLists = (PSYSTEM_MEMORY_LIST_INFORMATION)Buffer;
+    DPRINT("NtQuerySystemInformation - SystemMemoryListInformation\n");
+
+    /* Set initial required buffer size */
+    /* ModifiedPageCountPageFile was introduced somewhere after Windows 7,
+     * but apps can still require the old size. */
+    *ReqSize = sizeof(SYSTEM_MEMORY_LIST_INFORMATION);
+
+    /* Check user's buffer size */
+    if (Size < (*ReqSize - sizeof(SIZE_T)))
+    {
+        DPRINT1("NtQuerySystemInformation - SystemMemoryListInformation - size mismatch\n");
+        return STATUS_INFO_LENGTH_MISMATCH;
+    }
+
+    return MmQueryMemoryListInformation(memoryLists, Size);
+}
+
+SSI_DEF(SystemMemoryListInformation)
+{
+    /* Validate size (see QSI_DEF for notes regarding this comparison) */
+    if (Size < sizeof(SYSTEM_MEMORY_LIST_INFORMATION)-sizeof(SIZE_T))
+    {
+        /* Incorrect length, fail */
+        return STATUS_INFO_LENGTH_MISMATCH;
+    }
+
+    DPRINT1("NtSetSystemInformation - SystemMemoryListInformation not implemented\n");
+
+    /* 
+     * Supported by NT (e.g. https://www.codeproject.com/tips/858673/empty-standby-list-in-windows)
+     * Not implemented for now
+     */
+    return STATUS_NOT_IMPLEMENTED;
+}
+
 /* Query/Set Calls Table */
 typedef
 struct _QSSI_CALLS
@@ -2914,6 +3058,10 @@ CallQS [] =
     SI_XX(SystemWow64SharedInformation), /* FIXME: not implemented */
     SI_XX(SystemRegisterFirmwareTableInformationHandler), /* FIXME: not implemented */
     SI_QX(SystemFirmwareTableInformation),
+    SI_XX(SystemModuleInformationEx), /* FIXME: not implemented */
+    SI_XX(SystemVerifierTriageInformation), /* FIXME: not implemented */
+    SI_XX(SystemSuperfetchInformation), /* FIXME: not implemented */
+    SI_QS(SystemMemoryListInformation)
 };
 
 C_ASSERT(SystemBasicInformation == 0);
@@ -3057,7 +3205,33 @@ NTAPI
 NtGetCurrentProcessorNumber(VOID)
 {
     /* Just use Ke */
+    // todo (andrew.boyarshin): verify validity on Win7+ (Prcb?)
     return KeGetCurrentProcessorNumber();
+}
+
+NTSTATUS
+NTAPI
+NtGetCurrentProcessorNumberEx(PPROCESSOR_NUMBER ProcNumber)
+{
+    if (KeGetPreviousMode() != KernelMode)
+    {
+        _SEH2_TRY
+        {
+            ProbeForWrite(ProcNumber, sizeof(*ProcNumber), 1u);
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            _SEH2_YIELD(return _SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+    }
+
+    const PKPRCB Prcb = KeGetCurrentPrcb();
+    ProcNumber->Group = Prcb->Group;
+    ProcNumber->Number = Prcb->GroupIndex;
+    ProcNumber->Reserved = 0;
+
+    return STATUS_SUCCESS;
 }
 
 #undef ExGetPreviousMode

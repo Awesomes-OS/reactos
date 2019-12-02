@@ -1,5 +1,5 @@
-@ stdcall -stub -version=0x600+ AcquireSRWLockExclusive(ptr) NTDLL.RtlAcquireSRWLockExclusive
-@ stdcall -stub -version=0x600+ AcquireSRWLockShared(ptr) NTDLL.RtlAcquireSRWLockShared
+@ stdcall -stub AcquireSRWLockExclusive(ptr) kernel32_vista.AcquireSRWLockExclusive
+@ stdcall -stub AcquireSRWLockShared(ptr) kernel32_vista.AcquireSRWLockShared
 @ stdcall ActivateActCtx(ptr ptr)
 @ stdcall AddAtomA(str)
 @ stdcall AddAtomW(wstr)
@@ -51,7 +51,6 @@
 @ stdcall BuildCommDCBW(wstr ptr)
 @ stdcall CallNamedPipeA(str ptr long ptr long ptr long)
 @ stdcall CallNamedPipeW(wstr ptr long ptr long ptr long)
-@ stdcall -stub -version=0x600+ CallbackMayRunLong(ptr)
 @ stdcall CancelDeviceWakeupRequest(long)
 @ stdcall CancelIo(long)
 @ stdcall -stub -version=0x600+ CancelIoEx(ptr ptr)
@@ -85,7 +84,7 @@
 @ stdcall -stub -version=0x600+ CompareCalendarDates(ptr ptr ptr)
 @ stdcall CompareFileTime(ptr ptr)
 @ stdcall CompareStringA(long long str long str long)
-@ stdcall -version=0x600+ CompareStringEx(wstr long wstr long wstr long ptr ptr ptr)
+@ stdcall CompareStringEx(wstr long wstr long wstr long ptr ptr ptr)
 @ stdcall -stub -version=0x600+ CompareStringOrdinal(wstr long wstr long long)
 @ stdcall CompareStringW(long long wstr long wstr long)
 @ stdcall ConnectNamedPipe(long ptr)
@@ -143,8 +142,6 @@
 @ stdcall CreateMailslotW(ptr long long ptr)
 @ stdcall CreateMemoryResourceNotification(long)
 @ stdcall CreateMutexA(ptr long str)
-@ stdcall -stub -version=0x600+ CreateMutexExA(ptr str long long)
-@ stdcall -stub -version=0x600+ CreateMutexExW(ptr wstr long long)
 @ stdcall CreateMutexW(ptr long wstr)
 @ stdcall CreateNamedPipeA(str long long long long long long ptr)
 @ stdcall CreateNamedPipeW(wstr long long long long long long ptr)
@@ -168,12 +165,6 @@
 @ stdcall -version=0x600+ CreateSymbolicLinkW(wstr wstr long)
 @ stdcall CreateTapePartition(long long long long)
 @ stdcall CreateThread(ptr long ptr long long ptr)
-@ stub -version=0x600+ CreateThreadpool
-@ stub -version=0x600+ CreateThreadpoolCleanupGroup
-@ stub -version=0x600+ CreateThreadpoolIo
-@ stub -version=0x600+ CreateThreadpoolTimer
-@ stub -version=0x600+ CreateThreadpoolWait
-@ stub -version=0x600+ CreateThreadpoolWork
 @ stdcall CreateTimerQueue ()
 @ stdcall CreateTimerQueueTimer(ptr long ptr ptr long long long)
 @ stdcall CreateToolhelp32Snapshot(long long)
@@ -265,8 +256,8 @@
 @ stdcall EnumerateLocalComputerNamesW(ptr long wstr ptr)
 @ stdcall EraseTape(ptr long long)
 @ stdcall EscapeCommFunction(long long)
-@ stdcall ExitProcess(long) ; FIXME: ntdll.RtlExitUserProcess
-@ stdcall ExitThread(long) ; FIXME: ntdll.RtlExitUserThread
+@ stdcall ExitProcess(long)
+@ stdcall ExitThread(long)
 @ stdcall ExitVDM(long long)
 @ stdcall ExpandEnvironmentStringsA(str ptr long)
 @ stdcall ExpandEnvironmentStringsW(wstr ptr long)
@@ -472,7 +463,7 @@
 @ stdcall GetFileAttributesW(wstr)
 @ stub -version=0x600+ GetFileBandwidthReservation
 @ stdcall GetFileInformationByHandle(long ptr)
-@ stub -version=0x600+ GetFileInformationByHandleEx
+@ stdcall -stub GetFileInformationByHandleEx(long long ptr long) kernel32_vista.GetFileInformationByHandleEx
 @ stub -version=0x600+ GetFileMUIInfo
 @ stub -version=0x600+ GetFileMUIPath
 @ stdcall GetFileSize(long ptr)
@@ -533,7 +524,9 @@
 @ stdcall GetNumaAvailableMemoryNode(long ptr)
 @ stdcall GetNumaHighestNodeNumber(ptr)
 @ stdcall GetNumaNodeProcessorMask(long ptr)
+@ stdcall GetNumaNodeProcessorMaskEx(long ptr)
 @ stdcall GetNumaProcessorNode(long ptr)
+@ stdcall GetNumaProcessorNodeEx(ptr ptr)
 @ stub -version=0x600+ GetNumaProximityNode
 @ stdcall GetNumberFormatA(long long str ptr ptr long)
 @ stdcall -version=0x600+ GetNumberFormatEx(wstr long wstr ptr wstr long)
@@ -592,7 +585,7 @@
 @ stub -version=0x600+ GetSystemDEPPolicy
 @ stdcall GetSystemDefaultLCID()
 @ stdcall GetSystemDefaultLangID()
-@ stub -version=0x600+ GetSystemDefaultLocaleName
+@ stdcall GetSystemDefaultLocaleName(ptr long)
 @ stdcall GetSystemDefaultUILanguage()
 @ stdcall GetSystemDirectoryA(ptr long)
 @ stdcall GetSystemDirectoryW(ptr long)
@@ -630,7 +623,7 @@
 @ stdcall GetThreadTimes(long ptr ptr ptr ptr)
 @ stub -version=0x600+ GetThreadUILanguage
 @ stdcall GetTickCount()
-@ stub -version=0x600+ GetTickCount64
+@ stdcall -stub -ret64 GetTickCount64() kernel32_vista.GetTickCount64
 @ stdcall GetTimeFormatA(long long ptr str ptr long)
 @ stdcall -version=0x600+ GetTimeFormatEx(wstr long ptr wstr wstr long)
 @ stdcall GetTimeFormatW(long long ptr wstr ptr long)
@@ -709,15 +702,15 @@
 @ stdcall InitAtomTable(long)
 @ stub -version=0x600+ InitOnceBeginInitialize
 @ stub -version=0x600+ InitOnceComplete
-@ stub -version=0x600+ InitOnceExecuteOnce
+@ stdcall -stub InitOnceExecuteOnce(ptr ptr ptr ptr) kernel32_vista.InitOnceExecuteOnce
 @ stub -version=0x600+ InitOnceInitialize
-@ stub -version=0x600+ InitializeConditionVariable
+@ stdcall -stub InitializeConditionVariable(ptr) kernel32_vista.InitializeConditionVariable
 @ stdcall InitializeCriticalSection(ptr)
 @ stdcall InitializeCriticalSectionAndSpinCount(ptr long)
-@ stub -version=0x600+ InitializeCriticalSectionEx
+@ stdcall -stub InitializeCriticalSectionEx(ptr long long) kernel32_vista.InitializeCriticalSectionEx
 @ stub -version=0x600+ InitializeProcThreadAttributeList
 @ stdcall InitializeSListHead(ptr) ntdll.RtlInitializeSListHead
-@ stub -version=0x600+ InitializeSRWLock
+@ stdcall -stub InitializeSRWLock(ptr) kernel32_vista.InitializeSRWLock
 @ stdcall -arch=i386 -ret64 InterlockedCompareExchange64(ptr double double) ntdll.RtlInterlockedCompareExchange64
 @ stdcall -arch=i386 InterlockedCompareExchange (ptr long long)
 @ stdcall -arch=i386 InterlockedDecrement(ptr)
@@ -747,16 +740,17 @@
 @ stdcall IsProcessInJob(long long ptr)
 @ stdcall IsProcessorFeaturePresent(long)
 @ stdcall IsSystemResumeAutomatic()
-@ stub -version=0x600+ IsThreadAFiber
-@ stub -version=0x600+ IsThreadpoolTimerSet
+@ stdcall IsThreadAFiber()
+@ stdcall IsThreadpoolTimerSet(ptr) ntdll.TpIsTimerSet
 @ stdcall IsTimeZoneRedirectionEnabled()
 @ stub -version=0x600+ IsValidCalDateTime
 @ stdcall IsValidCodePage(long)
 @ stdcall IsValidLanguageGroup(long long)
 @ stdcall IsValidLocale(long long)
+@ stdcall IsValidLocaleName(wstr)
 @ stdcall -version=0x501-0x502 IsValidUILanguage(long)
 @ stdcall IsWow64Process(ptr ptr)
-@ stub -version=0x600+ LCIDToLocaleName
+@ stdcall LCIDToLocaleName(long ptr long long)
 @ stdcall LCMapStringA(long long str long ptr long)
 @ stdcall -version=0x600+ LCMapStringEx(long long wstr long ptr long ptr ptr long)
 @ stdcall LCMapStringW(long long wstr long ptr long)
@@ -792,7 +786,7 @@
 @ stdcall LocalShrink(long long)
 @ stdcall LocalSize(long)
 @ stdcall LocalUnlock(long)
-@ stub -version=0x600+ LocaleNameToLCID
+@ stdcall LocaleNameToLCID(wstr long)
 @ stdcall LockFile(long long long long long)
 @ stdcall LockFileEx(long long long long long ptr)
 @ stdcall LockResource(long)
@@ -912,8 +906,8 @@
 @ stdcall ReleaseActCtx(ptr)
 @ stdcall ReleaseMutex(long)
 @ stub -version=0x600+ ReleaseMutexWhenCallbackReturns
-@ stub -version=0x600+ ReleaseSRWLockExclusive
-@ stub -version=0x600+ ReleaseSRWLockShared
+@ stdcall -stub ReleaseSRWLockExclusive(ptr) kernel32_vista.ReleaseSRWLockExclusive
+@ stdcall -stub ReleaseSRWLockShared(ptr) kernel32_vista.ReleaseSRWLockShared
 @ stdcall ReleaseSemaphore(long long ptr)
 @ stub -version=0x600+ ReleaseSemaphoreWhenCallbackReturns
 @ stdcall RemoveDirectoryA(str)
@@ -1080,10 +1074,6 @@
 @ stdcall SetThreadPriorityBoost(long long)
 @ stdcall SetThreadStackGuarantee(ptr)
 @ stdcall SetThreadUILanguage(long)
-@ stub -version=0x600+ SetThreadpoolThreadMaximum
-@ stub -version=0x600+ SetThreadpoolThreadMinimum
-@ stub -version=0x600+ SetThreadpoolTimer
-@ stub -version=0x600+ SetThreadpoolWait
 @ stdcall SetTimeZoneInformation(ptr)
 @ stdcall SetTimerQueueTimer(long ptr ptr long long long)
 @ stdcall SetUnhandledExceptionFilter(ptr)
@@ -1099,8 +1089,8 @@
 @ stdcall SignalObjectAndWait(long long long long)
 @ stdcall SizeofResource(long long)
 @ stdcall Sleep(long)
-@ stub -version=0x600+ SleepConditionVariableCS
-@ stub -version=0x600+ SleepConditionVariableSRW
+@ stdcall -stub SleepConditionVariableCS(ptr ptr long) kernel32_vista.SleepConditionVariableCS
+@ stdcall -stub SleepConditionVariableSRW(ptr ptr long long) kernel32_vista.SleepConditionVariableSRW
 @ stdcall SleepEx(long long)
 @ stub -version=0x600+ StartThreadpoolIo
 @ stub -version=0x600+ SubmitThreadpoolWork
@@ -1123,7 +1113,6 @@
 @ stdcall TransactNamedPipe(long ptr long ptr long ptr ptr)
 @ stdcall TransmitCommChar(long long)
 @ stdcall TryEnterCriticalSection(ptr) ntdll.RtlTryEnterCriticalSection
-@ stub -version=0x600+ TrySubmitThreadpoolCallback
 @ stdcall TzSpecificLocalTimeToSystemTime(ptr ptr ptr)
 @ stdcall UTRegister(long str str str ptr ptr ptr)
 @ stdcall UTUnRegister(long)
@@ -1175,8 +1164,8 @@
 @ stub -version=0x600+ WaitForThreadpoolWorkCallbacks
 @ stdcall WaitNamedPipeA (str long)
 @ stdcall WaitNamedPipeW (wstr long)
-@ stub -version=0x600+ WakeAllConditionVariable
-@ stub -version=0x600+ WakeConditionVariable
+@ stdcall -stub WakeAllConditionVariable(ptr) kernel32_vista.WakeAllConditionVariable
+@ stdcall -stub WakeConditionVariable(ptr) kernel32_vista.WakeConditionVariable
 @ stub -version=0x600+ WerGetFlags
 @ stub -version=0x600+ WerRegisterFile
 @ stub -version=0x600+ WerRegisterMemoryBlock
@@ -1262,3 +1251,101 @@
 ;@ stdcall -arch=x86_64 uaw_wcsicmp(wstr wstr)
 ;@ stdcall -arch=x86_64 uaw_wcslen(wstr)
 ;@ stdcall -arch=x86_64 uaw_wcsrchr(wstr long)
+@ stdcall -stub WerRegisterFile(wstr long long) kernel32_vista.WerRegisterFile
+@ stdcall -stub WerRegisterMemoryBlock(ptr long) kernel32_vista.WerRegisterMemoryBlock
+@ stdcall -stub WerRegisterRuntimeExceptionModule(wstr ptr) kernel32_vista.WerRegisterRuntimeExceptionModule
+@ stdcall -stub WerSetFlags(long) kernel32_vista.WerSetFlags
+@ stdcall -stub WerUnregisterFile(wstr) kernel32_vista.WerUnregisterFile
+@ stdcall -stub WerUnregisterMemoryBlock(ptr) kernel32_vista.WerUnregisterMemoryBlock
+@ stdcall -stub WerUnregisterRuntimeExceptionModule(wstr ptr) kernel32_vista.WerUnregisterRuntimeExceptionModule
+@ stdcall -stub FlushProcessWriteBuffers() kernel32_vista.FlushProcessWriteBuffers
+@ stdcall -stub CallbackMayRunLong(ptr) kernel32_vista.CallbackMayRunLong
+@ stdcall -stub CreateThreadpool(ptr) kernel32_vista.CreateThreadpool
+@ stdcall -stub CreateThreadpoolCleanupGroup() kernel32_vista.CreateThreadpoolCleanupGroup
+@ stdcall -stub CreateThreadpoolIo(ptr ptr ptr ptr) kernel32_vista.CreateThreadpoolIo
+@ stdcall -stub CreateThreadpoolTimer(ptr ptr ptr) kernel32_vista.CreateThreadpoolTimer
+@ stdcall -stub CreateThreadpoolWait(ptr ptr ptr) kernel32_vista.CreateThreadpoolWait
+@ stdcall -stub CreateThreadpoolWork(ptr ptr ptr) kernel32_vista.CreateThreadpoolWork
+@ stdcall -stub SetThreadpoolThreadMaximum(ptr long) kernel32_vista.SetThreadpoolThreadMaximum
+@ stdcall -stub SetThreadpoolThreadMinimum(ptr long) kernel32_vista.SetThreadpoolThreadMinimum
+@ stdcall -stub SetThreadpoolTimer(ptr ptr long long) kernel32_vista.SetThreadpoolTimer
+@ stdcall -stub SetThreadpoolWait(ptr long ptr) kernel32_vista.SetThreadpoolWait
+@ stdcall -stub TrySubmitThreadpoolCallback(ptr ptr ptr) kernel32_vista.TrySubmitThreadpoolCallback
+@ stdcall -stub CloseThreadpool(ptr) kernel32_vista.CloseThreadpool
+@ stdcall -stub CloseThreadpoolCleanupGroup(ptr) kernel32_vista.CloseThreadpoolCleanupGroup
+@ stdcall -stub CloseThreadpoolCleanupGroupMembers(ptr long ptr) kernel32_vista.CloseThreadpoolCleanupGroupMembers
+@ stdcall -stub CloseThreadpoolTimer(ptr) kernel32_vista.CloseThreadpoolTimer
+@ stdcall -stub CloseThreadpoolWait(ptr) kernel32_vista.CloseThreadpoolWait
+@ stdcall -stub CloseThreadpoolWork(ptr) kernel32_vista.CloseThreadpoolWork
+@ stdcall -stub CreateMutexExA(ptr str long long) kernel32_vista.CreateMutexExA
+@ stdcall -stub CreateMutexExW(ptr wstr long long) kernel32_vista.CreateMutexExW
+@ stdcall BaseSetLastNTError(long)
+@ stdcall BaseFormatObjectAttributes(ptr ptr ptr)
+@ stdcall RaiseFailFastException(ptr ptr long)
+@ stdcall SetThreadIdealProcessorEx(long ptr ptr)
+@ stdcall GetThreadIdealProcessorEx(long ptr)
+@ stdcall SetThreadGroupAffinity(long ptr ptr)
+@ stdcall GetThreadGroupAffinity(long ptr)
+
+@ stdcall -stub RegCloseKey(long) advapi32.RegCloseKey
+@ stdcall -stub RegConnectRegistryA(str long ptr) advapi32.RegConnectRegistryA
+@ stdcall -stub RegConnectRegistryExA(str long long ptr) advapi32.RegConnectRegistryExA
+@ stdcall -stub RegConnectRegistryExW(wstr long long ptr) advapi32.RegConnectRegistryExW
+@ stdcall -stub RegConnectRegistryW(wstr long ptr) advapi32.RegConnectRegistryW
+@ stdcall -stub RegCreateKeyA(long str ptr) advapi32.RegCreateKeyA
+@ stdcall -stub RegCreateKeyExA(long str long ptr long long ptr ptr ptr) advapi32.RegCreateKeyExA
+@ stdcall -stub RegCreateKeyExW(long wstr long ptr long long ptr ptr ptr) advapi32.RegCreateKeyExW
+@ stdcall -stub RegCreateKeyW(long wstr ptr) advapi32.RegCreateKeyW
+@ stdcall -stub RegDeleteKeyA(long str) advapi32.RegDeleteKeyA
+@ stdcall -stub RegDeleteKeyExA(long str long long) advapi32.RegDeleteKeyExA
+@ stdcall -stub RegDeleteKeyExW(long wstr long long) advapi32.RegDeleteKeyExW
+@ stdcall -stub RegDeleteKeyW(long wstr) advapi32.RegDeleteKeyW
+@ stdcall -stub RegDeleteValueA(long str) advapi32.RegDeleteValueA
+@ stdcall -stub RegDeleteValueW(long wstr) advapi32.RegDeleteValueW
+@ stdcall -stub RegDisablePredefinedCache() advapi32.RegDisablePredefinedCache
+@ stdcall -stub RegDisableReflectionKey(ptr) advapi32.RegDisableReflectionKey
+@ stdcall -stub RegEnableReflectionKey(ptr) advapi32.RegEnableReflectionKey
+@ stdcall -stub RegEnumKeyA(long long ptr long) advapi32.RegEnumKeyA
+@ stdcall -stub RegEnumKeyExA(long long ptr ptr ptr ptr ptr ptr) advapi32.RegEnumKeyExA
+@ stdcall -stub RegEnumKeyExW(long long ptr ptr ptr ptr ptr ptr) advapi32.RegEnumKeyExW
+@ stdcall -stub RegEnumKeyW(long long ptr long) advapi32.RegEnumKeyW
+@ stdcall -stub RegEnumValueA(long long ptr ptr ptr ptr ptr ptr) advapi32.RegEnumValueA
+@ stdcall -stub RegEnumValueW(long long ptr ptr ptr ptr ptr ptr) advapi32.RegEnumValueW
+@ stdcall -stub RegFlushKey(long) advapi32.RegFlushKey
+@ stdcall -stub RegGetKeySecurity(long long ptr ptr) advapi32.RegGetKeySecurity
+@ stdcall -stub RegGetValueA(long str str long ptr ptr ptr) advapi32.RegGetValueA
+@ stdcall -stub RegGetValueW(long wstr wstr long ptr ptr ptr) advapi32.RegGetValueW
+@ stdcall -stub RegLoadKeyA(long str str) advapi32.RegLoadKeyA
+@ stdcall -stub RegLoadKeyW(long wstr wstr) advapi32.RegLoadKeyW
+@ stdcall -stub RegNotifyChangeKeyValue(long long long long long) advapi32.RegNotifyChangeKeyValue
+@ stdcall -stub RegOpenCurrentUser(long ptr) advapi32.RegOpenCurrentUser
+@ stdcall -stub RegOpenKeyA(long str ptr) advapi32.RegOpenKeyA
+@ stdcall -stub RegOpenKeyExA(long str long long ptr) advapi32.RegOpenKeyExA
+@ stdcall -stub RegOpenKeyExW(long wstr long long ptr) advapi32.RegOpenKeyExW
+@ stdcall -stub RegOpenKeyW(long wstr ptr) advapi32.RegOpenKeyW
+@ stdcall -stub RegOpenUserClassesRoot(ptr long long ptr) advapi32.RegOpenUserClassesRoot
+@ stdcall -stub RegOverridePredefKey(long long) advapi32.RegOverridePredefKey
+@ stdcall -stub RegQueryInfoKeyA(long ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr) advapi32.RegQueryInfoKeyA
+@ stdcall -stub RegQueryInfoKeyW(long ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr) advapi32.RegQueryInfoKeyW
+@ stdcall -stub RegQueryMultipleValuesA(long ptr long ptr ptr) advapi32.RegQueryMultipleValuesA
+@ stdcall -stub RegQueryMultipleValuesW(long ptr long ptr ptr) advapi32.RegQueryMultipleValuesW
+@ stdcall -stub RegQueryReflectionKey(ptr ptr) advapi32.RegQueryReflectionKey
+@ stdcall -stub RegQueryValueA(long str ptr ptr) advapi32.RegQueryValueA
+@ stdcall -stub RegQueryValueExA(long str ptr ptr ptr ptr) advapi32.RegQueryValueExA
+@ stdcall -stub RegQueryValueExW(long wstr ptr ptr ptr ptr) advapi32.RegQueryValueExW
+@ stdcall -stub RegQueryValueW(long wstr ptr ptr) advapi32.RegQueryValueW
+@ stdcall -stub RegReplaceKeyA(long str str str) advapi32.RegReplaceKeyA
+@ stdcall -stub RegReplaceKeyW(long wstr wstr wstr) advapi32.RegReplaceKeyW
+@ stdcall -stub RegRestoreKeyA(long str long) advapi32.RegRestoreKeyA
+@ stdcall -stub RegRestoreKeyW(long wstr long) advapi32.RegRestoreKeyW
+@ stdcall -stub RegSaveKeyA(long ptr ptr) advapi32.RegSaveKeyA
+@ stdcall -stub RegSaveKeyExA(long str ptr long) advapi32.RegSaveKeyExA
+@ stdcall -stub RegSaveKeyExW(long str ptr long) advapi32.RegSaveKeyExW
+@ stdcall -stub RegSaveKeyW(long ptr ptr) advapi32.RegSaveKeyW
+@ stdcall -stub RegSetKeySecurity(long long ptr) advapi32.RegSetKeySecurity
+@ stdcall -stub RegSetValueA(long str long ptr long) advapi32.RegSetValueA
+@ stdcall -stub RegSetValueExA(long str long long ptr long) advapi32.RegSetValueExA
+@ stdcall -stub RegSetValueExW(long wstr long long ptr long) advapi32.RegSetValueExW
+@ stdcall -stub RegSetValueW(long wstr long ptr long) advapi32.RegSetValueW
+@ stdcall -stub RegUnLoadKeyA(long str) advapi32.RegUnLoadKeyA
+@ stdcall -stub RegUnLoadKeyW(long wstr) advapi32.RegUnLoadKeyW

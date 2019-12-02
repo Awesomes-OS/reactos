@@ -284,6 +284,20 @@ typedef ULONG64 TRACEHANDLE, *PTRACEHANDLE;
 #define EVENT_CONTROL_CODE_ENABLE_PROVIDER  1
 #define EVENT_CONTROL_CODE_CAPTURE_STATE    2
 
+#define EVENT_TRACE_STOP_ON_HYBRID_SHUTDOWN    0x00400000
+#define EVENT_TRACE_PERSIST_ON_HYBRID_SHUTDOWN 0x00800000
+#define EVENT_TRACE_SYSTEM_LOGGER_MODE         0x02000000
+#define EVENT_TRACE_INDEPENDENT_SESSION_MODE   0x08000000
+#define EVENT_TRACE_ADDTO_TRIAGE_DUMP          0x80000000
+
+typedef enum _EVENT_INFO_CLASS
+{
+  EventProviderBinaryTrackInfo = 0,
+  EventProviderSetTraits,
+  EventProviderUseDescriptorType,
+  MaxEventInfo
+} EVENT_INFO_CLASS;
+
 #define DEFINE_TRACE_MOF_FIELD(MOF, ptr, length, type) \
   (MOF)->DataPtr = (ULONG64)(ULONG_PTR) ptr; \
   (MOF)->Length = (ULONG) length; \
@@ -694,6 +708,22 @@ typedef enum _TRACE_QUERY_INFO_CLASS {
   TraceGuidQueryInfo,
   TraceGuidQueryProcess,
   TraceStackTracingInfo,
+  TraceSystemTraceEnableFlagsInfo,
+  TraceSampledProfileIntervalInfo,
+  TraceProfileSourceConfigInfo,
+  TraceProfileSourceListInfo,
+  TracePmcEventListInfo,
+  TracePmcCounterListInfo,
+  TraceSetDisallowList,
+  TraceVersionInfo,
+  TraceGroupQueryList,
+  TraceGroupQueryInfo,
+  TraceDisallowListQuery,
+  TraceCompressionInfo,
+  TracePeriodicCaptureStateListInfo,
+  TracePeriodicCaptureStateInfo,
+  TraceProviderBinaryTracking,
+  TraceMaxLoggersQuery,
   MaxTraceSetInfoClass
 } TRACE_QUERY_INFO_CLASS, TRACE_INFO_CLASS;
 

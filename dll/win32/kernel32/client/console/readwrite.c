@@ -684,18 +684,32 @@ IntWriteConsole(IN HANDLE hConsoleOutput,
     /* Retrieve the results */
     if (Success)
     {
-        _SEH2_TRY
+        BOOL attemptWrite = !!lpNumberOfCharsWritten;
+        if (!attemptWrite)
         {
-            *lpNumberOfCharsWritten = WriteConsoleRequest->NumBytes / CharSize;
+            OSVERSIONINFOW versionInformation;
+
+            if (NT_SUCCESS(RtlGetVersion(&versionInformation)))
+            {
+                attemptWrite = versionInformation.dwMajorVersion < 6;
+            }
         }
-        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+
+        if (attemptWrite)
         {
-            SetLastError(ERROR_INVALID_ACCESS);
-            Success = FALSE;
+            _SEH2_TRY
+            {
+                *lpNumberOfCharsWritten = WriteConsoleRequest->NumBytes / CharSize;
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                SetLastError(ERROR_INVALID_ACCESS);
+                Success = FALSE;
+            }
+            _SEH2_END;
         }
-        _SEH2_END;
     }
-    else
+    else if (!Success)
     {
         BaseSetLastNTError(ApiMessage.Status);
     }

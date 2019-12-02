@@ -15,11 +15,12 @@ else()
     message(FATAL_ERROR "Unknown ARCH '" ${ARCH} "', cannot generate a valid UEFI boot filename.")
 endif()
 
+if (NOT NTDLL_WORK)
 add_custom_target(efisys
     COMMAND native-fatten ${CMAKE_CURRENT_BINARY_DIR}/efisys.bin -format 2880 EFIBOOT -boot ${CMAKE_CURRENT_BINARY_DIR}/freeldr/bootsect/fat.bin -mkdir EFI -mkdir EFI/BOOT -add $<TARGET_FILE:bootmgfw> EFI/BOOT/boot${EFI_PLATFORM_ID}.efi
     DEPENDS native-fatten fat bootmgfw
     VERBATIM)
-
+endif()
 
 # Create an 'empty' directory (guaranteed to be empty) to be able to add
 # arbitrary empty directories to the ISO image using mkisofs.
@@ -160,8 +161,10 @@ add_custom_target(hybridcd
     DEPENDS bootcd livecd
     VERBATIM)
 
+if (NOT NTDLL_WORK)
 add_cd_file(TARGET efisys FILE ${CMAKE_CURRENT_BINARY_DIR}/efisys.bin DESTINATION loader NO_CAB NOT_IN_HYBRIDCD FOR bootcd regtest livecd hybridcd)
 
 add_subdirectory(freeldr)
 add_subdirectory(bootdata)
 add_subdirectory(environ)
+endif()

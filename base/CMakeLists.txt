@@ -1,6 +1,9 @@
-
+if (NOT NTDLL_WORK)
 add_subdirectory(applications)
 add_subdirectory(services)
+endif()
 add_subdirectory(setup)
+if (NOT NTDLL_WORK)
 add_subdirectory(shell)
 add_subdirectory(system)
+endif()

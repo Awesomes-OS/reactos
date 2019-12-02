@@ -426,6 +426,8 @@ CmpInitializeMachineDependentConfiguration(IN PLOADER_PARAMETER_BLOCK LoaderBloc
     /* The key shouldn't already exist */
     if (Disposition == REG_CREATED_NEW_KEY)
     {
+        GROUP_AFFINITY OldAffinity = { 0 };
+
         /* Allocate the configuration data for cmconfig.c */
         CmpConfigurationData = ExAllocatePoolWithTag(PagedPool,
                                                      CmpConfigurationAreaSize,
@@ -487,6 +489,8 @@ CmpInitializeMachineDependentConfiguration(IN PLOADER_PARAMETER_BLOCK LoaderBloc
                 return Status;
             }
 
+            KiSetSystemAffinityThreadToProcessor(Prcb->Number, &OldAffinity);
+
             /* Check if we have an FPU */
             if (KeI386NpxPresent)
             {
@@ -517,14 +521,15 @@ CmpInitializeMachineDependentConfiguration(IN PLOADER_PARAMETER_BLOCK LoaderBloc
                     NtClose(KeyHandle);
                     NtClose(BiosHandle);
                     NtClose(SystemHandle);
+
+                    /* Go back to user affinity */
+                    KeRevertToUserGroupAffinityThread(&OldAffinity);
                     return Status;
                 }
 
                 /* Close this new handle */
                 NtClose(FpuHandle);
 
-                /* Stay on this CPU only */
-                KeSetSystemAffinityThread(Prcb->SetMember);
                 if (!Prcb->CpuID)
                 {
                     /* Uh oh, no CPUID! */
@@ -575,9 +580,6 @@ CmpInitializeMachineDependentConfiguration(IN PLOADER_PARAMETER_BLOCK LoaderBloc
                         }
                     }
                 }
-
-                /* Go back to user affinity */
-                KeRevertToUserAffinityThread();
 
                 /* Check if we have a CPU Name */
                 if (PartialString)
@@ -666,6 +668,9 @@ CmpInitializeMachineDependentConfiguration(IN PLOADER_PARAMETER_BLOCK LoaderBloc
 
                 /* FIXME: Detect CPU mismatches */
             }
+
+            /* Go back to user affinity */
+            KeRevertToUserGroupAffinityThread(&OldAffinity);
         }
 
         /* Free the configuration data */

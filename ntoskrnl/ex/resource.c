@@ -137,7 +137,7 @@ ExpCheckForApcsDisabled(IN KIRQL Irql,
     /* Check if we should care and check if we should break */
     if ((ExResourceStrict) &&
         (Irql < APC_LEVEL) &&
-        !(((PETHREAD)Thread)->SystemThread) &&
+        !KiTestThreadSystemThreadFlag(Thread) &&
         !(Thread->CombinedApcDisable))
     {
         /* Bad! */
@@ -572,27 +572,18 @@ FASTCALL
 ExpBoostOwnerThread(IN PKTHREAD Thread,
                     IN PKTHREAD OwnerThread)
 {
+    ASSERT_THREAD(Thread);
+
     /* Make sure the owner thread is a pointer, not an ID */
     if (!((ULONG_PTR)OwnerThread & 0x3))
     {
+        ASSERT_THREAD(OwnerThread);
+
         /* Check if we can actually boost it */
-        if ((OwnerThread->Priority < Thread->Priority) &&
-            (OwnerThread->Priority < 14))
+        if (OwnerThread->Priority < Thread->Priority)
         {
-            /* Acquire the thread lock */
-            KiAcquireThreadLock(Thread);
-
-            /* Set the new priority */
-            OwnerThread->PriorityDecrement += 14 - OwnerThread->Priority;
-
-            /* Update quantum */
-            OwnerThread->Quantum = OwnerThread->QuantumReset;
-
             /* Update the kernel state */
-            KiSetPriorityThread(OwnerThread, 14);
-
-            /* Release the thread lock */
-            KiReleaseThreadLock(Thread);
+            KeSetPriorityBoost(OwnerThread, 14);
         }
     }
 }
@@ -1440,7 +1431,7 @@ ExConvertExclusiveToSharedLite(IN PERESOURCE Resource)
  * @implemented NT4
  *
  *     The ExConvertExclusiveToSharedLite routine deletes a given resource
- *     from the system’s resource list.
+ *     from the systemâ€™s resource list.
  *
  * @param Resource
  *        Pointer to the resource to delete.

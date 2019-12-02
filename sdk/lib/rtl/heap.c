@@ -2241,6 +2241,7 @@ BOOLEAN NTAPI RtlFreeHeap(
     {
         /* The pointer was invalid */
         DPRINT1("HEAP: Trying to free an invalid address %p!\n", Ptr);
+        __debugbreak();
         RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
         _SEH2_YIELD(return FALSE);
     }

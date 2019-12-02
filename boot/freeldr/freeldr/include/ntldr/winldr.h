@@ -11,6 +11,7 @@
 
 // See freeldr/ntldr/winldr.h
 #define TAG_WLDR_DTE 'eDlW'
+#define TAG_WLDR_DDAG 'gDlW'
 #define TAG_WLDR_BDE 'dBlW'
 #define TAG_WLDR_NAME 'mNlW'
 

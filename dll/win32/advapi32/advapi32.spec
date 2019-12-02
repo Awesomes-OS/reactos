@@ -125,7 +125,7 @@
 @ stdcall CredUnmarshalCredentialA(str ptr ptr)
 @ stdcall CredUnmarshalCredentialW(wstr ptr ptr)
 @ stdcall CredWriteA(ptr long)
-# CredWriteDomainCredentialsA
+@ stub CredWriteDomainCredentialsA
 @ stub CredWriteDomainCredentialsW
 @ stdcall CredWriteW(ptr long)
 @ stub CredpConvertCredential
@@ -459,8 +459,8 @@
 @ stdcall ReadEventLogW(long long long ptr long ptr ptr)
 @ stdcall RegCloseKey(long)
 @ stdcall RegConnectRegistryA(str long ptr)
-@ stub RegConnectRegistryExA
-@ stub RegConnectRegistryExW
+@ stdcall -stub RegConnectRegistryExA(str long long ptr)
+@ stdcall -stub RegConnectRegistryExW(wstr long long ptr)
 @ stdcall RegConnectRegistryW(wstr long ptr)
 @ stdcall RegCreateKeyA(long str ptr)
 @ stdcall RegCreateKeyExA(long str long ptr long long ptr ptr ptr)
@@ -684,3 +684,11 @@
 @ stdcall WriteEncryptedFileRaw(ptr ptr ptr)
 @ stdcall -version=0x600+ RegLoadMUIStringW(ptr wstr wstr long ptr long wstr) advapi32_vista.RegLoadMUIStringW
 @ stdcall -version=0x600+ RegLoadMUIStringA(ptr str str long ptr long str) advapi32_vista.RegLoadMUIStringA
+@ stdcall -version=0x600+ EventActivityIdControl(long ptr) advapi32_vista.EventActivityIdControl
+@ stdcall -version=0x600+ EventEnabled(int64 ptr) advapi32_vista.EventEnabled
+@ stdcall -version=0x600+ EventProviderEnabled(int64 long int64) advapi32_vista.EventProviderEnabled
+@ stdcall -version=0x600+ EventRegister(ptr ptr ptr ptr) advapi32_vista.EventRegister
+@ stdcall -version=0x600+ EventSetInformation(int64 long ptr long) advapi32_vista.EventSetInformation
+@ stdcall -version=0x600+ EventUnregister(int64) advapi32_vista.EventUnregister
+@ stdcall -version=0x600+ EventWrite(int64 ptr long ptr) advapi32_vista.EventWrite
+@ stdcall -version=0x600+ EventWriteTransfer(int64 ptr ptr ptr long ptr) advapi32_vista.EventWriteTransfer

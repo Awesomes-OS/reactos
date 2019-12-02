@@ -341,7 +341,7 @@ ObpReferenceDeviceMap(VOID)
     {
         /* In case of impersonation, we've got a bit of work to do */
         CurrentThread = PsGetCurrentThread();
-        if (CurrentThread->ActiveImpersonationInfo)
+        if (PspTestThreadActiveImpersonationInfoFlag(CurrentThread))
         {
             /* Get impersonation token */
             Token = PsReferenceImpersonationToken(CurrentThread,

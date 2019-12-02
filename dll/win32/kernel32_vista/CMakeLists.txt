@@ -10,12 +10,16 @@ list(APPEND SOURCE
     GetFileInformationByHandleEx.c
     GetTickCount64.c
     InitOnceExecuteOnce.c
+    nlsex.c
     sync.c
+    threadpool.c
+    wer.c
     ${CMAKE_CURRENT_BINARY_DIR}/kernel32_vista.def)
 
-add_library(kernel32_vista MODULE ${SOURCE})
+add_library(kernel32_vista MODULE ${SOURCE} ${CMAKE_CURRENT_BINARY_DIR}/kernel32_vista_stubs.c)
 set_module_type(kernel32_vista win32dll ENTRYPOINT DllMain 12)
 add_importlibs(kernel32_vista kernel32 ntdll)
 add_delay_importlibs(kernel32_vista ntdll_vista)
 add_dependencies(kernel32_vista psdk)
+target_link_libraries(kernel32_vista wine)
 add_cd_file(TARGET kernel32_vista DESTINATION reactos/system32 FOR all)

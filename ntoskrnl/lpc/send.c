@@ -199,7 +199,7 @@ LpcRequestWaitReplyPort(IN PVOID PortObject,
              LpcpGetMessageType(LpcRequest));
 
     /* Check if the thread is dying */
-    if (Thread->LpcExitThreadCalled) return STATUS_THREAD_IS_TERMINATING;
+    if (PspTestThreadLpcExitThreadCalledFlag(Thread)) return STATUS_THREAD_IS_TERMINATING;
 
     /* Check if this is an LPC Request */
     MessageType = LpcpGetMessageType(LpcRequest);
@@ -717,7 +717,7 @@ NtRequestWaitReplyPort(IN HANDLE PortHandle,
              LpcpGetMessageType(LpcRequest));
 
     /* Check if the thread is dying */
-    if (Thread->LpcExitThreadCalled) return STATUS_THREAD_IS_TERMINATING;
+    if (PspTestThreadLpcExitThreadCalledFlag(Thread)) return STATUS_THREAD_IS_TERMINATING;
 
     /* Check for user mode access */
     if (PreviousMode != KernelMode)

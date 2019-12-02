@@ -20,7 +20,7 @@ USHORT KeProcessorArchitecture;
 USHORT KeProcessorLevel;
 USHORT KeProcessorRevision;
 ULONG KeFeatureBits;
-KAFFINITY KeActiveProcessors = 1;
+KAFFINITY_EX KeActiveProcessors = { 0 };
 
 /* System call count */
 ULONG KiServiceLimit = NUMBER_OF_SYSCALLS;
@@ -32,12 +32,9 @@ PLOADER_PARAMETER_BLOCK KeLoaderBlock;
 PKPRCB KiProcessorBlock[MAXIMUM_PROCESSORS];
 
 /* Number of processors */
-CCHAR KeNumberProcessors = 0;
+volatile CCHAR KeNumberProcessors = 0;
 
 /* NUMA Node Support */
-KNODE KiNode0;
-PKNODE KeNodeBlock[1];
-UCHAR KeNumberNodes = 1;
 UCHAR KeProcessNodeSeed;
 
 /* Initial Process and Thread */
@@ -68,7 +65,26 @@ KSPIN_LOCK KiReverseStallIpiLock;
 INIT_FUNCTION
 VOID
 NTAPI
-KiInitSystem(VOID)
+KiInitializeIdleProcess(IN PEPROCESS InitProcess)
+{
+    ULONG PageDirectory[2];
+    GROUP_AFFINITY InitialAffinity = {0};
+
+    PageDirectory[0] = 0;
+    PageDirectory[1] = 0;
+
+    InitialAffinity.Mask = 1;
+
+    KeInitializeProcess(&InitProcess->Pcb, 0, &InitialAffinity, PageDirectory, FALSE);
+    InitProcess->Pcb.QuantumReset = MAXCHAR;
+
+    InitializeListHead(&InitProcess->ThreadListHead);
+}
+
+INIT_FUNCTION
+VOID
+NTAPI
+KiInitSystem(IN PEPROCESS InitProcess)
 {
     ULONG i;
 
@@ -113,8 +129,11 @@ KiInitSystem(VOID)
 
     /* Copy the the current table into the shadow table for win32k */
     RtlCopyMemory(KeServiceDescriptorTableShadow,
-                  KeServiceDescriptorTable,
-                  sizeof(KeServiceDescriptorTable));
+                  KeServiceDescriptorTable, sizeof(KeServiceDescriptorTable));
+
+    /* Initialize the process list and the Idle Process */
+    InitializeListHead(&KiProcessListHead);
+    KiInitializeIdleProcess(InitProcess);
 }
 
 INIT_FUNCTION
@@ -287,6 +306,7 @@ KiInitSpinLocks(IN PKPRCB Prcb,
     }
 }
 
+
 INIT_FUNCTION
 BOOLEAN
 NTAPI
@@ -301,5 +321,14 @@ KeInitSystem(VOID)
 
     /* Initialize non-portable parts of the kernel */
     KiInitMachineDependent();
+
+    const ULONG MHz = KiProcessorBlock[0]->MHz;
+    const ULONG BaseQuantumValue = MHz * KeMaximumIncrement / 10;
+
+    KiShortExecutionCycles = BaseQuantumValue / 240;
+    KiCyclesPerClockQuantum = BaseQuantumValue / 3;
+    KiDirectQuantumTarget = BaseQuantumValue / 3;
+    KiLockQuantumTarget = 3 * KiCyclesPerClockQuantum;
+
     return TRUE;
 }

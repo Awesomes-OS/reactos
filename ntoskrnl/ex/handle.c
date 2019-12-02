@@ -46,7 +46,7 @@ ExpLookupHandleTableEntry(IN PHANDLE_TABLE HandleTable,
     Handle.TagBits = 0;
 
     /* Check if the handle is in the allocated range */
-    if (Handle.Value >= HandleTable->NextHandleNeedingPool)
+    if (Handle.Index3 >= HandleTable->NextHandleNeedingPool)
     {
         return NULL;
     }
@@ -163,11 +163,11 @@ ExpFreeLowLevelTable(IN PEPROCESS Process,
                      IN PHANDLE_TABLE_ENTRY TableEntry)
 {
     /* Check if we have an entry */
-    if (TableEntry[0].Object)
+    if (TableEntry->InfoTable)
     {
         /* Free the entry */
         ExpFreeTablePagedPool(Process,
-                              TableEntry[0].Object,
+                              TableEntry->InfoTable,
                               LOW_LEVEL_ENTRIES *
                               sizeof(HANDLE_TABLE_ENTRY_INFO));
     }
@@ -248,7 +248,7 @@ ExpFreeHandleTable(IN PHANDLE_TABLE HandleTable)
     ExFreePoolWithTag(HandleTable, TAG_OBJECT_TABLE);
     if (Process)
     {
-        /* FIXME: TODO */
+        PsReturnProcessPagedPoolQuota(Process, sizeof(HANDLE_TABLE));
     }
 }
 
@@ -258,35 +258,65 @@ ExpFreeHandleTableEntry(IN PHANDLE_TABLE HandleTable,
                         IN EXHANDLE Handle,
                         IN PHANDLE_TABLE_ENTRY HandleTableEntry)
 {
+#if 0
+    PHANDLE_TABLE_ENTRY OldValue, *Free;
+#else
     ULONG OldValue, *Free;
-    ULONG LockIndex;
+#endif
     PAGED_CODE();
 
     /* Sanity checks */
-    ASSERT(HandleTableEntry->Object == NULL);
+    ASSERT(HandleTableEntry->InfoTable == NULL);
     ASSERT(HandleTableEntry == ExpLookupHandleTableEntry(HandleTable, Handle));
 
-    /* Decrement the handle count */
-    InterlockedDecrement(&HandleTable->HandleCount);
-
+#if 0
     /* Mark the handle as free */
     Handle.TagBits = 0;
+    // todo (andrew.boyarshin): proper free?
+
+    PHANDLE_TABLE_FREE_LIST FreeList = &HandleTable->FreeLists[0];
+
+    ExAcquirePushLockExclusive(&FreeList->FreeListLock);
 
     /* Check if we're FIFO */
-    if (!HandleTable->StrictFIFO)
+    if (HandleTable->StrictFIFO)
     {
-        /* Select a lock index */
-        LockIndex = Handle.Index % 4;
-
-        /* Select which entry to use */
-        Free = (HandleTable->HandleTableLock[LockIndex].Locked) ?
-                &HandleTable->FirstFree : &HandleTable->LastFree;
+        const PHANDLE_TABLE_ENTRY OldLast = FreeList->LastFreeHandleEntry;
+        if (OldLast)
+            OldLast->NextFreeHandleEntry = HandleTableEntry;
+        else
+            FreeList->FirstFreeHandleEntry = HandleTableEntry;
+        FreeList->LastFreeHandleEntry = HandleTableEntry;
     }
     else
+    {
+        const PHANDLE_TABLE_ENTRY OldFirst = FreeList->FirstFreeHandleEntry;
+        HandleTableEntry->NextFreeHandleEntry = OldFirst;
+        if (!OldFirst)
+            FreeList->LastFreeHandleEntry = HandleTableEntry;
+        FreeList->FirstFreeHandleEntry = HandleTableEntry;
+    }
+
+    /* Decrement the handle count */
+    InterlockedDecrement(&FreeList->HandleCount);
+
+    ExReleasePushLockExclusive(&FreeList->FreeListLock);
+#else
+    /* Check if we're FIFO */
+    if (HandleTable->StrictFIFO)
     {
         /* No need to worry about locking, take the last entry */
         Free = &HandleTable->LastFree;
     }
+    else
+    {
+        /* Select which entry to use */
+        Free = (HandleTable->HandleTableLock.Locked) ?
+            &HandleTable->FirstFree : &HandleTable->LastFree;
+    }
+
+    /* Decrement the handle count */
+    InterlockedDecrement(&HandleTable->HandleCount);
 
     /* Start value change loop */
     for (;;)
@@ -294,14 +324,15 @@ ExpFreeHandleTableEntry(IN PHANDLE_TABLE HandleTable,
         /* Get the current value and write */
         OldValue = *Free;
         HandleTableEntry->NextFreeTableEntry = OldValue;
-        if (InterlockedCompareExchange((PLONG)Free, Handle.AsULONG, OldValue) == OldValue)
+        if (InterlockedCompareExchange((PLONG)Free, Handle.Value, OldValue) == OldValue)
         {
             /* Break out, we're done. Make sure the handle value makes sense */
             ASSERT((OldValue & FREE_HANDLE_MASK) <
-                   HandleTable->NextHandleNeedingPool);
+                HandleTable->NextHandleNeedingPool);
             break;
         }
     }
+#endif
 }
 
 PHANDLE_TABLE
@@ -320,10 +351,15 @@ ExpAllocateHandleTable(IN PEPROCESS Process OPTIONAL,
                                         TAG_OBJECT_TABLE);
     if (!HandleTable) return NULL;
 
-    /* Check if we have a process */
+    /* Check if we have a process, charge pool Quota if we do */
     if (Process)
     {
-        /* FIXME: Charge quota */
+        if (!NT_SUCCESS(PsChargeProcessPagedPoolQuota(Process, sizeof(HANDLE_TABLE))))
+        {
+            /* Failed, free the table */
+            ExFreePoolWithTag(HandleTable, TAG_OBJECT_TABLE);
+            return NULL;
+        }
     }
 
     /* Clear the table */
@@ -335,6 +371,8 @@ ExpAllocateHandleTable(IN PEPROCESS Process OPTIONAL,
     {
         /* Failed, free the table */
         ExFreePoolWithTag(HandleTable, TAG_OBJECT_TABLE);
+        if (Process)
+            PsReturnProcessPagedPoolQuota(Process, sizeof(HANDLE_TABLE));
         return NULL;
     }
 
@@ -344,7 +382,7 @@ ExpAllocateHandleTable(IN PEPROCESS Process OPTIONAL,
     /* Initialize the first entry */
     HandleEntry = &HandleTableTable[0];
     HandleEntry->NextFreeTableEntry = -2;
-    HandleEntry->Value = 0;
+    HandleEntry->LowValue = 0;
 
     /* Check if this is a new table */
     if (NewTable)
@@ -356,7 +394,7 @@ ExpAllocateHandleTable(IN PEPROCESS Process OPTIONAL,
         for (i = 1; i < (LOW_LEVEL_ENTRIES - 1); i++)
         {
             /* Set up the free data */
-            HandleEntry->Value = 0;
+            HandleEntry->LowValue = 0;
             HandleEntry->NextFreeTableEntry = INDEX_TO_HANDLE_VALUE(i + 1);
 
             /* Move to the next entry */
@@ -364,7 +402,7 @@ ExpAllocateHandleTable(IN PEPROCESS Process OPTIONAL,
         }
 
         /* Terminate the last entry */
-        HandleEntry->Value = 0;
+        HandleEntry->LowValue = 0;
         HandleEntry->NextFreeTableEntry = 0;
         HandleTable->FirstFree = INDEX_TO_HANDLE_VALUE(1);
     }
@@ -377,12 +415,8 @@ ExpAllocateHandleTable(IN PEPROCESS Process OPTIONAL,
     HandleTable->UniqueProcessId = PsGetCurrentProcess()->UniqueProcessId;
     HandleTable->Flags = 0;
 
-    /* Loop all the handle table locks */
-    for (i = 0; i < 4; i++)
-    {
-        /* Initialize the handle table lock */
-        ExInitializePushLock(&HandleTable->HandleTableLock[i]);
-    }
+    /* Initialize the handle table lock */
+    ExInitializePushLock(&HandleTable->HandleTableLock);
 
     /* Initialize the contention event lock and return the lock */
     ExInitializePushLock(&HandleTable->HandleContentionEvent);
@@ -405,7 +439,7 @@ ExpAllocateLowLevelTable(IN PHANDLE_TABLE HandleTable,
     /* Setup the initial entry */
     HandleEntry = &Low[0];
     HandleEntry->NextFreeTableEntry = -2;
-    HandleEntry->Value = 0;
+    HandleEntry->LowValue = 0;
 
     /* Check if we're initializing */
     if (DoInit)
@@ -421,13 +455,13 @@ ExpAllocateLowLevelTable(IN PHANDLE_TABLE HandleTable,
         {
             /* Free this entry and move on to the next one */
             HandleEntry->NextFreeTableEntry = i;
-            HandleEntry->Value = 0;
+            HandleEntry->LowValue = 0;
             HandleEntry++;
         }
 
         /* Terminate the last entry */
         HandleEntry->NextFreeTableEntry = 0;
-        HandleEntry->Value = 0;
+        HandleEntry->LowValue = 0;
     }
 
     /* Return the low level table */
@@ -611,7 +645,7 @@ ULONG
 NTAPI
 ExpMoveFreeHandles(IN PHANDLE_TABLE HandleTable)
 {
-    ULONG LastFree, i;
+    ULONG LastFree;
 
     /* Clear the last free index */
     LastFree = InterlockedExchange((PLONG) &HandleTable->LastFree, 0);
@@ -619,12 +653,8 @@ ExpMoveFreeHandles(IN PHANDLE_TABLE HandleTable)
     /* Check if we had no index */
     if (!LastFree) return LastFree;
 
-    /* Acquire the locks we need */
-    for (i = 1; i < 4; i++)
-    {
-        /* Acquire this lock exclusively */
-        ExWaitOnPushLock(&HandleTable->HandleTableLock[i]);
-    }
+    /* Acquire the lock we need */
+    ExWaitOnPushLock(&HandleTable->HandleTableLock);
 
     /* Check if we're not strict FIFO */
     if (!HandleTable->StrictFIFO)
@@ -649,9 +679,8 @@ ExpAllocateHandleTableEntry(IN PHANDLE_TABLE HandleTable,
 {
     ULONG OldValue, NewValue, NewValue1;
     PHANDLE_TABLE_ENTRY Entry;
-    EXHANDLE Handle, OldHandle;
+    EXHANDLE Handle;
     BOOLEAN Result;
-    ULONG i;
 
     /* Start allocation loop */
     for (;;)
@@ -662,14 +691,14 @@ ExpAllocateHandleTableEntry(IN PHANDLE_TABLE HandleTable,
         {
             /* No free entries remain, lock the handle table */
             KeEnterCriticalRegion();
-            ExAcquirePushLockExclusive(&HandleTable->HandleTableLock[0]);
+            ExAcquirePushLockExclusive(&HandleTable->HandleTableLock);
 
             /* Check the value again */
             OldValue = HandleTable->FirstFree;
             if (OldValue)
             {
                 /* Another thread has already created a new level, bail out */
-                ExReleasePushLockExclusive(&HandleTable->HandleTableLock[0]);
+                ExReleasePushLockExclusive(&HandleTable->HandleTableLock);
                 KeLeaveCriticalRegion();
                 break;
             }
@@ -679,7 +708,7 @@ ExpAllocateHandleTableEntry(IN PHANDLE_TABLE HandleTable,
             if (OldValue)
             {
                 /* Another thread has already moved them, bail out */
-                ExReleasePushLockExclusive(&HandleTable->HandleTableLock[0]);
+                ExReleasePushLockExclusive(&HandleTable->HandleTableLock);
                 KeLeaveCriticalRegion();
                 break;
             }
@@ -688,7 +717,7 @@ ExpAllocateHandleTableEntry(IN PHANDLE_TABLE HandleTable,
             Result = ExpAllocateHandleTableEntrySlow(HandleTable, TRUE);
 
             /* Unlock the table and get the value now */
-            ExReleasePushLockExclusive(&HandleTable->HandleTableLock[0]);
+            ExReleasePushLockExclusive(&HandleTable->HandleTableLock);
             KeLeaveCriticalRegion();
             OldValue = HandleTable->FirstFree;
 
@@ -712,16 +741,14 @@ ExpAllocateHandleTableEntry(IN PHANDLE_TABLE HandleTable,
         Entry = ExpLookupHandleTableEntry(HandleTable, Handle);
 
         /* Get an available lock and acquire it */
-        OldHandle.Value = OldValue;
-        i = OldHandle.Index % 4;
         KeEnterCriticalRegion();
-        ExAcquirePushLockShared(&HandleTable->HandleTableLock[i]);
+        ExAcquirePushLockShared(&HandleTable->HandleTableLock);
 
         /* Check if the value changed after acquiring the lock */
         if (OldValue != *(volatile ULONG*)&HandleTable->FirstFree)
         {
             /* It did, so try again */
-            ExReleasePushLockShared(&HandleTable->HandleTableLock[i]);
+            ExReleasePushLockShared(&HandleTable->HandleTableLock);
             KeLeaveCriticalRegion();
             continue;
         }
@@ -733,7 +760,7 @@ ExpAllocateHandleTableEntry(IN PHANDLE_TABLE HandleTable,
                                                OldValue);
 
         /* The change was done, so release the lock */
-        ExReleasePushLockShared(&HandleTable->HandleTableLock[i]);
+        ExReleasePushLockShared(&HandleTable->HandleTableLock);
         KeLeaveCriticalRegion();
 
         /* Check if the compare was successful */
@@ -829,7 +856,7 @@ ExpBlockOnLockedHandleEntry(IN PHANDLE_TABLE HandleTable,
     ExBlockPushLock(&HandleTable->HandleContentionEvent, &WaitBlock);
 
     /* Get the current value and check if it's been unlocked */
-    OldValue = HandleTableEntry->Value;
+    OldValue = HandleTableEntry->LowValue;
     if (!(OldValue) || (OldValue & EXHANDLE_TABLE_ENTRY_LOCK_BIT))
     {
         /* Unblock the pushlock and return */
@@ -895,7 +922,7 @@ ExUnlockHandleTableEntry(IN PHANDLE_TABLE HandleTable,
            (KeGetCurrentIrql() == APC_LEVEL));
 
     /* Set the lock bit and make sure it wasn't earlier */
-    OldValue = InterlockedOr((PLONG) &HandleTableEntry->Value,
+    OldValue = InterlockedOr((PLONG) &HandleTableEntry->LowValue,
                              EXHANDLE_TABLE_ENTRY_LOCK_BIT);
     ASSERT((OldValue & EXHANDLE_TABLE_ENTRY_LOCK_BIT) == 0);
 
@@ -984,7 +1011,7 @@ ExDestroyHandle(IN PHANDLE_TABLE HandleTable,
     else
     {
         /* Make sure the handle is locked */
-        ASSERT((HandleTableEntry->Value & EXHANDLE_TABLE_ENTRY_LOCK_BIT) == 0);
+        ASSERT((HandleTableEntry->LowValue & EXHANDLE_TABLE_ENTRY_LOCK_BIT) == 0);
     }
 
     /* Clear the handle */
@@ -1080,7 +1107,7 @@ ExDupHandleTable(IN PEPROCESS Process,
         do
         {
             /* Check if it doesn't match the audit mask */
-            if (!(HandleTableEntry->Value & Mask))
+            if (!(HandleTableEntry->LowValue & Mask))
             {
                 /* Free it since we won't use it */
                 Failed = TRUE;
@@ -1108,7 +1135,7 @@ ExDupHandleTable(IN PEPROCESS Process,
                         Failed = FALSE;
 
                         /* Lock the entry, increase the handle count */
-                        NewEntry->Value |= EXHANDLE_TABLE_ENTRY_LOCK_BIT;
+                        NewEntry->LowValue |= EXHANDLE_TABLE_ENTRY_LOCK_BIT;
                         NewTable->HandleCount++;
                     }
                     else

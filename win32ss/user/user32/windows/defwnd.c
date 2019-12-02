@@ -812,9 +812,7 @@ RealDefWindowProcA(HWND hWnd,
                    LPARAM lParam)
 {
     LRESULT Result = 0;
-    PWND Wnd;
-
-    Wnd = ValidateHwnd(hWnd);
+    PWND Wnd = ValidateHwnd(hWnd);
 
     if ( !Wnd &&
          Msg != WM_CTLCOLORMSGBOX &&
@@ -855,12 +853,12 @@ RealDefWindowProcA(HWND hWnd,
 
         case WM_GETTEXTLENGTH:
         {
-            PWSTR buf;
-            ULONG len;
-
+            Result = 0L;
             if (Wnd != NULL && Wnd->strName.Length != 0)
             {
-                buf = DesktopPtrToUser(Wnd->strName.Buffer);
+                ULONG len;
+                const PWSTR buf = DesktopPtrToUser(Wnd->strName.Buffer);
+
                 if (buf != NULL &&
                     NT_SUCCESS(RtlUnicodeToMultiByteSize(&len,
                                                          buf,
@@ -869,7 +867,6 @@ RealDefWindowProcA(HWND hWnd,
                     Result = (LRESULT) len;
                 }
             }
-            else Result = 0L;
 
             break;
         }
@@ -878,7 +875,6 @@ RealDefWindowProcA(HWND hWnd,
         {
             PWSTR buf = NULL;
             PSTR outbuf = (PSTR)lParam;
-            SIZE_T copy;
 
             if (Wnd != NULL && wParam != 0)
             {
@@ -891,7 +887,7 @@ RealDefWindowProcA(HWND hWnd,
                 {
                     if (Wnd->strName.Length != 0)
                     {
-                        copy = min(Wnd->strName.Length / sizeof(WCHAR), wParam - 1);
+                        const SIZE_T copy = min(Wnd->strName.Length / sizeof(WCHAR), wParam - 1);
                         Result = WideCharToMultiByte(CP_ACP,
                                                      0,
                                                      buf,
@@ -1020,9 +1016,7 @@ RealDefWindowProcW(HWND hWnd,
                    LPARAM lParam)
 {
     LRESULT Result = 0;
-    PWND Wnd;
-
-    Wnd = ValidateHwnd(hWnd);
+    PWND Wnd = ValidateHwnd(hWnd);
 
     if ( !Wnd &&
          Msg != WM_CTLCOLORMSGBOX &&
@@ -1065,21 +1059,15 @@ RealDefWindowProcW(HWND hWnd,
 
         case WM_GETTEXTLENGTH:
         {
-            PWSTR buf;
-            ULONG len;
-
-            if (Wnd != NULL && Wnd->strName.Length != 0)
+            Result = 0L;
+            if (Wnd != NULL && Wnd->strName.Length != 0 && Wnd->strName.Buffer)
             {
-                buf = DesktopPtrToUser(Wnd->strName.Buffer);
-                if (buf != NULL &&
-                    NT_SUCCESS(RtlUnicodeToMultiByteSize(&len,
-                                                         buf,
-                                                         Wnd->strName.Length)))
+                const PWSTR buf = DesktopPtrToUser(Wnd->strName.Buffer);
+                if (buf != NULL)
                 {
                     Result = (LRESULT) (Wnd->strName.Length / sizeof(WCHAR));
                 }
             }
-            else Result = 0L;
 
             break;
         }
@@ -1087,7 +1075,7 @@ RealDefWindowProcW(HWND hWnd,
         case WM_GETTEXT:
         {
             PWSTR buf = NULL;
-            PWSTR outbuf = (PWSTR)lParam;
+            const PWSTR outbuf = (PWSTR)lParam;
 
             if (Wnd != NULL && wParam != 0)
             {

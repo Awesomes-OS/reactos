@@ -90,7 +90,7 @@ PspTerminateProcess(IN PEPROCESS Process,
     PSREFTRACE(Process);
 
     /* Check if this is a Critical Process */
-    if (Process->BreakOnTermination)
+    if (PspTestProcessBreakOnTerminationFlag(Process))
     {
         /* Break to debugger */
         PspCatchCriticalBreak("Terminating critical process 0x%p (%s)\n",
@@ -99,7 +99,7 @@ PspTerminateProcess(IN PEPROCESS Process,
     }
 
     /* Set the delete flag */
-    InterlockedOr((PLONG)&Process->Flags, PSF_PROCESS_DELETE_BIT);
+    PspSetProcessDeleteFlag(Process);
 
     /* Get the first thread */
     Thread = PsGetNextProcessThread(Process, NULL);
@@ -339,7 +339,7 @@ PspDeleteProcess(IN PVOID ObjectBody)
     }
 
     /* Check if we have an address space, and clean it */
-    if (Process->HasAddressSpace)
+    if (PspTestProcessHasAddressSpaceFlag(Process))
     {
         /* Attach to the process */
         KeStackAttachProcess(&Process->Pcb, &ApcState);
@@ -483,7 +483,7 @@ PspExitThread(IN NTSTATUS ExitStatus)
     KeLowerIrql(PASSIVE_LEVEL);
 
     /* Can't be a worker thread */
-    if (Thread->ActiveExWorker)
+    if (PspTestThreadActiveExWorkerFlag(Thread))
     {
         /* Bugcheck */
         KeBugCheckEx(ACTIVE_EX_WORKER_THREAD_TERMINATION,
@@ -524,7 +524,7 @@ PspExitThread(IN NTSTATUS ExitStatus)
     if (!(--CurrentProcess->ActiveThreads))
     {
         /* Set the delete flag */
-        InterlockedOr((PLONG)&CurrentProcess->Flags, PSF_PROCESS_DELETE_BIT);
+        PspSetProcessDeleteFlagAssert(CurrentProcess);
 
         /* Remember we are last */
         Last = TRUE;
@@ -599,7 +599,7 @@ PspExitThread(IN NTSTATUS ExitStatus)
     if (PreviousThread) ObDereferenceObject(PreviousThread);
 
     /* Check if the process has a debug port and if this is a user thread */
-    if ((CurrentProcess->DebugPort) && !(Thread->SystemThread))
+    if ((CurrentProcess->DebugPort) && !KiTestThreadSystemThreadFlag(&Thread->Tcb))
     {
         /* Notify the Debug API. */
         Last ? DbgkExitProcess(CurrentProcess->ExitStatus) :
@@ -607,7 +607,7 @@ PspExitThread(IN NTSTATUS ExitStatus)
     }
 
     /* Check if this is a Critical Thread */
-    if ((KdDebuggerEnabled) && (Thread->BreakOnTermination))
+    if ((KdDebuggerEnabled) && PspTestThreadBreakOnTerminationFlag(Thread) && !PspTestProcessDeleteFlag(CurrentProcess))
     {
         /* Break to debugger */
         PspCatchCriticalBreak("Critical thread 0x%p (in %s) exited\n",
@@ -616,13 +616,13 @@ PspExitThread(IN NTSTATUS ExitStatus)
     }
 
     /* Check if it's the last thread and this is a Critical Process */
-    if ((Last) && (CurrentProcess->BreakOnTermination))
+    if ((Last) && PspTestProcessBreakOnTerminationFlag(CurrentProcess))
     {
         /* Check if a debugger is here to handle this */
         if (KdDebuggerEnabled)
         {
             /* Break to debugger */
-            PspCatchCriticalBreak("Critical  process 0x%p (in %s) exited\n",
+            PspCatchCriticalBreak("Critical process 0x%p (in %s) exited\n",
                                   CurrentProcess,
                                   CurrentProcess->ImageFileName);
         }
@@ -686,10 +686,11 @@ PspExitThread(IN NTSTATUS ExitStatus)
             TerminationPort = NextPort;
         } while (TerminationPort);
     }
-    else if (((ExitStatus == STATUS_THREAD_IS_TERMINATING) &&
-              (Thread->DeadThread)) ||
-             !(Thread->DeadThread))
+
+    if (PspTestThreadInsertedFlag(Thread))
     {
+        // todo: PsCaptureExceptionPort
+
         /*
          * This case is special and deserves some extra comments. What
          * basically happens here is that this thread doesn't have a termination
@@ -773,11 +774,13 @@ PspExitThread(IN NTSTATUS ExitStatus)
     Teb = Thread->Tcb.Teb;
     if (Teb)
     {
+        Thread->Tcb.Teb = NULL;
+
         /* Check if the thread is still alive */
-        if (!Thread->DeadThread)
+        if (!KiTestThreadSystemThreadFlag(&Thread->Tcb) && !PspTestProcessDeleteFlag(CurrentProcess) /* && !CurrentProcess->ProcessSelfDelete */)
         {
             /* Check if we need to free its stack */
-            if (Teb->FreeStackOnTermination)
+            if (PspTestThreadInsertedFlag(Thread) && Teb->FreeStackOnTermination)
             {
                 /* Set the TEB's Deallocation Stack as the Base Address */
                 Dummy = 0;
@@ -793,11 +796,10 @@ PspExitThread(IN NTSTATUS ExitStatus)
             /* Free the debug handle */
             if (Teb->DbgSsReserved[1]) ObCloseHandle(Teb->DbgSsReserved[1],
                                                      UserMode);
-        }
 
-        /* Decommit the TEB */
-        MmDeleteTeb(CurrentProcess, Teb);
-        Thread->Tcb.Teb = NULL;
+            /* Decommit the TEB */
+            MmDeleteTeb(CurrentProcess, Teb);
+        }
     }
 
     /* Free LPC Data */
@@ -990,13 +992,12 @@ PspTerminateThreadByPointer(IN PETHREAD Thread,
 {
     PKAPC Apc;
     NTSTATUS Status = STATUS_SUCCESS;
-    ULONG Flags;
     PAGED_CODE();
     PSTRACE(PS_KILL_DEBUG, "Thread: %p ExitStatus: %d\n", Thread, ExitStatus);
     PSREFTRACE(Thread);
 
     /* Check if this is a Critical Thread, and Bugcheck */
-    if (Thread->BreakOnTermination)
+    if (PspTestThreadBreakOnTerminationFlag(Thread) && !PspTestProcessDeleteFlag(Thread->ThreadsProcess))
     {
         /* Break to debugger */
         PspCatchCriticalBreak("Terminating critical thread 0x%p (%s)\n",
@@ -1011,26 +1012,27 @@ PspTerminateThreadByPointer(IN PETHREAD Thread,
         ASSERT_IRQL_EQUAL(PASSIVE_LEVEL);
 
         /* Mark it as terminated */
-        PspSetCrossThreadFlag(Thread, CT_TERMINATED_BIT);
+        PspSetThreadTerminatedFlagAssert(Thread);
 
         /* Directly terminate the thread */
         PspExitThread(ExitStatus);
+
+        __debugbreak();
     }
 
     /* This shouldn't be a system thread */
-    if (Thread->SystemThread) return STATUS_ACCESS_DENIED;
+    if (KiTestThreadSystemThreadFlag(&Thread->Tcb))
+        return STATUS_ACCESS_DENIED;
 
     /* Allocate the APC */
     Apc = ExAllocatePoolWithTag(NonPagedPool, sizeof(KAPC), TAG_TERMINATE_APC);
-    if (!Apc) return STATUS_INSUFFICIENT_RESOURCES;
+    if (!Apc)
+        return STATUS_INSUFFICIENT_RESOURCES;
 
-    /* Set the Terminated Flag */
-    Flags = Thread->CrossThreadFlags | CT_TERMINATED_BIT;
-
-    /* Set it, and check if it was already set while we were running */
-    if (!(InterlockedExchange((PLONG)&Thread->CrossThreadFlags, Flags) &
-          CT_TERMINATED_BIT))
+    /* Set the Terminated Flag, and check if it was already set while we were running */
+    if (!PspSetThreadTerminatedFlag(Thread))
     {
+        // todo (andrew.boyarshin): set Terminated and TerminationApcRequest, SchedulerApc, KeRequestTerminationThread
         /* Initialize a Kernel Mode APC to Kill the Thread */
         KeInitializeApc(Apc,
                         &Thread->Tcb,
@@ -1066,7 +1068,7 @@ BOOLEAN
 NTAPI
 PspIsProcessExiting(IN PEPROCESS Process)
 {
-    return Process->Flags & PSF_PROCESS_EXITING_BIT;
+    return PspTestProcessExitingFlag(Process);
 }
 
 VOID
@@ -1081,7 +1083,7 @@ PspExitProcess(IN BOOLEAN LastThread,
     PSREFTRACE(Process);
 
     /* Set Process Exit flag */
-    InterlockedOr((PLONG)&Process->Flags, PSF_PROCESS_EXITING_BIT);
+    PspSetProcessExitingFlagAssert(Process);
 
     /* Check if we are the last thread */
     if (LastThread)
@@ -1113,7 +1115,7 @@ PspExitProcess(IN BOOLEAN LastThread,
     if (LastThread)
     {
         /* Check if we have to set the Timer Resolution */
-        if (Process->SetTimerResolution)
+        if (PspTestProcessSetTimerResolutionFlag(Process))
         {
             /* Set it to default */
             ZwSetTimerResolution(KeMaximumIncrement, 0, &Actual);
@@ -1146,7 +1148,7 @@ PsTerminateSystemThread(IN NTSTATUS ExitStatus)
     PETHREAD Thread = PsGetCurrentThread();
 
     /* Make sure this is a system thread */
-    if (!Thread->SystemThread) return STATUS_INVALID_PARAMETER;
+    if (!KiTestThreadSystemThreadFlag(&Thread->Tcb)) return STATUS_INVALID_PARAMETER;
 
     /* Terminate it for real */
     return PspTerminateThreadByPointer(Thread, ExitStatus, TRUE);
@@ -1191,7 +1193,7 @@ NtTerminateProcess(IN HANDLE ProcessHandle OPTIONAL,
     if (!NT_SUCCESS(Status)) return(Status);
 
     /* Check if this is a Critical Process, and Bugcheck */
-    if (Process->BreakOnTermination)
+    if (PspTestProcessBreakOnTerminationFlag(Process))
     {
         /* Break to debugger */
         PspCatchCriticalBreak("Terminating critical process 0x%p (%s)\n",
@@ -1208,7 +1210,7 @@ NtTerminateProcess(IN HANDLE ProcessHandle OPTIONAL,
     }
 
     /* Set the delete flag, unless the process is comitting suicide */
-    if (KillByHandle) PspSetProcessFlag(Process, PSF_PROCESS_DELETE_BIT);
+    if (KillByHandle) PspSetProcessDeleteFlagAssert(Process);
 
     /* Get the first thread */
     Status = STATUS_NOTHING_TO_TERMINATE;

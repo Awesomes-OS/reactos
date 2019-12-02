@@ -95,7 +95,7 @@ DbgkpQueueMessage(IN PEPROCESS Process,
             case DbgKmCreateProcessApi:
 
                 /* Make sure we're not skipping creation messages */
-                if (Thread->SkipCreationMsg) DebugObject = NULL;
+                if (PspTestThreadSkipCreationMsgFlag(Thread)) DebugObject = NULL;
                 break;
 
             /* Process or thread exit */
@@ -103,7 +103,7 @@ DbgkpQueueMessage(IN PEPROCESS Process,
             case DbgKmExitProcessApi:
 
                 /* Make sure we're not skipping exit messages */
-                if (Thread->SkipTerminationMsg) DebugObject = NULL;
+                if (PspTestThreadSkipTerminationMsgFlag(Thread)) DebugObject = NULL;
 
             /* No special handling for other messages */
             default:
@@ -219,7 +219,7 @@ DbgkpSendApiMessageLpc(IN OUT PDBGKM_MSG Message,
     Message->ReturnedStatus = STATUS_PENDING;
 
     /* Set create process reported state */
-    PspSetProcessFlag(PsGetCurrentProcess(), PSF_CREATE_REPORTED_BIT);
+    PspSetProcessCreateReportedFlagAssert(PsGetCurrentProcess());
 
     /* Send the LPC command */
     Status = LpcRequestWaitReplyPort(Port,
@@ -254,7 +254,7 @@ DbgkpSendApiMessage(IN OUT PDBGKM_MSG ApiMsg,
     ApiMsg->ReturnedStatus = STATUS_PENDING;
 
     /* Set create process reported state */
-    PspSetProcessFlag(PsGetCurrentProcess(), PSF_CREATE_REPORTED_BIT);
+    PspSetProcessCreateReportedFlagAssert(PsGetCurrentProcess());
 
     /* Send the LPC command */
     Status = DbgkpQueueMessage(PsGetCurrentProcess(),
@@ -291,7 +291,7 @@ DbgkCopyProcessDebugPort(IN PEPROCESS Process,
 
     /* Make sure it still has one, and that we should inherit */
     DebugObject = Parent->DebugPort;
-    if ((DebugObject) && !(Process->NoDebugInherit))
+    if ((DebugObject) && !PspTestProcessNoDebugInheritFlag(Process))
     {
         /* Acquire the debug object's lock */
         ExAcquireFastMutex(&DebugObject->Mutex);
@@ -339,7 +339,7 @@ DbgkForwardException(IN PEXCEPTION_RECORD ExceptionRecord,
     if (DebugPort)
     {
         /* Use the debug port, unless the thread is being hidden */
-        Port = PsGetCurrentThread()->HideFromDebugger ?
+        Port = PspTestThreadHideFromDebuggerFlag(PsGetCurrentThread()) ?
                NULL : Process->DebugPort;
     }
     else
@@ -597,15 +597,13 @@ DbgkpPostFakeThreadMessages(IN PEPROCESS Process,
                             OUT PETHREAD *FirstThread,
                             OUT PETHREAD *LastThread)
 {
-    PETHREAD pFirstThread = NULL, ThisThread, OldThread = NULL, pLastThread;
+    PETHREAD pFirstThread = NULL, ThisThread, pLastThread = NULL;
     NTSTATUS Status = STATUS_UNSUCCESSFUL;
     BOOLEAN IsFirstThread;
     ULONG Flags;
     DBGKM_MSG ApiMessage;
     PDBGKM_CREATE_THREAD CreateThread = &ApiMessage.CreateThread;
     PDBGKM_CREATE_PROCESS CreateProcess = &ApiMessage.CreateProcess;
-    BOOLEAN First;
-    PIMAGE_NT_HEADERS NtHeader;
     PAGED_CODE();
     DBGKTRACE(DBGK_THREAD_DEBUG, "Process: %p StartThread: %p Object: %p\n",
               Process, StartThread, DebugObject);
@@ -629,22 +627,25 @@ DbgkpPostFakeThreadMessages(IN PEPROCESS Process,
     }
 
     /* Start thread loop */
-    do
+    while (ThisThread)
     {
-        /* Dereference the previous thread if we had one */
-        if (OldThread) ObDereferenceObject(OldThread);
-
         /* Set this as the last thread and lock it */
+        if (pLastThread)
+            ObDereferenceObject(pLastThread);
+
         pLastThread = ThisThread;
         ObReferenceObject(ThisThread);
-        if (ExAcquireRundownProtection(&ThisThread->RundownProtect))
-        {
-            /* Acquire worked, set flags */
-            Flags = DEBUG_EVENT_RELEASE | DEBUG_EVENT_NOWAIT;
 
-            /* Check if this is a user thread */
-            if (!ThisThread->SystemThread)
+        /* Check if this is a user thread */
+        if (KiTestThreadSystemThreadFlag(&ThisThread->Tcb))
+        {
+            BOOLEAN First;
+
+            if (ExAcquireRundownProtection(&ThisThread->RundownProtect))
             {
+                /* Acquire worked, set flags */
+                Flags = DEBUG_EVENT_RELEASE | DEBUG_EVENT_NOWAIT;
+
                 /* Suspend it */
                 if (NT_SUCCESS(PsSuspendThread(ThisThread, NULL)))
                 {
@@ -652,135 +653,126 @@ DbgkpPostFakeThreadMessages(IN PEPROCESS Process,
                     Flags |= DEBUG_EVENT_SUSPEND;
                 }
             }
-        }
-        else
-        {
-            /* Couldn't acquire rundown */
-            Flags = DEBUG_EVENT_PROTECT_FAILED | DEBUG_EVENT_NOWAIT;
-        }
-
-        /* Clear the API Message */
-        RtlZeroMemory(&ApiMessage, sizeof(ApiMessage));
-
-        /* Check if this is the first thread */
-        if ((IsFirstThread) &&
-            !(Flags & DEBUG_EVENT_PROTECT_FAILED) &&
-            !(ThisThread->SystemThread) &&
-            (ThisThread->GrantedAccess))
-        {
-            /* It is, save the flag */
-            First = TRUE;
-        }
-        else
-        {
-            /* It isn't, save the flag */
-            First = FALSE;
-        }
-
-        /* Check if this is the first */
-        if (First)
-        {
-            /* So we'll start with the create process message */
-            ApiMessage.ApiNumber = DbgKmCreateProcessApi;
-
-            /* Get the file handle */
-            if (Process->SectionObject)
+            else
             {
-                /* Use the section object */
-                CreateProcess->FileHandle =
-                    DbgkpSectionToFileHandle(Process->SectionObject);
+                /* Couldn't acquire rundown */
+                Flags = DEBUG_EVENT_PROTECT_FAILED | DEBUG_EVENT_NOWAIT;
+            }
+
+            /* Clear the API Message */
+            RtlZeroMemory(&ApiMessage, sizeof(ApiMessage));
+
+            /* Check if this is the first thread */
+            First = IsFirstThread && !(Flags & DEBUG_EVENT_PROTECT_FAILED);
+
+            /* Check if this is the first */
+            if (First)
+            {
+                PIMAGE_NT_HEADERS NtHeader;
+
+                /* So we'll start with the create process message */
+                ApiMessage.ApiNumber = DbgKmCreateProcessApi;
+
+                /* Get the file handle */
+                if (Process->SectionObject)
+                {
+                    /* Use the section object */
+                    CreateProcess->FileHandle = DbgkpSectionToFileHandle(Process->SectionObject);
+                }
+                else
+                {
+                    /* Don't return any handle */
+                    CreateProcess->FileHandle = NULL;
+                }
+
+                /* Set the base address */
+                CreateProcess->BaseOfImage = Process->SectionBaseAddress;
+
+                /* Get the NT Header */
+                NtHeader = RtlImageNtHeader(Process->SectionBaseAddress);
+                if (NtHeader)
+                {
+                    /* Fill out data from the header */
+                    CreateProcess->DebugInfoFileOffset = NtHeader->FileHeader.PointerToSymbolTable;
+                    CreateProcess->DebugInfoSize = NtHeader->FileHeader.NumberOfSymbols;
+                }
             }
             else
             {
-                /* Don't return any handle */
-                CreateProcess->FileHandle = NULL;
+                /* Otherwise it's a thread message */
+                ApiMessage.ApiNumber = DbgKmCreateThreadApi;
+                CreateThread->StartAddress = ThisThread->StartAddress;
             }
 
-            /* Set the base address */
-            CreateProcess->BaseOfImage = Process->SectionBaseAddress;
+            /* Trace */
+            DBGKTRACE(DBGK_THREAD_DEBUG, "Thread: %p. First: %lx, OldThread: %p\n", ThisThread, First, pLastThread);
+            DBGKTRACE(DBGK_THREAD_DEBUG, "Start Address: %p\n", ThisThread->StartAddress);
 
-            /* Get the NT Header */
-            NtHeader = RtlImageNtHeader(Process->SectionBaseAddress);
-            if (NtHeader)
+            /* Queue the message */
+            Status = DbgkpQueueMessage(Process, ThisThread, &ApiMessage, Flags, DebugObject);
+            if (!NT_SUCCESS(Status))
             {
-                /* Fill out data from the header */
-                CreateProcess->DebugInfoFileOffset = NtHeader->FileHeader.
-                                                     PointerToSymbolTable;
-                CreateProcess->DebugInfoSize = NtHeader->FileHeader.
-                                               NumberOfSymbols;
+                /* Resume the thread if it was suspended */
+                if (Flags & DEBUG_EVENT_SUSPEND)
+                    PsResumeThread(ThisThread, NULL);
+
+                /* Check if we acquired rundown */
+                if (Flags & DEBUG_EVENT_RELEASE)
+                {
+                    /* Release it */
+                    ExReleaseRundownProtection(&ThisThread->RundownProtect);
+                }
+
+                /* If this was a process create, check if we got a handle */
+                if ((ApiMessage.ApiNumber == DbgKmCreateProcessApi) && (CreateProcess->FileHandle))
+                {
+                    /* Close it */
+                    ObCloseHandle(CreateProcess->FileHandle, KernelMode);
+                }
+
+                /* Release our reference and break out */
+                ObDereferenceObject(ThisThread);
+                break;
             }
-        }
-        else
-        {
-            /* Otherwise it's a thread message */
-            ApiMessage.ApiNumber = DbgKmCreateThreadApi;
-            CreateThread->StartAddress = ThisThread->StartAddress;
-        }
 
-        /* Trace */
-        DBGKTRACE(DBGK_THREAD_DEBUG, "Thread: %p. First: %lx, OldThread: %p\n",
-                  ThisThread, First, OldThread);
-        DBGKTRACE(DBGK_THREAD_DEBUG, "Start Address: %p\n",
-                  ThisThread->StartAddress);
-
-        /* Queue the message */
-        Status = DbgkpQueueMessage(Process,
-                                   ThisThread,
-                                   &ApiMessage,
-                                   Flags,
-                                   DebugObject);
-        if (!NT_SUCCESS(Status))
-        {
-            /* Resume the thread if it was suspended */
-            if (Flags & DEBUG_EVENT_SUSPEND) PsResumeThread(ThisThread, NULL);
-
-            /* Check if we acquired rundown */
-            if (Flags & DEBUG_EVENT_RELEASE)
+            /* Check if this was the first message */
+            if (First)
             {
-                /* Release it */
-                ExReleaseRundownProtection(&ThisThread->RundownProtect);
+                /* It isn't the first thread anymore */
+                IsFirstThread = FALSE;
+
+                /* Reference this thread and set it as first */
+                ObReferenceObject(ThisThread);
+                pFirstThread = ThisThread;
             }
-
-            /* If this was a process create, check if we got a handle */
-            if ((ApiMessage.ApiNumber == DbgKmCreateProcessApi) &&
-                 (CreateProcess->FileHandle))
-            {
-                /* Close it */
-                ObCloseHandle(CreateProcess->FileHandle, KernelMode);
-            }
-
-            /* Release our reference and break out */
-            ObDereferenceObject(ThisThread);
-            break;
-        }
-
-        /* Check if this was the first message */
-        if (First)
-        {
-            /* It isn't the first thread anymore */
-            IsFirstThread = FALSE;
-
-            /* Reference this thread and set it as first */
-            ObReferenceObject(ThisThread);
-            pFirstThread = ThisThread;
         }
 
         /* Get the next thread */
         ThisThread = PsGetNextProcessThread(Process, ThisThread);
-        OldThread = pLastThread;
-    } while (ThisThread);
+    }
 
     /* Check the API status */
     if (!NT_SUCCESS(Status))
     {
         /* Dereference and fail */
-        if (pFirstThread) ObDereferenceObject(pFirstThread);
-        ObDereferenceObject(pLastThread);
+        if (pFirstThread)
+            ObDereferenceObject(pFirstThread);
+
+        if (pLastThread)
+            ObDereferenceObject(pLastThread);
+
         return Status;
     }
 
     /* Make sure we have a first thread */
-    if (!pFirstThread) return STATUS_UNSUCCESSFUL;
+    if (!pFirstThread)
+    {
+        /* Dereference and fail */
+        if (pLastThread)
+            ObDereferenceObject(pLastThread);
+
+        return STATUS_UNSUCCESSFUL;
+    }
 
     /* Return thread pointers */
     *FirstThread = pFirstThread;
@@ -1209,7 +1201,7 @@ DbgkpSetProcessDebugObject(IN PEPROCESS Process,
     PETHREAD ThisThread, FirstThread;
     PLIST_ENTRY NextEntry;
     PDEBUG_EVENT DebugEvent;
-    PETHREAD EventThread;
+    const PETHREAD CurrentThread = PsGetCurrentThread();
     PAGED_CODE();
     DBGKTRACE(DBGK_PROCESS_DEBUG, "Process: %p DebugObject: %p\n",
               Process, DebugObject);
@@ -1299,9 +1291,8 @@ ThreadScan:
         else
         {
             /* Set the process flags */
-            PspSetProcessFlag(Process,
-                              PSF_NO_DEBUG_INHERIT_BIT |
-                              PSF_CREATE_REPORTED_BIT);
+            PspSetProcessNoDebugInheritFlagAssert(Process);
+            PspSetProcessCreateReportedFlagAssert(Process);
 
             /* Reference the debug object */
             ObReferenceObject(DebugObject);
@@ -1312,6 +1303,8 @@ ThreadScan:
     NextEntry = DebugObject->EventList.Flink;
     while (NextEntry != &DebugObject->EventList)
     {
+        PETHREAD EventThread;
+
         /* Get the debug event and go to the next entry */
         DebugEvent = CONTAINING_RECORD(NextEntry, DEBUG_EVENT, EventList);
         NextEntry = NextEntry->Flink;
@@ -1320,63 +1313,63 @@ ThreadScan:
                   DebugEvent->BackoutThread, PsGetCurrentThread());
 
         /* Check for if the debug event queue needs flushing */
-        if ((DebugEvent->Flags & DEBUG_EVENT_INACTIVE) &&
-            (DebugEvent->BackoutThread == PsGetCurrentThread()))
+        if (!(DebugEvent->Flags & DEBUG_EVENT_INACTIVE))
+            continue;
+
+        if (DebugEvent->BackoutThread != CurrentThread)
+            continue;
+
+        /* Get the event's thread */
+        EventThread = DebugEvent->Thread;
+        DBGKTRACE(DBGK_PROCESS_DEBUG, "EventThread: %p MsgStatus: %lx\n",
+                  EventThread, MsgStatus);
+
+        /* Check if the status is success */
+        if (NT_SUCCESS(Status))
         {
-            /* Get the event's thread */
-            EventThread = DebugEvent->Thread;
-            DBGKTRACE(DBGK_PROCESS_DEBUG, "EventThread: %p MsgStatus: %lx\n",
-                      EventThread, MsgStatus);
-
-            /* Check if the status is success */
-            if ((MsgStatus == STATUS_SUCCESS) &&
-                (EventThread->GrantedAccess) &&
-                (!EventThread->SystemThread))
+            /* Check if we couldn't acquire rundown for it */
+            if (DebugEvent->Flags & DEBUG_EVENT_PROTECT_FAILED)
             {
-                /* Check if we couldn't acquire rundown for it */
-                if (DebugEvent->Flags & DEBUG_EVENT_PROTECT_FAILED)
-                {
-                    /* Set the skip termination flag */
-                    PspSetCrossThreadFlag(EventThread, CT_SKIP_CREATION_MSG_BIT);
+                /* Set the skip termination flag */
+                PspSetThreadSkipTerminationMsgFlagAssert(EventThread);
 
-                    /* Insert it into the temp list */
-                    RemoveEntryList(&DebugEvent->EventList);
-                    InsertTailList(&TempList, &DebugEvent->EventList);
-                }
-                else
-                {
-                    /* Do we need to signal the event */
-                    if (DoSetEvent)
-                    {
-                        /* Do it */
-                        DebugEvent->Flags &= ~DEBUG_EVENT_INACTIVE;
-                        KeSetEvent(&DebugObject->EventsPresent,
-                                   IO_NO_INCREMENT,
-                                   FALSE);
-                        DoSetEvent = FALSE;
-                    }
-
-                    /* Clear the backout thread */
-                    DebugEvent->BackoutThread = NULL;
-
-                    /* Set skip flag */
-                    PspSetCrossThreadFlag(EventThread, CT_SKIP_CREATION_MSG_BIT);
-                }
-            }
-            else
-            {
                 /* Insert it into the temp list */
                 RemoveEntryList(&DebugEvent->EventList);
                 InsertTailList(&TempList, &DebugEvent->EventList);
             }
-
-            /* Check if the lock is held */
-            if (DebugEvent->Flags & DEBUG_EVENT_RELEASE)
+            else
             {
-                /* Release it */
-                DebugEvent->Flags &= ~DEBUG_EVENT_RELEASE;
-                ExReleaseRundownProtection(&EventThread->RundownProtect);
+                /* Do we need to signal the event */
+                if (DoSetEvent)
+                {
+                    /* Do it */
+                    DebugEvent->Flags &= ~DEBUG_EVENT_INACTIVE;
+                    KeSetEvent(&DebugObject->EventsPresent,
+                               IO_NO_INCREMENT,
+                               FALSE);
+                    DoSetEvent = FALSE;
+                }
+
+                /* Clear the backout thread */
+                DebugEvent->BackoutThread = NULL;
+
+                /* Set skip flag */
+                PspSetThreadSkipCreationMsgFlagAssert(EventThread);
             }
+        }
+        else
+        {
+            /* Insert it into the temp list */
+            RemoveEntryList(&DebugEvent->EventList);
+            InsertTailList(&TempList, &DebugEvent->EventList);
+        }
+
+        /* Check if the lock is held */
+        if (DebugEvent->Flags & DEBUG_EVENT_RELEASE)
+        {
+            /* Release it */
+            DebugEvent->Flags &= ~DEBUG_EVENT_RELEASE;
+            ExReleaseRundownProtection(&EventThread->RundownProtect);
         }
     }
 

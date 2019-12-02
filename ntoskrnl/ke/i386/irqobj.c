@@ -332,7 +332,7 @@ KeInitializeInterrupt(IN PKINTERRUPT Interrupt,
                       IN KIRQL SynchronizeIrql,
                       IN KINTERRUPT_MODE InterruptMode,
                       IN BOOLEAN ShareVector,
-                      IN CHAR ProcessorNumber,
+                      IN ULONG32 ProcessorNumber,
                       IN BOOLEAN FloatingSave)
 {
     ULONG i;
@@ -386,6 +386,250 @@ KeInitializeInterrupt(IN PKINTERRUPT Interrupt,
     Interrupt->Connected = FALSE;
 }
 
+#if 0
+
+void
+NTAPI
+KiAcquireInterruptConnectLock(const int Index, KIRQL *const OldIrql, const PGROUP_AFFINITY OldAffinity)
+{
+    GROUP_AFFINITY GroupAffinity = {0};
+
+    const PKPRCB Prcb = KiProcessorBlock[Index];
+    GroupAffinity.Group = Prcb->Group;
+    GroupAffinity.Mask = Prcb->GroupSetMember;
+    KeSetSystemGroupAffinityThread(&GroupAffinity, OldAffinity);
+    *OldIrql = KiAcquireDispatcherLock();
+}
+
+NTSTATUS
+NTAPI
+KiConnectInterrupt(IN PKINTERRUPT Interrupt)
+{
+    NTSTATUS Status = STATUS_INVALID_PARAMETER_1;
+    KIRQL Irql, OldIrql;
+    UCHAR Number;
+    ULONG Vector;
+    DISPATCH_INFO Dispatch;
+    GROUP_AFFINITY OldAffinity = { 0 };
+
+    /* Get data from interrupt */
+    Number = Interrupt->Number;
+    Vector = Interrupt->Vector;
+    Irql = Interrupt->Irql;
+
+    /* Validate the settings */
+    if ((Irql > HIGH_LEVEL) ||
+        (Number >= KeNumberProcessors_0) ||
+        (Interrupt->SynchronizeIrql < Irql) ||
+        (Interrupt->FloatingSave))
+    {
+        return Status;
+    }
+
+    /* Set the system affinity and acquire the dispatcher lock */
+    KiAcquireInterruptConnectLock(Number, &OldIrql, &OldAffinity);
+
+    /* Check if it's already been connected */
+    if (!Interrupt->Connected)
+    {
+        /* Get vector dispatching information */
+        KiGetVectorDispatch(Vector, &Dispatch);
+
+        /* Check if the vector is already connected */
+        if (Dispatch.Type == NoConnect)
+        {
+            /* Do the connection */
+            Interrupt->Connected = TRUE;
+
+            /* Initialize the list */
+            InitializeListHead(&Interrupt->InterruptListEntry);
+
+            /* Connect and enable the interrupt */
+            KiConnectVectorToInterrupt(Interrupt, NormalConnect);
+
+            if (HalEnableSystemInterrupt(Vector, Irql, Interrupt->Mode))
+                Status = STATUS_SUCCESS;
+        }
+        else if ((Dispatch.Type != UnknownConnect) &&
+            (Interrupt->ShareVector) &&
+            (Dispatch.Interrupt->ShareVector) &&
+            (Dispatch.Interrupt->Mode == Interrupt->Mode))
+        {
+            /* The vector is shared and the interrupts are compatible */
+            Interrupt->Connected = TRUE;
+            Status = STATUS_SUCCESS;
+
+            /*
+             * Verify the IRQL for chained connect,
+             */
+#if defined(CONFIG_SMP)
+            ASSERT(Irql <= SYNCH_LEVEL);
+#else
+            ASSERT(Irql <= (IPI_LEVEL - 2));
+#endif
+
+            /* Check if this is the first chain */
+            if (Dispatch.Type != ChainConnect)
+            {
+                /* This is not supported */
+                ASSERT(Dispatch.Interrupt->Mode != Latched);
+
+                /* Setup the chained handler */
+                KiConnectVectorToInterrupt(Dispatch.Interrupt, ChainConnect);
+            }
+
+            /* Insert into the interrupt list */
+            InsertTailList(&Dispatch.Interrupt->InterruptListEntry,
+                &Interrupt->InterruptListEntry);
+        }
+    }
+
+    /* Unlock the dispatcher and revert affinity */
+    KiReleaseDispatcherLock(OldIrql);
+    KeRevertToUserGroupAffinityThread(&OldAffinity);
+
+    return Status;
+}
+
+/*
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+KeConnectInterrupt(IN PKINTERRUPT* Interrupt, IN ULONG InterruptCount)
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    for (ULONG i = 0; i < InterruptCount; i++)
+    {
+        Status = KiConnectInterrupt(Interrupt[i]);
+
+        if (!NT_SUCCESS(Status))
+            break;
+    }
+
+    /* Check if we failed while trying to connect */
+    if (!NT_SUCCESS(Status))
+    {
+        if (InterruptCount)
+            KeDisconnectInterrupt(Interrupt, InterruptCount);
+    }
+
+    return Status;
+}
+
+NTSTATUS
+NTAPI
+KiDisconnectInterruptInternal(IN PKINTERRUPT Interrupt)
+{
+    /* Check if it's actually connected */
+    if (!Interrupt->Connected)
+        return STATUS_INVALID_PARAMETER_1;
+
+    ULONG Vector;
+    DISPATCH_INFO Dispatch;
+    PKINTERRUPT NextInterrupt;
+
+    /* Get the vector and IRQL */
+    Vector = Interrupt->Vector;
+
+    /* Get vector dispatch data */
+    KiGetVectorDispatch(Vector, &Dispatch);
+
+    const PLIST_ENTRY DispatchListHead = &Dispatch.Interrupt->InterruptListEntry;
+
+    /* Check if it was chained */
+    if (Dispatch.Type != ChainConnect || !Dispatch.Interrupt->SynchronizeIrql && (!DispatchListHead->Flink || IsListEmpty(DispatchListHead)))
+    {
+        /* Only one left, disable and remove it */
+        HalDisableSystemInterrupt(Interrupt->Vector, 0); // Irql parameter is not used.
+        KiConnectVectorToInterrupt(Interrupt, NoConnect);
+
+        /* Disconnect it */
+        Interrupt->Connected = FALSE;
+
+        return STATUS_SUCCESS;
+    }
+
+    /* Check if the top-level interrupt is being removed */
+    if (Interrupt == Dispatch.Interrupt)
+    {
+        /* Get the next one */
+        Dispatch.Interrupt = CONTAINING_RECORD(
+            Dispatch.Interrupt->
+            InterruptListEntry.Flink,
+            KINTERRUPT,
+            InterruptListEntry);
+
+        /* Reconnect it */
+        KiConnectVectorToInterrupt(Dispatch.Interrupt, ChainConnect);
+    }
+
+    /* Remove it */
+    RemoveEntryList(&Interrupt->InterruptListEntry);
+
+    /* Get the next one */
+    NextInterrupt = CONTAINING_RECORD(
+        Dispatch.Interrupt->
+        InterruptListEntry.Flink,
+        KINTERRUPT,
+        InterruptListEntry);
+
+    /* Check if this is the only one left */
+    if (Dispatch.Interrupt == NextInterrupt && NextInterrupt->SynchronizeIrql)
+    {
+        /* Connect it in non-chained mode */
+        KiConnectVectorToInterrupt(Dispatch.Interrupt, NormalConnect);
+    }
+
+    /* Disconnect it */
+    Interrupt->Connected = FALSE;
+
+    return STATUS_INTERRUPT_STILL_CONNECTED;
+}
+
+NTSTATUS
+NTAPI
+KiDisconnectInterruptCommon(IN PKINTERRUPT Interrupt)
+{
+    NTSTATUS Status;
+    KIRQL OldIrql;
+    GROUP_AFFINITY OldAffinity = { 0 };
+
+    /* Set the system affinity and acquire the dispatcher lock */
+    KiAcquireInterruptConnectLock(Interrupt->Number, &OldIrql, &OldAffinity);
+
+    Status = KiDisconnectInterruptInternal(Interrupt);
+
+    /* Unlock the dispatcher and revert affinity */
+    KiReleaseDispatcherLock(OldIrql);
+    KeRevertToUserGroupAffinityThread(&OldAffinity);
+
+    return Status;
+}
+
+/*
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+KeDisconnectInterrupt(IN PKINTERRUPT* Interrupt, IN ULONG InterruptCount)
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    for (ULONG i = 0; i < InterruptCount; i++)
+    {
+        NTSTATUS StatusSingle = KiDisconnectInterruptCommon(Interrupt[i]);
+
+        if (!NT_SUCCESS(StatusSingle) || StatusSingle == STATUS_INTERRUPT_STILL_CONNECTED)
+            Status = StatusSingle;
+    }
+
+    return Status;
+}
+
+#else
+
 /*
  * @implemented
  */
@@ -405,9 +649,7 @@ KeConnectInterrupt(IN PKINTERRUPT Interrupt)
     Irql = Interrupt->Irql;
 
     /* Validate the settings */
-    if ((Irql > HIGH_LEVEL) ||
-        (Number >= KeNumberProcessors) ||
-        (Interrupt->SynchronizeIrql < Irql) ||
+    if ((Irql > HIGH_LEVEL) || (Number >= KeNumberProcessors) || (Interrupt->SynchronizeIrql < Irql) ||
         (Interrupt->FloatingSave))
     {
         return FALSE;
@@ -439,12 +681,12 @@ KeConnectInterrupt(IN PKINTERRUPT Interrupt)
             /* Connect and enable the interrupt */
             KiConnectVectorToInterrupt(Interrupt, NormalConnect);
             Status = HalEnableSystemInterrupt(Vector, Irql, Interrupt->Mode);
-            if (!Status) Error = TRUE;
+            if (!Status)
+                Error = TRUE;
         }
-        else if ((Dispatch.Type != UnknownConnect) &&
-                (Interrupt->ShareVector) &&
-                (Dispatch.Interrupt->ShareVector) &&
-                (Dispatch.Interrupt->Mode == Interrupt->Mode))
+        else if (
+            (Dispatch.Type != UnknownConnect) && (Interrupt->ShareVector) && (Dispatch.Interrupt->ShareVector) &&
+            (Dispatch.Interrupt->Mode == Interrupt->Mode))
         {
             /* The vector is shared and the interrupts are compatible */
             Interrupt->Connected = Connected = TRUE;
@@ -469,8 +711,7 @@ KeConnectInterrupt(IN PKINTERRUPT Interrupt)
             }
 
             /* Insert into the interrupt list */
-            InsertTailList(&Dispatch.Interrupt->InterruptListEntry,
-                           &Interrupt->InterruptListEntry);
+            InsertTailList(&Dispatch.Interrupt->InterruptListEntry, &Interrupt->InterruptListEntry);
         }
     }
 
@@ -532,10 +773,8 @@ KeDisconnectInterrupt(IN PKINTERRUPT Interrupt)
             if (Interrupt == Dispatch.Interrupt)
             {
                 /* Get the next one */
-                Dispatch.Interrupt = CONTAINING_RECORD(Dispatch.Interrupt->
-                                                       InterruptListEntry.Flink,
-                                                       KINTERRUPT,
-                                                       InterruptListEntry);
+                Dispatch.Interrupt =
+                    CONTAINING_RECORD(Dispatch.Interrupt->InterruptListEntry.Flink, KINTERRUPT, InterruptListEntry);
 
                 /* Reconnect it */
                 KiConnectVectorToInterrupt(Dispatch.Interrupt, ChainConnect);
@@ -545,10 +784,8 @@ KeDisconnectInterrupt(IN PKINTERRUPT Interrupt)
             RemoveEntryList(&Interrupt->InterruptListEntry);
 
             /* Get the next one */
-            NextInterrupt = CONTAINING_RECORD(Dispatch.Interrupt->
-                                              InterruptListEntry.Flink,
-                                              KINTERRUPT,
-                                              InterruptListEntry);
+            NextInterrupt =
+                CONTAINING_RECORD(Dispatch.Interrupt->InterruptListEntry.Flink, KINTERRUPT, InterruptListEntry);
 
             /* Check if this is the only one left */
             if (Dispatch.Interrupt == NextInterrupt)
@@ -575,6 +812,7 @@ KeDisconnectInterrupt(IN PKINTERRUPT Interrupt)
     /* Return to caller */
     return State;
 }
+#endif
 
 /*
  * @implemented

@@ -99,10 +99,23 @@ typedef struct _IMAGE_RESOURCE_DATA_ENTRY {
   ULONG Reserved;
 } IMAGE_RESOURCE_DATA_ENTRY, *PIMAGE_RESOURCE_DATA_ENTRY;
 
+
+//
+// Load Configuration Directory Entry Code Integrity Substructure Format
+//
+typedef struct _IMAGE_LOAD_CONFIG_CODE_INTEGRITY
+{
+  USHORT Flags; // Flags to indicate if CI information is available, etc.
+  USHORT Catalog; // 0xFFFF means not available
+  ULONG CatalogOffset;
+  ULONG Reserved; // Additional bitmask to be defined later
+} IMAGE_LOAD_CONFIG_CODE_INTEGRITY, *PIMAGE_LOAD_CONFIG_CODE_INTEGRITY;
+
 //
 // Load Configuration Directory Entry Format
 //
-typedef struct {
+typedef struct _IMAGE_LOAD_CONFIG_DIRECTORY32
+{
   ULONG Size;
   ULONG TimeDateStamp;
   USHORT MajorVersion;
@@ -112,20 +125,47 @@ typedef struct {
   ULONG CriticalSectionDefaultTimeout;
   ULONG DeCommitFreeBlockThreshold;
   ULONG DeCommitTotalFreeThreshold;
-  ULONG LockPrefixTable;
+  ULONG LockPrefixTable; // VA
   ULONG MaximumAllocationSize;
   ULONG VirtualMemoryThreshold;
   ULONG ProcessHeapFlags;
   ULONG ProcessAffinityMask;
   USHORT CSDVersion;
-  USHORT Reserved1;
-  ULONG EditList;
-  ULONG SecurityCookie;
-  ULONG SEHandlerTable;
+  USHORT DependentLoadFlags;
+  ULONG EditList; // VA
+  ULONG SecurityCookie; // VA
+  ULONG SEHandlerTable; // VA
   ULONG SEHandlerCount;
+  // Windows 7 cut
+  ULONG GuardCFCheckFunctionPointer; // VA
+  ULONG GuardCFDispatchFunctionPointer; // VA
+  ULONG GuardCFFunctionTable; // VA
+  ULONG GuardCFFunctionCount;
+  ULONG GuardFlags;
+  // Windows 8 cut
+  IMAGE_LOAD_CONFIG_CODE_INTEGRITY CodeIntegrity;
+  ULONG GuardAddressTakenIatEntryTable; // VA
+  ULONG GuardAddressTakenIatEntryCount;
+  ULONG GuardLongJumpTargetTable; // VA
+  ULONG GuardLongJumpTargetCount;
+  ULONG DynamicValueRelocTable; // VA
+  ULONG CHPEMetadataPointer;
+  // Windows 10.0.14393 cut
+  ULONG GuardRFFailureRoutine; // VA
+  ULONG GuardRFFailureRoutineFunctionPointer; // VA
+  ULONG DynamicValueRelocTableOffset;
+  USHORT DynamicValueRelocTableSection;
+  USHORT Reserved2;
+  ULONG GuardRFVerifyStackPointerFunctionPointer; // VA
+  ULONG HotPatchTableOffset;
+  ULONG Reserved3;
+  ULONG EnclaveConfigurationPointer; // VA
+  ULONG VolatileMetadataPointer; // VA
+  // Windows 10.0.17763 cut
 } IMAGE_LOAD_CONFIG_DIRECTORY32, *PIMAGE_LOAD_CONFIG_DIRECTORY32;
 
-typedef struct {
+typedef struct _IMAGE_LOAD_CONFIG_DIRECTORY64
+{
   ULONG Size;
   ULONG TimeDateStamp;
   USHORT MajorVersion;
@@ -135,17 +175,43 @@ typedef struct {
   ULONG CriticalSectionDefaultTimeout;
   ULONGLONG DeCommitFreeBlockThreshold;
   ULONGLONG DeCommitTotalFreeThreshold;
-  ULONGLONG LockPrefixTable;
+  ULONGLONG LockPrefixTable; // VA
   ULONGLONG MaximumAllocationSize;
   ULONGLONG VirtualMemoryThreshold;
   ULONGLONG ProcessAffinityMask;
   ULONG ProcessHeapFlags;
   USHORT CSDVersion;
-  USHORT Reserved1;
-  ULONGLONG EditList;
-  ULONGLONG SecurityCookie;
-  ULONGLONG SEHandlerTable;
+  USHORT DependentLoadFlags;
+  ULONGLONG EditList; // VA
+  ULONGLONG SecurityCookie; // VA
+  ULONGLONG SEHandlerTable; // VA
   ULONGLONG SEHandlerCount;
+  // Windows 7 cut
+  ULONGLONG GuardCFCheckFunctionPointer; // VA
+  ULONGLONG GuardCFDispatchFunctionPointer; // VA
+  ULONGLONG GuardCFFunctionTable; // VA
+  ULONGLONG GuardCFFunctionCount;
+  ULONG GuardFlags;
+  // Windows 8 cut
+  IMAGE_LOAD_CONFIG_CODE_INTEGRITY CodeIntegrity;
+  ULONGLONG GuardAddressTakenIatEntryTable; // VA
+  ULONGLONG GuardAddressTakenIatEntryCount;
+  ULONGLONG GuardLongJumpTargetTable; // VA
+  ULONGLONG GuardLongJumpTargetCount;
+  ULONGLONG DynamicValueRelocTable; // VA
+  ULONGLONG CHPEMetadataPointer; // VA
+  // Windows 10.0.14393 cut
+  ULONGLONG GuardRFFailureRoutine; // VA
+  ULONGLONG GuardRFFailureRoutineFunctionPointer; // VA
+  ULONG DynamicValueRelocTableOffset;
+  USHORT DynamicValueRelocTableSection;
+  USHORT Reserved2;
+  ULONGLONG GuardRFVerifyStackPointerFunctionPointer; // VA
+  ULONG HotPatchTableOffset;
+  ULONG Reserved3;
+  ULONGLONG EnclaveConfigurationPointer; // VA
+  ULONGLONG VolatileMetadataPointer; // VA
+  // Windows 10.0.17763 cut
 } IMAGE_LOAD_CONFIG_DIRECTORY64, *PIMAGE_LOAD_CONFIG_DIRECTORY64;
 
 #ifdef _WIN64

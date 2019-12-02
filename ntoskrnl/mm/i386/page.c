@@ -227,7 +227,11 @@ MmGetPageTableForProcess(PEPROCESS Process, PVOID Address, BOOLEAN Create)
              * Which imples that Process is the current one */
             ASSERT(Create == FALSE);
 
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+            PdeBase = MmCreateHyperspaceMapping(PTE_TO_PFN(Process->Pcb.DirectoryTableBase));
+#else
             PdeBase = MmCreateHyperspaceMapping(PTE_TO_PFN(Process->Pcb.DirectoryTableBase[0]));
+#endif
             if (PdeBase == NULL)
             {
                 KeBugCheck(MEMORY_MANAGEMENT);

@@ -317,7 +317,7 @@ NtReplyPort(IN HANDLE PortHandle,
     WakeupThread->LpcReplyMessage = (PVOID)Message;
 
     /* Check if we have messages on the reply chain */
-    if (!(WakeupThread->LpcExitThreadCalled) &&
+    if (!PspTestThreadLpcExitThreadCalledFlag(WakeupThread) &&
         !(IsListEmpty(&WakeupThread->LpcReplyChain)))
     {
         /* Remove us from it and reinitialize it */
@@ -326,12 +326,12 @@ NtReplyPort(IN HANDLE PortHandle,
     }
 
     /* Check if this is the message the thread had received */
-    if ((Thread->LpcReceivedMsgIdValid) &&
+    if (PspTestThreadLpcReceivedMsgIdValidFlag(Thread) &&
         (Thread->LpcReceivedMessageId == CapturedReplyMessage.MessageId))
     {
         /* Clear this data */
         Thread->LpcReceivedMessageId = 0;
-        Thread->LpcReceivedMsgIdValid = FALSE;
+        PspClearThreadLpcReceivedMsgIdValidFlagAssert(Thread);
     }
 
     /* Free any data information */
@@ -411,7 +411,7 @@ NtReplyWaitReceivePortEx(IN HANDLE PortHandle,
     else
     {
         /* If this is a system thread, then let it page out its stack */
-        if (Thread->SystemThread) WaitMode = UserMode;
+        if (KiTestThreadSystemThreadFlag(&Thread->Tcb)) WaitMode = UserMode;
 
         if (ReplyMessage != NULL)
             CapturedReplyMessage = *ReplyMessage;
@@ -563,7 +563,7 @@ NtReplyWaitReceivePortEx(IN HANDLE PortHandle,
         WakeupThread->LpcReplyMessage = (PVOID)Message;
 
         /* Check if we have messages on the reply chain */
-        if (!(WakeupThread->LpcExitThreadCalled) &&
+        if (!PspTestThreadLpcExitThreadCalledFlag(WakeupThread) &&
             !(IsListEmpty(&WakeupThread->LpcReplyChain)))
         {
             /* Remove us from it and reinitialize it */
@@ -572,12 +572,12 @@ NtReplyWaitReceivePortEx(IN HANDLE PortHandle,
         }
 
         /* Check if this is the message the thread had received */
-        if ((Thread->LpcReceivedMsgIdValid) &&
+        if (PspTestThreadLpcReceivedMsgIdValidFlag(Thread) &&
             (Thread->LpcReceivedMessageId == CapturedReplyMessage.MessageId))
         {
             /* Clear this data */
             Thread->LpcReceivedMessageId = 0;
-            Thread->LpcReceivedMsgIdValid = FALSE;
+            PspClearThreadLpcReceivedMsgIdValidFlagAssert(Thread);
         }
 
         /* Free any data information */
@@ -639,7 +639,7 @@ NtReplyWaitReceivePortEx(IN HANDLE PortHandle,
 
     /* Set this as the received message */
     Thread->LpcReceivedMessageId = Message->Request.MessageId;
-    Thread->LpcReceivedMsgIdValid = TRUE;
+    PspSetThreadLpcReceivedMsgIdValidFlagAssert(Thread);
 
     _SEH2_TRY
     {

@@ -95,7 +95,7 @@ HRESULT WINAPI ThemeDrawCaptionText(PDRAW_CONTEXT pcontext, RECT* pRect, int iPa
     WCHAR *pszText = buffer;
     INT len;
 
-    len = InternalGetWindowText(pcontext->hWnd, NULL, 0);
+    len = GetWindowTextLengthW(pcontext->hWnd);
     if (!len)
         return S_OK;
 

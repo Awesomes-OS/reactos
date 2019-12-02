@@ -367,11 +367,19 @@ ThemePreWindowProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, ULONG_PTR 
             pwndData->DirtyThemeRegion = TRUE;
             break;
         }
+    }
+
+    switch (Msg)
+    {
+        case WM_STYLECHANGED:
+        case WM_WINDOWPOSCHANGED:
+        case WM_THEMECHANGED:
         case WM_NCCREATE:
         {
             PWND_DATA pwndData = ThemeGetWndData(hWnd);
             if (pwndData == NULL)
                 return 0;
+            FIXME("DirtyThemeRegion [%u] = TRUE", Msg);
             pwndData->DirtyThemeRegion = TRUE;
         }
     }

@@ -307,7 +307,7 @@ MiDeleteSystemPageableVm(IN PMMPTE PointerPte,
     ASSERT(KeGetCurrentIrql() <= APC_LEVEL);
 
     /* Lock the system working set */
-    MiLockWorkingSet(CurrentThread, &MmSystemCacheWs);
+    LOCK_SYSTEM_CACHE_WS(CurrentThread);
 
     /* Loop all pages */
     while (PageCount)
@@ -377,7 +377,7 @@ MiDeleteSystemPageableVm(IN PMMPTE PointerPte,
     }
 
     /* Release the working set */
-    MiUnlockWorkingSet(CurrentThread, &MmSystemCacheWs);
+    UNLOCK_SYSTEM_CACHE_WS(CurrentThread);
 
     /* Flush the entire TLB */
     KeFlushEntireTb(TRUE, TRUE);
@@ -1723,7 +1723,7 @@ MiQueryMemoryBasicInformation(IN HANDLE ProcessHandle,
 
     /* Lock the address space and make sure the process isn't already dead */
     MmLockAddressSpace(&TargetProcess->Vm);
-    if (TargetProcess->VmDeleted)
+    if (PspTestProcessVmDeletedFlag(TargetProcess))
     {
         /* Unlock the address space of the process */
         MmUnlockAddressSpace(&TargetProcess->Vm);
@@ -2136,7 +2136,7 @@ MiProtectVirtualMemory(IN PEPROCESS Process,
     /* Lock the address space and make sure the process isn't already dead */
     AddressSpace = MmGetCurrentAddressSpace();
     MmLockAddressSpace(AddressSpace);
-    if (Process->VmDeleted)
+    if (PspTestProcessVmDeletedFlag(Process))
     {
         DPRINT1("Process is dying\n");
         Status = STATUS_PROCESS_IS_TERMINATING;
@@ -3278,7 +3278,7 @@ MiLockVirtualMemory(
 
     /* Make sure we still have an address space */
     CurrentProcess = PsGetCurrentProcess();
-    if (CurrentProcess->VmDeleted)
+    if (PspTestProcessVmDeletedFlag(CurrentProcess))
     {
         Status = STATUS_PROCESS_IS_TERMINATING;
         goto Cleanup;
@@ -3597,7 +3597,7 @@ MiUnlockVirtualMemory(
 
     /* Make sure we still have an address space */
     CurrentProcess = PsGetCurrentProcess();
-    if (CurrentProcess->VmDeleted)
+    if (PspTestProcessVmDeletedFlag(CurrentProcess))
     {
         Status = STATUS_PROCESS_IS_TERMINATING;
         goto Cleanup;
@@ -4351,6 +4351,7 @@ NtQueryVirtualMemory(IN HANDLE ProcessHandle,
             break;
         case MemoryWorkingSetList:
         case MemoryBasicVlmInformation:
+        case MemoryWorkingSetExList:
         default:
             DPRINT1("Unhandled memory information class %d\n", MemoryInformationClass);
             break;
@@ -4721,7 +4722,7 @@ NtAllocateVirtualMemory(IN HANDLE ProcessHandle,
     //
     AddressSpace = MmGetCurrentAddressSpace();
     MmLockAddressSpace(AddressSpace);
-    if (Process->VmDeleted)
+    if (PspTestProcessVmDeletedFlag(Process))
     {
         DPRINT1("Process is dying\n");
         Status = STATUS_PROCESS_IS_TERMINATING;
@@ -5204,7 +5205,7 @@ NtFreeVirtualMemory(IN HANDLE ProcessHandle,
     // If the address space is being deleted, fail the de-allocation since it's
     // too late to do anything about it
     //
-    if (Process->VmDeleted)
+    if (PspTestProcessVmDeletedFlag(Process))
     {
         DPRINT1("Process is dead\n");
         Status = STATUS_PROCESS_IS_TERMINATING;

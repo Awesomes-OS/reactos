@@ -159,6 +159,21 @@ RemoveTailList(
     return Entry;
 }
 
+FORCEINLINE
+VOID
+AppendTailList(
+    _Inout_ PLIST_ENTRY ListHead,
+    _Inout_ PLIST_ENTRY ListToAppend
+)
+{
+    PLIST_ENTRY ListEnd = ListHead->Blink;
+
+    ListHead->Blink->Flink = ListToAppend;
+    ListHead->Blink = ListToAppend->Blink;
+    ListToAppend->Blink->Flink = ListHead;
+    ListToAppend->Blink = ListEnd;
+}
+
 //
 // Unicode string macros
 //
@@ -2628,7 +2643,7 @@ RtlCreateUserProcess(
     _Out_ PRTL_USER_PROCESS_INFORMATION ProcessInfo
 );
 
-#if (NTDDI_VERSION >= NTDDI_WIN7)
+#if 0 && (NTDDI_VERSION >= NTDDI_WIN7)
 NTSYSAPI
 NTSTATUS
 NTAPI
@@ -2674,11 +2689,12 @@ NTAPI
 RtlDestroyProcessParameters(
     _In_ PRTL_USER_PROCESS_PARAMETERS ProcessParameters);
 
+DECLSPEC_NORETURN
 NTSYSAPI
 VOID
 NTAPI
 RtlExitUserThread(
-    _In_ NTSTATUS Status);
+    _In_ NTSTATUS ExitStatus);
 
 NTSYSAPI
 VOID
@@ -2766,6 +2782,20 @@ RtlGetCurrentProcessorNumber(
     VOID
 );
 
+NTSYSAPI
+void
+NTAPI
+RtlGetCurrentProcessorNumberEx(
+    _Inout_ PPROCESSOR_NUMBER ProcNumber
+);
+
+DECLSPEC_NORETURN
+NTSYSAPI
+VOID
+NTAPI
+RtlExitUserProcess(
+    _In_ NTSTATUS ExitStatus
+);
 
 //
 // Thread Pool Functions
@@ -2858,6 +2888,29 @@ RtlDoesFileExists_U(
 );
 
 NTSYSAPI
+BOOLEAN
+NTAPI
+RtlDoesFileExists_UEx(
+    _In_ PCWSTR FileName,
+    _In_ BOOLEAN SucceedIfBusy
+);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlDoesFileExists_UstrEx(
+    _In_ PCUNICODE_STRING FileName,
+    _In_ BOOLEAN SucceedIfBusy
+);
+
+NTSYSAPI
+RTL_PATH_TYPE
+NTAPI
+RtlDetermineDosPathNameType_Ustr(
+    _In_ PCUNICODE_STRING PathString
+);
+
+NTSYSAPI
 RTL_PATH_TYPE
 NTAPI
 RtlDetermineDosPathNameType_U(
@@ -2902,6 +2955,17 @@ RtlDosPathNameToNtPathName_U(
 );
 
 
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlDosPathNameToNtPathName_U_WithStatus(
+    _In_opt_z_ PCWSTR DosPathName,
+    _Out_ PUNICODE_STRING NtPathName,
+    _Out_opt_ PCWSTR *NtFileNamePart,
+    _Out_opt_ PRTL_RELATIVE_NAME_U DirectoryInfo
+);
+
+
 #define RTL_UNCHANGED_UNK_PATH  1
 #define RTL_CONVERTED_UNC_PATH  2
 #define RTL_CONVERTED_NT_PATH   3
@@ -2917,7 +2981,6 @@ RtlNtPathNameToDosPathName(
     _Out_opt_ PULONG Unknown
 );
 
-
 NTSYSAPI
 BOOLEAN
 NTAPI
@@ -2926,6 +2989,19 @@ RtlDosPathNameToRelativeNtPathName_U(
     _Out_ PUNICODE_STRING NtName,
     _Out_ PCWSTR *PartName,
     _Out_ PRTL_RELATIVE_NAME_U RelativeName
+);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlpDosPathNameToRelativeNtPathName(
+    _In_ RTLP_DosPathNameToRelativeNtPathName_FLAGS Flags,
+    _In_ PCUNICODE_STRING DosName,
+    _Inout_opt_ PUNICODE_STRING StaticBuffer,
+    _Inout_opt_ PUNICODE_STRING DynamicBuffer,
+    _Out_opt_ PUNICODE_STRING* NtName,
+    _Out_opt_ PCWSTR* NtFileNamePart,
+    _Out_opt_ PRTL_RELATIVE_NAME_U RelativeName
 );
 
 _At_(Destination->Buffer, _Out_bytecap_(Destination->MaximumLength))
@@ -2957,7 +3033,6 @@ RtlGetFullPathName_U(
     _Out_opt_ PWSTR *ShortName
 );
 
-#if (NTDDI_VERSION >= NTDDI_WIN7)
 NTSYSAPI
 NTSTATUS
 NTAPI
@@ -2966,20 +3041,32 @@ RtlGetFullPathName_UEx(
     _In_ ULONG BufferLength,
     _Out_ PWSTR Buffer,
     _Out_opt_ PWSTR *FilePart,
-    _Out_opt_ RTL_PATH_TYPE *InputPathType
-    );
-#endif
+    _Out_opt_ ULONG *ResultLength
+);
 
+NTSYSAPI
+ULONG
+NTAPI
+RtlGetFullPathName_Ustr(
+    _In_ PUNICODE_STRING FileName,
+    _In_ ULONG Size,
+    _Out_z_bytecap_(Size) PWSTR Buffer,
+    _Out_opt_ PCWSTR *ShortName,
+    _Out_opt_ PBOOLEAN InvalidName,
+    _Out_ PRTLP_PATH_INFO PathInfo
+);
+
+NTSYSAPI
 NTSTATUS
 NTAPI
 RtlGetFullPathName_UstrEx(
     _In_ PUNICODE_STRING FileName,
-    _In_opt_ PUNICODE_STRING StaticString,
-    _In_opt_ PUNICODE_STRING DynamicString,
+    _Inout_opt_ PUNICODE_STRING StaticString,
+    _Out_opt_ PUNICODE_STRING DynamicString,
     _Out_opt_ PUNICODE_STRING *StringUsed,
     _Out_opt_ PSIZE_T FilePartSize,
     _Out_opt_ PBOOLEAN NameInvalid,
-    _Out_ RTL_PATH_TYPE* PathType,
+    _Out_ PRTLP_PATH_INFO PathType,
     _Out_opt_ PSIZE_T LengthNeeded
 );
 
@@ -3771,6 +3858,17 @@ ULONG
 NTAPI
 RtlGetNtGlobalFlags(VOID);
 
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlImageDirectoryEntryToDataEx(
+    _In_ PVOID BaseAddress,
+    _In_ BOOLEAN MappedAsImage,
+    _In_ USHORT Directory,
+    _Out_ PULONG Size,
+    _Out_ PVOID *Section
+);
+
 _Success_(return!=NULL)
 NTSYSAPI
 PVOID
@@ -3936,10 +4034,10 @@ RtlDosApplyFileIsolationRedirection_Ustr(
     _In_ PUNICODE_STRING Extension,
     _Inout_ PUNICODE_STRING StaticString,
     _Inout_ PUNICODE_STRING DynamicString,
-    _Inout_ PUNICODE_STRING *NewName,
-    _In_ PULONG NewFlags,
-    _In_ PSIZE_T FileNameSize,
-    _In_ PSIZE_T RequiredLength
+    _Inout_opt_ PUNICODE_STRING *NewName,
+    _In_opt_ PULONG NewFlags,
+    _In_opt_ PSIZE_T FileNameSize,
+    _In_opt_ PSIZE_T RequiredLength
 );
 
 NTSYSAPI
@@ -4807,6 +4905,65 @@ RtlFindActivationContextSectionGuid(
     const GUID *guid,
     void *ptr
 );
+
+#ifdef NTOS_MODE_USER
+
+NTSYSAPI
+VOID
+NTAPI
+RtlInitializeConditionVariable(OUT PRTL_CONDITION_VARIABLE ConditionVariable);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlWakeConditionVariable(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlWakeAllConditionVariable(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlSleepConditionVariableCS(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
+    IN OUT PRTL_CRITICAL_SECTION CriticalSection,
+    IN PLARGE_INTEGER TimeOut OPTIONAL);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlSleepConditionVariableSRW(IN OUT PRTL_CONDITION_VARIABLE ConditionVariable,
+    IN OUT PRTL_SRWLOCK SRWLock,
+    IN PLARGE_INTEGER TimeOut OPTIONAL,
+    IN ULONG Flags);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlInitializeSRWLock(OUT PRTL_SRWLOCK SRWLock);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlAcquireSRWLockShared(IN OUT PRTL_SRWLOCK SRWLock);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlReleaseSRWLockShared(IN OUT PRTL_SRWLOCK SRWLock);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlAcquireSRWLockExclusive(IN OUT PRTL_SRWLOCK SRWLock);
+
+NTSYSAPI
+VOID
+NTAPI
+RtlReleaseSRWLockExclusive(IN OUT PRTL_SRWLOCK SRWLock);
+
+#endif
 
 #ifdef __cplusplus
 }

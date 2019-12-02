@@ -23,7 +23,6 @@ Author:
 // Dependencies
 //
 #include <umtypes.h>
-#include <ldrtypes.h>
 #include <mmtypes.h>
 #include <obtypes.h>
 #include <rtltypes.h>
@@ -158,15 +157,9 @@ extern POBJECT_TYPE NTSYSAPI PsJobType;
 #define PROCESS_QUERY_INFORMATION               0x0400
 #define PROCESS_SUSPEND_RESUME                  0x0800
 #define PROCESS_QUERY_LIMITED_INFORMATION       0x1000
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
 #define PROCESS_ALL_ACCESS                      (STANDARD_RIGHTS_REQUIRED | \
                                                  SYNCHRONIZE | \
                                                  0xFFFF)
-#else
-#define PROCESS_ALL_ACCESS                      (STANDARD_RIGHTS_REQUIRED | \
-                                                 SYNCHRONIZE | \
-                                                 0xFFF)
-#endif
 
 //
 // Thread Base Priorities
@@ -224,76 +217,6 @@ extern POBJECT_TYPE NTSYSAPI PsJobType;
 #define JOB_OBJECT_SECURITY_ONLY_TOKEN          0x0004
 #define JOB_OBJECT_SECURITY_FILTER_TOKENS       0x0008
 
-//
-// Cross Thread Flags
-//
-#define CT_TERMINATED_BIT                       0x1
-#define CT_DEAD_THREAD_BIT                      0x2
-#define CT_HIDE_FROM_DEBUGGER_BIT               0x4
-#define CT_ACTIVE_IMPERSONATION_INFO_BIT        0x8
-#define CT_SYSTEM_THREAD_BIT                    0x10
-#define CT_HARD_ERRORS_ARE_DISABLED_BIT         0x20
-#define CT_BREAK_ON_TERMINATION_BIT             0x40
-#define CT_SKIP_CREATION_MSG_BIT                0x80
-#define CT_SKIP_TERMINATION_MSG_BIT             0x100
-
-//
-// Same Thread Passive Flags
-//
-#define STP_ACTIVE_EX_WORKER_BIT                0x1
-#define STP_EX_WORKER_CAN_WAIT_USER_BIT         0x2
-#define STP_MEMORY_MAKER_BIT                    0x4
-#define STP_KEYED_EVENT_IN_USE_BIT              0x8
-
-//
-// Same Thread APC Flags
-//
-#define STA_LPC_RECEIVED_MSG_ID_VALID_BIT       0x1
-#define STA_LPC_EXIT_THREAD_CALLED_BIT          0x2
-#define STA_ADDRESS_SPACE_OWNER_BIT             0x4
-#define STA_OWNS_WORKING_SET_BITS               0x1F8
-
-//
-// Kernel Process flags (maybe in ketypes.h?)
-//
-#define KPSF_AUTO_ALIGNMENT_BIT                 0
-#define KPSF_DISABLE_BOOST_BIT                  1
-
-//
-// Process Flags
-//
-#define PSF_CREATE_REPORTED_BIT                 0x1
-#define PSF_NO_DEBUG_INHERIT_BIT                0x2
-#define PSF_PROCESS_EXITING_BIT                 0x4
-#define PSF_PROCESS_DELETE_BIT                  0x8
-#define PSF_WOW64_SPLIT_PAGES_BIT               0x10
-#define PSF_VM_DELETED_BIT                      0x20
-#define PSF_OUTSWAP_ENABLED_BIT                 0x40
-#define PSF_OUTSWAPPED_BIT                      0x80
-#define PSF_FORK_FAILED_BIT                     0x100
-#define PSF_WOW64_VA_SPACE_4GB_BIT              0x200
-#define PSF_ADDRESS_SPACE_INITIALIZED_BIT       0x400
-#define PSF_SET_TIMER_RESOLUTION_BIT            0x1000
-#define PSF_BREAK_ON_TERMINATION_BIT            0x2000
-#define PSF_SESSION_CREATION_UNDERWAY_BIT       0x4000
-#define PSF_WRITE_WATCH_BIT                     0x8000
-#define PSF_PROCESS_IN_SESSION_BIT              0x10000
-#define PSF_OVERRIDE_ADDRESS_SPACE_BIT          0x20000
-#define PSF_HAS_ADDRESS_SPACE_BIT               0x40000
-#define PSF_LAUNCH_PREFETCHED_BIT               0x80000
-#define PSF_INJECT_INPAGE_ERRORS_BIT            0x100000
-#define PSF_VM_TOP_DOWN_BIT                     0x200000
-#define PSF_IMAGE_NOTIFY_DONE_BIT               0x400000
-#define PSF_PDE_UPDATE_NEEDED_BIT               0x800000
-#define PSF_VDM_ALLOWED_BIT                     0x1000000
-#define PSF_SWAP_ALLOWED_BIT                    0x2000000
-#define PSF_CREATE_FAILED_BIT                   0x4000000
-#define PSF_DEFAULT_IO_PRIORITY_BIT             0x8000000
-
-//
-// Vista Process Flags
-//
-#define PSF2_PROTECTED_BIT                      0x800
 #endif
 
 //
@@ -403,6 +326,14 @@ typedef enum _THREADINFOCLASS
     ThreadActualBasePriority,
     ThreadTebInformation,
     ThreadCSwitchMon,
+    ThreadCSwitchPmu,
+    ThreadWow64Context,
+    ThreadGroupInformation,
+    ThreadUmsInformation,
+    ThreadCounterProfiling,
+    ThreadIdealProcessorEx,
+    ThreadCpuAccountingInformation,
+    ThreadSuspendCount,
     MaxThreadInfoClass
 } THREADINFOCLASS;
 
@@ -1065,7 +996,7 @@ typedef struct _ETHREAD
     KSPIN_LOCK ActiveTimerListLock;
     LIST_ENTRY ActiveTimerListHead;
     CLIENT_ID Cid;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+#if 0 && (NTDDI_VERSION >= NTDDI_LONGHORN)
     KSEMAPHORE KeyedWaitSemaphore;
 #else
     union
@@ -1097,7 +1028,7 @@ typedef struct _ETHREAD
     LIST_ENTRY ThreadListEntry;
     EX_RUNDOWN_REF RundownProtect;
     EX_PUSH_LOCK ThreadLock;
-#if (NTDDI_VERSION < NTDDI_LONGHORN)
+#if 1 || (NTDDI_VERSION < NTDDI_LONGHORN)
     ULONG LpcReplyMessageId;
 #endif
     ULONG ReadClusterSize;
@@ -1106,73 +1037,9 @@ typedef struct _ETHREAD
 #else
     ACCESS_MASK GrantedAccess;
 #endif
-    union
-    {
-        struct
-        {
-           ULONG Terminated:1;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
-           ULONG ThreadInserted:1;
-#else
-           ULONG DeadThread:1;
-#endif
-           ULONG HideFromDebugger:1;
-           ULONG ActiveImpersonationInfo:1;
-           ULONG SystemThread:1;
-           ULONG HardErrorsAreDisabled:1;
-           ULONG BreakOnTermination:1;
-           ULONG SkipCreationMsg:1;
-           ULONG SkipTerminationMsg:1;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
-           ULONG CreateMsgSent:1;
-           ULONG ThreadIoPriority:3;
-           ULONG ThreadPagePriority:3;
-           ULONG PendingRatecontrol:1;
-#endif
-        };
-        ULONG CrossThreadFlags;
-    };
-    union
-    {
-        struct
-        {
-           ULONG ActiveExWorker:1;
-           ULONG ExWorkerCanWaitUser:1;
-           ULONG MemoryMaker:1;
-           ULONG KeyedEventInUse:1;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
-           ULONG RateApcState:2;
-#endif
-        };
-        ULONG SameThreadPassiveFlags;
-    };
-    union
-    {
-        struct
-        {
-           ULONG LpcReceivedMsgIdValid:1;
-           ULONG LpcExitThreadCalled:1;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
-           ULONG Spare:1;
-#else
-           ULONG AddressSpaceOwner:1;
-#endif
-           ULONG OwnsProcessWorkingSetExclusive:1;
-           ULONG OwnsProcessWorkingSetShared:1;
-           ULONG OwnsSystemWorkingSetExclusive:1;
-           ULONG OwnsSystemWorkingSetShared:1;
-           ULONG OwnsSessionWorkingSetExclusive:1;
-           ULONG OwnsSessionWorkingSetShared:1;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
-           ULONG SuppressSymbolLoad:1;
-           ULONG Spare1:3;
-           ULONG PriorityRegionActive:4;
-#else
-           ULONG ApcNeeded:1;
-#endif
-        };
-        ULONG SameThreadApcFlags;
-    };
+    LONG CrossThreadFlags;
+    LONG SameThreadPassiveFlags;
+    LONG SameThreadApcFlags;
 #if (NTDDI_VERSION >= NTDDI_LONGHORN)
     UCHAR CacheManagerActive;
 #else
@@ -1225,11 +1092,17 @@ typedef struct _EPROCESS
     PHANDLE_TABLE ObjectTable;
     EX_FAST_REF Token;
     PFN_NUMBER WorkingSetPage;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+#if 0 && (NTDDI_VERSION >= NTDDI_LONGHORN)
     EX_PUSH_LOCK AddressCreationLock;
-    PETHREAD RotateInProgress;
 #else
     KGUARDED_MUTEX AddressCreationLock;
+#endif
+#if 0 && (NTDDI_VERSION >= NTDDI_LONGHORN)
+    PETHREAD RotateInProgress;
+#elif (NTDDI_VERSION >= NTDDI_LONGHORN)
+    KSPIN_LOCK HyperSpaceLock;
+    PETHREAD RotateInProgress;
+#else
     KSPIN_LOCK HyperSpaceLock;
 #endif
     PETHREAD ForkInProgress;
@@ -1325,56 +1198,9 @@ typedef struct _EPROCESS
 #else
     ULONG JobStatus;
 #endif
-    union
-    {
-        struct
-        {
-            ULONG CreateReported:1;
-            ULONG NoDebugInherit:1;
-            ULONG ProcessExiting:1;
-            ULONG ProcessDelete:1;
-            ULONG Wow64SplitPages:1;
-            ULONG VmDeleted:1;
-            ULONG OutswapEnabled:1;
-            ULONG Outswapped:1;
-            ULONG ForkFailed:1;
-            ULONG Wow64VaSpace4Gb:1;
-            ULONG AddressSpaceInitialized:2;
-            ULONG SetTimerResolution:1;
-            ULONG BreakOnTermination:1;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
-            ULONG DeprioritizeViews:1;
-#else
-            ULONG SessionCreationUnderway:1;
-#endif
-            ULONG WriteWatch:1;
-            ULONG ProcessInSession:1;
-            ULONG OverrideAddressSpace:1;
-            ULONG HasAddressSpace:1;
-            ULONG LaunchPrefetched:1;
-            ULONG InjectInpageErrors:1;
-            ULONG VmTopDown:1;
-            ULONG ImageNotifyDone:1;
-            ULONG PdeUpdateNeeded:1;
-            ULONG VdmAllowed:1;
-            ULONG SmapAllowed:1;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
-            ULONG ProcessInserted:1;
-#else
-            ULONG CreateFailed:1;
-#endif
-            ULONG DefaultIoPriority:3;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
-            ULONG SparePsFlags1:2;
-#else
-            ULONG Spare1:1;
-            ULONG Spare2:1;
-#endif
-        };
-        ULONG Flags;
-    };
+    LONG Flags;
     NTSTATUS ExitStatus;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+#if 0 && (NTDDI_VERSION >= NTDDI_LONGHORN)
     USHORT Spare7;
 #else
     USHORT NextPageColor;
@@ -1391,6 +1217,10 @@ typedef struct _EPROCESS
     UCHAR PriorityClass;
     MM_AVL_TABLE VadRoot;
     ULONG Cookie;
+    UINT64 LastFreezeInterruptTime;
+    UINT64 CreateInterruptTime;
+    UINT64 CreateUnbiasedInterruptTime;
+    UINT64 TotalUnbiasedFrozenTime;
 } EPROCESS;
 
 //
@@ -1641,6 +1471,41 @@ typedef struct _WIN32_CALLOUTS_FPNS
 } WIN32_CALLOUTS_FPNS, *PWIN32_CALLOUTS_FPNS;
 
 #endif // !NTOS_MODE_USER
+
+typedef struct _THREAD_TLS_INFORMATION
+{
+	ULONG      Flags;
+
+	union
+	{
+		PVOID* TlsVector;
+		PVOID  TlsModulePointer;
+	};
+
+	HANDLE     ThreadId;
+} THREAD_TLS_INFORMATION, *PTHREAD_TLS_INFORMATION;
+
+typedef enum _PROCESS_TLS_INFORMATION_TYPE
+{
+	ProcessTlsReplaceIndex,
+	ProcessTlsReplaceVector,
+	MaxProcessTlsOperation
+} PROCESS_TLS_INFORMATION_TYPE, *PPROCESS_TLS_INFORMATION_TYPE;
+
+typedef struct _PROCESS_TLS_INFORMATION
+{
+	ULONG                  Reserved;
+	ULONG                  OperationType;
+	ULONG                  ThreadDataCount;
+
+	union
+	{
+		ULONG              TlsIndex;
+		ULONG              TlsVectorLength;
+	};
+
+	THREAD_TLS_INFORMATION ThreadData[ANYSIZE_ARRAY];
+} PROCESS_TLS_INFORMATION, *PPROCESS_TLS_INFORMATION;
 
 #ifdef __cplusplus
 }; // extern "C"

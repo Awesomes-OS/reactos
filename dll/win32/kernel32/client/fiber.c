@@ -333,6 +333,56 @@ IsThreadAFiber(VOID)
     return NtCurrentTeb()->HasFiberData;
 }
 
+
+NTSTATUS IntFlsGetDataOrAlloc(PRTL_FLS_DATA* pFlsDataRef)
+{
+    const PPEB Peb = NtCurrentPeb();
+
+    if (!pFlsDataRef)
+    {
+        DPRINT1("contract failed: pFlsData cannot be NULL");
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    *pFlsDataRef = NtCurrentTeb()->FlsData;
+
+    if (!*pFlsDataRef)
+    {
+        *pFlsDataRef = RtlAllocateHeap(RtlGetProcessHeap(),
+                                       HEAP_ZERO_MEMORY,
+                                       sizeof(RTL_FLS_DATA));
+        if (!*pFlsDataRef)
+        {
+            SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+            return STATUS_NO_MEMORY;
+        }
+
+        RtlAcquirePebLock();
+        NtCurrentTeb()->FlsData = *pFlsDataRef;
+        InsertTailList(&NtCurrentPeb()->FlsListHead, &(*pFlsDataRef)->ListEntry);
+        RtlReleasePebLock();
+    }
+
+    if (!Peb->FlsCallback)
+    {
+        RtlAcquirePebLock();
+
+        Peb->FlsCallback = RtlAllocateHeap(RtlGetProcessHeap(),
+                                           HEAP_ZERO_MEMORY,
+                                           FLS_MAXIMUM_AVAILABLE * sizeof(PVOID));
+
+        RtlReleasePebLock();
+
+        if (!Peb->FlsCallback)
+        {
+            SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+            return STATUS_NO_MEMORY;
+        }
+    }
+
+    return STATUS_SUCCESS;
+}
+
 /*
  * @implemented
  */
@@ -340,54 +390,31 @@ DWORD
 WINAPI
 FlsAlloc(PFLS_CALLBACK_FUNCTION lpCallback)
 {
-    DWORD dwFlsIndex;
-    PPEB Peb = NtCurrentPeb();
-    PRTL_FLS_DATA pFlsData;
+    const PPEB Peb = NtCurrentPeb();
+    DWORD dwFlsIndex = FLS_OUT_OF_INDEXES;
+    PRTL_FLS_DATA pFlsData = NULL;
 
-    RtlAcquirePebLock();
-
-    pFlsData = NtCurrentTeb()->FlsData;
-
-    if (!Peb->FlsCallback &&
-        !(Peb->FlsCallback = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY,
-                                             FLS_MAXIMUM_AVAILABLE * sizeof(PVOID))))
+    if (NT_SUCCESS(IntFlsGetDataOrAlloc(&pFlsData)))
     {
-        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-        dwFlsIndex = FLS_OUT_OF_INDEXES;
-    }
-    else
-    {
+        RtlAcquirePebLock();
+
         dwFlsIndex = RtlFindClearBitsAndSet(Peb->FlsBitmap, 1, 1);
         if (dwFlsIndex != FLS_OUT_OF_INDEXES)
         {
-            if (!pFlsData &&
-                !(pFlsData = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(RTL_FLS_DATA))))
-            {
-                RtlClearBits(Peb->FlsBitmap, dwFlsIndex, 1);
-                dwFlsIndex = FLS_OUT_OF_INDEXES;
-                SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-            }
-            else
-            {
-                if (!NtCurrentTeb()->FlsData)
-                {
-                    NtCurrentTeb()->FlsData = pFlsData;
-                    InsertTailList(&Peb->FlsListHead, &pFlsData->ListEntry);
-                }
+            pFlsData->Data[dwFlsIndex] = NULL; /* clear the value */
+            Peb->FlsCallback[dwFlsIndex] = lpCallback;
 
-                pFlsData->Data[dwFlsIndex] = NULL; /* clear the value */
-                Peb->FlsCallback[dwFlsIndex] = lpCallback;
-
-                if (dwFlsIndex > Peb->FlsHighIndex)
-                    Peb->FlsHighIndex = dwFlsIndex;
-            }
+            if (dwFlsIndex > Peb->FlsHighIndex)
+                Peb->FlsHighIndex = dwFlsIndex;
         }
         else
         {
             SetLastError(ERROR_NO_MORE_ITEMS);
         }
+
+        RtlReleasePebLock();
     }
-    RtlReleasePebLock();
+
     return dwFlsIndex;
 }
 
@@ -409,6 +436,8 @@ FlsFree(DWORD dwFlsIndex)
     }
 
     RtlAcquirePebLock();
+
+    ASSERT(Peb->FlsCallback);
 
     _SEH2_TRY
     {
@@ -459,9 +488,8 @@ PVOID
 WINAPI
 FlsGetValue(DWORD dwFlsIndex)
 {
-    PRTL_FLS_DATA pFlsData;
+    PRTL_FLS_DATA pFlsData = NtCurrentTeb()->FlsData;
 
-    pFlsData = NtCurrentTeb()->FlsData;
     if (!dwFlsIndex || dwFlsIndex >= FLS_MAXIMUM_AVAILABLE || !pFlsData)
     {
         SetLastError(ERROR_INVALID_PARAMETER);
@@ -472,7 +500,6 @@ FlsGetValue(DWORD dwFlsIndex)
     return pFlsData->Data[dwFlsIndex];
 }
 
-
 /*
  * @implemented
  */
@@ -481,7 +508,7 @@ WINAPI
 FlsSetValue(DWORD dwFlsIndex,
             PVOID lpFlsData)
 {
-    PRTL_FLS_DATA pFlsData;
+    PRTL_FLS_DATA pFlsData = NULL;
 
     if (!dwFlsIndex || dwFlsIndex >= FLS_MAXIMUM_AVAILABLE)
     {
@@ -489,22 +516,9 @@ FlsSetValue(DWORD dwFlsIndex,
         return FALSE;
     }
 
-    pFlsData = NtCurrentTeb()->FlsData;
-
-    if (!NtCurrentTeb()->FlsData &&
-        !(NtCurrentTeb()->FlsData = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY,
-                                                    sizeof(RTL_FLS_DATA))))
-    {
-        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+    if (!NT_SUCCESS(IntFlsGetDataOrAlloc(&pFlsData)))
         return FALSE;
-    }
-    if (!pFlsData)
-    {
-        pFlsData = NtCurrentTeb()->FlsData;
-        RtlAcquirePebLock();
-        InsertTailList(&NtCurrentPeb()->FlsListHead, &pFlsData->ListEntry);
-        RtlReleasePebLock();
-    }
+
     pFlsData->Data[dwFlsIndex] = lpFlsData;
     return TRUE;
 }

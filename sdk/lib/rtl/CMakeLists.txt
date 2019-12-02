@@ -36,6 +36,8 @@ list(APPEND SOURCE
     memstream.c
     message.c
     largeint.c
+    loader_heap.c
+    loader.c
     luid.c
     network.c
     nls.c
@@ -56,6 +58,7 @@ list(APPEND SOURCE
     slist.c
     sid.c
     splaytree.c
+    srw.c
     sysvol.c
     thread.c
     time.c

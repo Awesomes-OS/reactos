@@ -251,6 +251,8 @@ do {                                                        \
 #define ASSERT_IRQL_LESS_OR_EQUAL(x) ASSERT(KeGetCurrentIrql()<=(x))
 #define ASSERT_IRQL_EQUAL(x) ASSERT(KeGetCurrentIrql()==(x))
 #define ASSERT_IRQL_LESS(x) ASSERT(KeGetCurrentIrql()<(x))
+#define ASSERT_IRQL_GREATER_OR_EQUAL(x) ASSERT(KeGetCurrentIrql()>=(x))
+#define ASSERT_IRQL_GREATER(x) ASSERT(KeGetCurrentIrql()>(x))
 
 #define __STRING2__(x) #x
 #define __STRING__(x) __STRING2__(x)

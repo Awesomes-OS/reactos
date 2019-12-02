@@ -482,7 +482,11 @@ KiTrap02Handler(VOID)
     Process = Thread->ApcState.Process;
 
     /* Save data usually not present in the TSS */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+    Tss->CR3 = Process->DirectoryTableBase;
+#else
     Tss->CR3 = Process->DirectoryTableBase[0];
+#endif
     Tss->IoMapBase = Process->IopmOffset;
     Tss->LDT = Process->LdtDescriptor.LimitLow ? KGDT_LDT : 0;
 
@@ -844,7 +848,11 @@ KiTrap08Handler(VOID)
     Process = Thread->ApcState.Process;
 
     /* Save data usually not present in the TSS */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+    Tss->CR3 = Process->DirectoryTableBase;
+#else
     Tss->CR3 = Process->DirectoryTableBase[0];
+#endif
     Tss->IoMapBase = Process->IopmOffset;
     Tss->LDT = Process->LdtDescriptor.LimitLow ? KGDT_LDT : 0;
 

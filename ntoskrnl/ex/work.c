@@ -108,8 +108,10 @@ ExpWorkerThreadEntryPoint(IN PVOID Context)
     WaitMode = (UCHAR)WorkQueue->Info.WaitMode;
 
     /* Nobody should have initialized this yet, do it now */
-    ASSERT(Thread->ExWorkerCanWaitUser == 0);
-    if (WaitMode == UserMode) Thread->ExWorkerCanWaitUser = TRUE;
+    if (WaitMode == UserMode)
+        PspSetThreadExWorkerCanWaitUserFlagAssert(Thread);
+    else
+        ASSERT(!PspTestThreadExWorkerCanWaitUserFlag(Thread));
 
     /* If we shouldn't swap, disable that feature */
     if (!ExpWorkersCanSwap) KeSetKernelStackSwapEnable(FALSE);
@@ -135,7 +137,7 @@ ExpWorkerThreadEntryPoint(IN PVOID Context)
                                       *(PLONG)&OldValue) != *(PLONG)&OldValue);
 
     /* Success, you are now officially a worker thread! */
-    Thread->ActiveExWorker = TRUE;
+    PspSetThreadActiveExWorkerFlagAssert(Thread);
 
     /* Loop forever */
 ProcessLoop:
@@ -185,8 +187,8 @@ ProcessLoop:
                          (ULONG_PTR)WorkItem);
         }
 
-        /* Make sure it returned with Impersionation Disabled */
-        if (Thread->ActiveImpersonationInfo)
+        /* Make sure it returned with Impersonation Disabled */
+        if (PspTestThreadActiveImpersonationInfoFlag(Thread))
         {
             /* It didn't, bugcheck! */
             KeBugCheckEx(IMPERSONATING_WORKER_THREAD,
@@ -219,7 +221,7 @@ ProcessLoop:
     InterlockedDecrement(&WorkQueue->DynamicThreadCount);
 
     /* We're not a worker thread anymore */
-    Thread->ActiveExWorker = FALSE;
+    PspClearThreadActiveExWorkerFlagAssert(Thread);
 
     /* Re-enable the stack swap */
     KeSetKernelStackSwapEnable(TRUE);
@@ -615,7 +617,7 @@ ExpSetSwappingKernelApc(IN PKAPC Apc,
     PKEVENT Event = (PKEVENT)*SystemArgument1;
 
     /* Make sure it's an active worker */
-    if (PsGetCurrentThread()->ActiveExWorker) 
+    if (PspTestThreadActiveExWorkerFlag(PsGetCurrentThread()))
     {
         /* Read the setting from the context flag */
         AllowSwap = (PBOOLEAN)NormalContext;
@@ -650,7 +652,7 @@ ExSwapinWorkerThreads(IN BOOLEAN AllowSwap)
     while (Thread)
     {
         /* Skip threads with explicit permission to do this */
-        if (Thread->ExWorkerCanWaitUser) goto Next;
+        if (PspTestThreadExWorkerCanWaitUserFlag(Thread)) goto Next;
 
         /* Check if we reached ourselves */
         if (Thread == CurrentThread)

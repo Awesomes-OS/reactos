@@ -575,7 +575,7 @@ NtSetTimerResolution(IN ULONG DesiredResolution,
         *CurrentResolution = NewResolution;
     }
 
-    if (SetResolution || Process->SetTimerResolution)
+    if (SetResolution || PspTestProcessSetTimerResolutionFlag(Process))
     {
         /* The resolution has been changed now or in an earlier call */
         Status = STATUS_SUCCESS;
@@ -587,7 +587,7 @@ NtSetTimerResolution(IN ULONG DesiredResolution,
     }
 
     /* Update the flag */
-    Process->SetTimerResolution = SetResolution;
+    PspAssignProcessSetTimerResolutionFlag(Process, SetResolution);
 
     return Status;
 }

@@ -749,10 +749,14 @@ typedef struct _DISPATCHER_HEADER {
         _ANONYMOUS_UNION union {
           UCHAR ThreadControlFlags;
           _ANONYMOUS_STRUCT struct {
-            UCHAR CpuThrottled:1;
             UCHAR CycleProfiling:1;
             UCHAR CounterProfiling:1;
-            UCHAR Reserved:5;
+            UCHAR GroupScheduling:1;
+            UCHAR AffinitySet:1;
+            UCHAR Tagged:1;
+            UCHAR EnergyProfiling:1;
+            UCHAR SchedulerAssist:1;
+            UCHAR ThreadReservedControlFlags:1;
           } DUMMYSTRUCTNAME;
         } DUMMYUNIONNAME;
         UCHAR Size;
@@ -1023,7 +1027,7 @@ typedef struct _CONTEXT_EX {
 
 #define CONTEXT_EX_LENGTH         ALIGN_UP_BY(sizeof(CONTEXT_EX), STACK_ALIGN)
 
-#if (NTDDI_VERSION >= NTDDI_VISTA)
+#if 1 || (NTDDI_VERSION >= NTDDI_VISTA)
 extern NTSYSAPI volatile CCHAR KeNumberProcessors;
 #elif (NTDDI_VERSION >= NTDDI_WINXP)
 extern NTSYSAPI CCHAR KeNumberProcessors;
@@ -1254,7 +1258,7 @@ typedef struct _KUSER_SHARED_DATA {
 #endif
 } KUSER_SHARED_DATA, *PKUSER_SHARED_DATA;
 
-#if (NTDDI_VERSION >= NTDDI_VISTA)
+#if 1 || (NTDDI_VERSION >= NTDDI_VISTA)
 extern NTSYSAPI volatile CCHAR KeNumberProcessors;
 #elif (NTDDI_VERSION >= NTDDI_WINXP)
 extern NTSYSAPI CCHAR KeNumberProcessors;

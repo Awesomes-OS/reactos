@@ -566,6 +566,43 @@ typedef struct _EPROFILE
     KAFFINITY Affinity;
 } EPROFILE, *PEPROFILE;
 
+#ifdef _WIN64
+#define HANDLE_LOW_BITS (PAGE_SHIFT - 4)
+#define HANDLE_HIGH_BITS (PAGE_SHIFT - 3)
+#else
+#define HANDLE_LOW_BITS (PAGE_SHIFT - 3)
+#define HANDLE_HIGH_BITS (PAGE_SHIFT - 2)
+#endif
+#define HANDLE_TAG_BITS (2)
+#define HANDLE_INDEX_BITS (HANDLE_LOW_BITS + 2*HANDLE_HIGH_BITS)
+#define HANDLE_INDEX3_BITS (sizeof(PVOID)*8 - HANDLE_TAG_BITS)
+
+typedef union _EXHANDLE
+{
+    struct
+    {
+        ULONG TagBits : HANDLE_TAG_BITS;
+        ULONG Index : HANDLE_INDEX_BITS;
+    };
+
+    struct
+    {
+        ULONG TagBits2 : HANDLE_TAG_BITS;
+        ULONG LowIndex : HANDLE_LOW_BITS;
+        ULONG MidIndex : HANDLE_HIGH_BITS;
+        ULONG HighIndex : HANDLE_HIGH_BITS;
+    };
+
+    struct
+    {
+        ULONG_PTR TagBits3 : HANDLE_TAG_BITS;
+        ULONG_PTR Index3 : HANDLE_INDEX3_BITS;
+    };
+
+    HANDLE GenericHandleOverlay;
+    ULONG_PTR Value;
+} EXHANDLE, * PEXHANDLE;
+
 //
 // Handle Table Structures
 //
@@ -590,31 +627,147 @@ typedef struct _HANDLE_TRACE_DEBUG_INFO
 typedef struct _HANDLE_TABLE_ENTRY_INFO
 {
     ULONG AuditMask;
+    ULONG32 MaxRelativeAccessMask;
 } HANDLE_TABLE_ENTRY_INFO, *PHANDLE_TABLE_ENTRY_INFO;
+
+#ifdef _WIN64
+#define HANDLE_TABLE_ENTRY_LOW_OTHER_BIT_COUNT (16 + 3)
+#else
+#define HANDLE_TABLE_ENTRY_LOW_OTHER_BIT_COUNT (2)
+#endif
+#define HANDLE_TABLE_ENTRY_LOW_OBJECT_POINTER_BIT_COUNT (sizeof(ULONG_PTR)*8 - 1 - HANDLE_TABLE_ENTRY_LOW_OTHER_BIT_COUNT)
 
 typedef struct _HANDLE_TABLE_ENTRY
 {
+#if 0
     union
     {
+        volatile LONG_PTR VolatileLowValue;
+        LONG_PTR LowValue;
+        struct _HANDLE_TABLE_ENTRY_INFO* volatile InfoTable;
+#ifdef _WIN64
+        LONG_PTR RefCountField;
+#endif
+        ULONG_PTR Unlocked : 1;
+#ifdef _WIN64
+        ULONG_PTR RefCnt : 16;
+        ULONG_PTR Attributes : 3;
+#else
+        ULONG_PTR Attributes : 2;
+#endif
+        ULONG_PTR ObjectPointerBits : HANDLE_TABLE_ENTRY_LOW_OBJECT_POINTER_BIT_COUNT;
+    };
+
+    union
+    {
+        LONG_PTR HighValue;
+        struct _HANDLE_TABLE_ENTRY* NextFreeHandleEntry;
+        EXHANDLE LeafHandleValue;
+#ifndef _WIN64
+        LONG_PTR RefCountField;
+#endif
+
+        struct
+        {
+            ULONG GrantedAccessBits : 25;
+#ifndef _WIN64
+            ULONG ProtectFromClose : 1;
+#endif
+            ULONG NoRightsUpgrade : 1;
+#ifndef _WIN64
+            ULONG RefCnt : 5;
+#endif
+        };
+    };
+#else
+    union
+    {
+        volatile LONG_PTR VolatileLowValue;
+        LONG_PTR LowValue;
+        struct _HANDLE_TABLE_ENTRY_INFO* volatile InfoTable;
         PVOID Object;
         ULONG_PTR ObAttributes;
-        PHANDLE_TABLE_ENTRY_INFO InfoTable;
-        ULONG_PTR Value;
     };
+
     union
     {
+        LONG_PTR HighValue;
+        LONG NextFreeTableEntry;
         ULONG GrantedAccess;
+
         struct
         {
             USHORT GrantedAccessIndex;
             USHORT CreatorBackTraceIndex;
         };
-        LONG NextFreeTableEntry;
     };
+#endif
 } HANDLE_TABLE_ENTRY, *PHANDLE_TABLE_ENTRY;
+
+#if 0
+typedef struct _HANDLE_TABLE_FREE_LIST
+{
+    struct _EX_PUSH_LOCK FreeListLock;
+    struct _HANDLE_TABLE_ENTRY* FirstFreeHandleEntry;
+    struct _HANDLE_TABLE_ENTRY* LastFreeHandleEntry;
+    LONG HandleCount;
+    ULONG32 HighWaterMark;
+} HANDLE_TABLE_FREE_LIST, *PHANDLE_TABLE_FREE_LIST;
+#endif
 
 typedef struct _HANDLE_TABLE
 {
+#if 0 && (NTDDI_VERSION >= NTDDI_WIN10)
+    ULONG32 NextHandleNeedingPool;
+    LONG ExtraInfoPages;
+    volatile ULONG_PTR TableCode;
+    PEPROCESS QuotaProcess;
+    LIST_ENTRY HandleTableList;
+    HANDLE UniqueProcessId;
+    union
+    {
+        ULONG32 Flags;
+        struct
+        {
+            UCHAR StrictFIFO : 1;
+            UCHAR EnableHandleExceptions : 1;
+            UCHAR Rundown : 1;
+            UCHAR Duplicated : 1;
+            UCHAR RaiseUMExceptionOnInvalidHandleClose : 1;
+        };
+    };
+    EX_PUSH_LOCK HandleContentionEvent;
+    EX_PUSH_LOCK HandleTableLock;
+    HANDLE_TABLE_FREE_LIST FreeLists[1];
+    PHANDLE_TRACE_DEBUG_INFO DebugInfo;
+#elif 1 || (NTDDI_VERSION >= NTDDI_WIN10)
+    ULONG32 NextHandleNeedingPool;
+    LONG ExtraInfoPages;
+    volatile ULONG_PTR TableCode;
+    PEPROCESS QuotaProcess;
+    LIST_ENTRY HandleTableList;
+    HANDLE UniqueProcessId;
+    union
+    {
+        ULONG32 Flags;
+        struct
+        {
+            UCHAR StrictFIFO : 1;
+            UCHAR EnableHandleExceptions : 1;
+            UCHAR Rundown : 1;
+            UCHAR Duplicated : 1;
+            UCHAR RaiseUMExceptionOnInvalidHandleClose : 1;
+        };
+    };
+    EX_PUSH_LOCK HandleContentionEvent;
+    EX_PUSH_LOCK HandleTableLock;
+
+    ULONG FirstFree;
+    ULONG LastFree;
+    LONG HandleCount;
+
+    PHANDLE_TRACE_DEBUG_INFO DebugInfo;
+#else
 #if (NTDDI_VERSION >= NTDDI_WINXP)
     ULONG_PTR TableCode;
 #else
@@ -653,6 +806,7 @@ typedef struct _HANDLE_TABLE
         ULONG Flags;
         UCHAR StrictFIFO:1;
     };
+#endif
 #endif
 } HANDLE_TABLE, *PHANDLE_TABLE;
 
@@ -1393,7 +1547,8 @@ typedef struct _SYSTEM_NUMA_INFORMATION
     ULONG Reserved;
     union
     {
-        ULONGLONG ActiveProcessorsAffinityMask[MAXIMUM_NUMA_NODES];
+        GROUP_AFFINITY ActiveProcessorsGroupAffinity[MAXIMUM_NUMA_NODES];
+        // ULONGLONG ActiveProcessorsAffinityMask[MAXIMUM_NUMA_NODES];
         ULONGLONG AvailableMemory[MAXIMUM_NUMA_NODES];
     };
 } SYSTEM_NUMA_INFORMATION, *PSYSTEM_NUMA_INFORMATION;

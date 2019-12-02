@@ -281,21 +281,6 @@ RtlCreateUserThread(IN HANDLE ProcessHandle,
 }
 
 /*
- * @implemented
- */
-VOID
-NTAPI
-RtlExitUserThread(NTSTATUS Status)
-{
-    /* Call the Loader and tell him to notify the DLLs */
-    LdrShutdownThread();
-
-    /* Shut us down */
-    NtCurrentTeb()->FreeStackOnTermination = TRUE;
-    NtTerminateThread(NtCurrentThread(), Status);
-}
-
-/*
  @implemented
 */
 VOID

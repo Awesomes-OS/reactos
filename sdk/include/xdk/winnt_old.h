@@ -336,7 +336,7 @@
 #define PROCESS_QUERY_INFORMATION    1024
 #define PROCESS_SUSPEND_RESUME    2048
 #define PROCESS_QUERY_LIMITED_INFORMATION 0x1000
-#define PROCESS_ALL_ACCESS (STANDARD_RIGHTS_REQUIRED|SYNCHRONIZE|0xFFF)
+#define PROCESS_ALL_ACCESS (STANDARD_RIGHTS_REQUIRED|SYNCHRONIZE|0xFFFF)
 #define PROCESS_DUP_HANDLE    64
 #define THREAD_TERMINATE    1
 #define THREAD_SUSPEND_RESUME    2
@@ -348,7 +348,7 @@
 #define THREAD_IMPERSONATE    256
 #define THREAD_DIRECT_IMPERSONATION    0x200
 #define THREAD_QUERY_LIMITED_INFORMATION 0x0800
-#define THREAD_ALL_ACCESS (STANDARD_RIGHTS_REQUIRED|SYNCHRONIZE|0x3FF)
+#define THREAD_ALL_ACCESS (STANDARD_RIGHTS_REQUIRED|SYNCHRONIZE|0xFFFF)
 #define MUTANT_QUERY_STATE    0x0001
 #define MUTANT_ALL_ACCESS    (STANDARD_RIGHTS_REQUIRED|SYNCHRONIZE|MUTANT_QUERY_STATE)
 #define TIMER_QUERY_STATE    0x0001
@@ -503,6 +503,66 @@
 #define FILE_ACTION_ID_NOT_TUNNELLED        0x0000000A
 #define FILE_ACTION_TUNNELLED_ID_COLLISION  0x0000000B
 /* end ntifs.h */
+
+#define FAST_FAIL_LEGACY_GS_VIOLATION               0
+#define FAST_FAIL_VTGUARD_CHECK_FAILURE             1
+#define FAST_FAIL_STACK_COOKIE_CHECK_FAILURE        2
+#define FAST_FAIL_CORRUPT_LIST_ENTRY                3
+#define FAST_FAIL_INCORRECT_STACK                   4
+#define FAST_FAIL_INVALID_ARG                       5
+#define FAST_FAIL_GS_COOKIE_INIT                    6
+#define FAST_FAIL_FATAL_APP_EXIT                    7
+#define FAST_FAIL_RANGE_CHECK_FAILURE               8
+#define FAST_FAIL_UNSAFE_REGISTRY_ACCESS            9
+#define FAST_FAIL_GUARD_ICALL_CHECK_FAILURE         10
+#define FAST_FAIL_GUARD_WRITE_CHECK_FAILURE         11
+#define FAST_FAIL_INVALID_FIBER_SWITCH              12
+#define FAST_FAIL_INVALID_SET_OF_CONTEXT            13
+#define FAST_FAIL_INVALID_REFERENCE_COUNT           14
+#define FAST_FAIL_INVALID_JUMP_BUFFER               18
+#define FAST_FAIL_MRDATA_MODIFIED                   19
+#define FAST_FAIL_CERTIFICATION_FAILURE             20
+#define FAST_FAIL_INVALID_EXCEPTION_CHAIN           21
+#define FAST_FAIL_CRYPTO_LIBRARY                    22
+#define FAST_FAIL_INVALID_CALL_IN_DLL_CALLOUT       23
+#define FAST_FAIL_INVALID_IMAGE_BASE                24
+#define FAST_FAIL_DLOAD_PROTECTION_FAILURE          25
+#define FAST_FAIL_UNSAFE_EXTENSION_CALL             26
+#define FAST_FAIL_DEPRECATED_SERVICE_INVOKED        27
+#define FAST_FAIL_INVALID_BUFFER_ACCESS             28
+#define FAST_FAIL_INVALID_BALANCED_TREE             29
+#define FAST_FAIL_INVALID_NEXT_THREAD               30
+#define FAST_FAIL_GUARD_ICALL_CHECK_SUPPRESSED      31         // Telemetry, nonfatal
+#define FAST_FAIL_APCS_DISABLED                     32
+#define FAST_FAIL_INVALID_IDLE_STATE                33
+#define FAST_FAIL_MRDATA_PROTECTION_FAILURE         34
+#define FAST_FAIL_UNEXPECTED_HEAP_EXCEPTION         35
+#define FAST_FAIL_INVALID_LOCK_STATE                36
+#define FAST_FAIL_GUARD_JUMPTABLE                   37         // Known to compiler, must retain value 37
+#define FAST_FAIL_INVALID_LONGJUMP_TARGET           38
+#define FAST_FAIL_INVALID_DISPATCH_CONTEXT          39
+#define FAST_FAIL_INVALID_THREAD                    40
+#define FAST_FAIL_INVALID_SYSCALL_NUMBER            41         // Telemetry, nonfatal
+#define FAST_FAIL_INVALID_FILE_OPERATION            42         // Telemetry, nonfatal
+#define FAST_FAIL_LPAC_ACCESS_DENIED                43         // Telemetry, nonfatal
+#define FAST_FAIL_GUARD_SS_FAILURE                  44
+#define FAST_FAIL_LOADER_CONTINUITY_FAILURE         45         // Telemetry, nonfatal
+#define FAST_FAIL_GUARD_EXPORT_SUPPRESSION_FAILURE  46
+#define FAST_FAIL_INVALID_CONTROL_STACK             47
+#define FAST_FAIL_SET_CONTEXT_DENIED                48
+#define FAST_FAIL_INVALID_IAT                       49
+#define FAST_FAIL_HEAP_METADATA_CORRUPTION          50
+#define FAST_FAIL_PAYLOAD_RESTRICTION_VIOLATION     51
+#define FAST_FAIL_LOW_LABEL_ACCESS_DENIED           52         // Telemetry, nonfatal
+#define FAST_FAIL_ENCLAVE_CALL_FAILURE              53
+#define FAST_FAIL_UNHANDLED_LSS_EXCEPTON            54
+#define FAST_FAIL_ADMINLESS_ACCESS_DENIED           55         // Telemetry, nonfatal
+#define FAST_FAIL_UNEXPECTED_CALL                   56
+#define FAST_FAIL_CONTROL_INVALID_RETURN_ADDRESS    57
+#define FAST_FAIL_UNEXPECTED_HOST_BEHAVIOR          58
+#define FAST_FAIL_FLAGS_CORRUPTION                  59
+#define FAST_FAIL_INVALID_FAST_FAIL_CODE            0xFFFFFFFF
+
 #define HEAP_NO_SERIALIZE 1
 #define HEAP_GROWABLE 2
 #define HEAP_GENERATE_EXCEPTIONS 4
@@ -544,7 +604,14 @@
 #define REG_OPTION_BACKUP_RESTORE    4
 #define REG_OPTION_OPEN_LINK    8
 #define REG_LEGAL_OPTION    15
-#define MAXIMUM_PROCESSORS 32
+
+#if defined(_WIN64)
+#define MAXIMUM_PROC_PER_GROUP 64
+#else
+#define MAXIMUM_PROC_PER_GROUP 32
+#endif
+#define MAXIMUM_PROCESSORS          MAXIMUM_PROC_PER_GROUP
+
 #define PAGE_NOACCESS    0x0001
 #define PAGE_READONLY    0x0002
 #define PAGE_READWRITE    0x0004
@@ -556,19 +623,27 @@
 #define PAGE_GUARD        0x0100
 #define PAGE_NOCACHE        0x0200
 #define PAGE_WRITECOMBINE    0x0400
-#define MEM_COMMIT           0x1000
-#define MEM_RESERVE          0x2000
-#define MEM_DECOMMIT         0x4000
-#define MEM_RELEASE          0x8000
-#define MEM_FREE            0x10000
-#define MEM_PRIVATE         0x20000
-#define MEM_MAPPED          0x40000
-#define MEM_RESET           0x80000
-#define MEM_TOP_DOWN       0x100000
-#define MEM_WRITE_WATCH       0x200000 /* 98/Me */
-#define MEM_PHYSICAL       0x400000
-#define MEM_4MB_PAGES    0x80000000
-#define MEM_IMAGE        SEC_IMAGE
+
+#define MEM_COMMIT                  0x00001000
+#define MEM_RESERVE                 0x00002000
+#define MEM_REPLACE_PLACEHOLDER     0x00004000
+#define MEM_DECOMMIT                0x00004000
+#define MEM_RELEASE                 0x00008000
+#define MEM_FREE                    0x00010000
+#define MEM_PRIVATE                 0x00020000
+#define MEM_RESERVE_PLACEHOLDER     0x00040000
+#define MEM_MAPPED                  0x00040000
+#define MEM_RESET                   0x00080000
+#define MEM_TOP_DOWN                0x00100000
+#define MEM_WRITE_WATCH             0x00200000
+#define MEM_PHYSICAL                0x00400000
+#define MEM_ROTATE                  0x00800000
+#define MEM_DIFFERENT_IMAGE_BASE_OK 0x00800000
+#define MEM_RESET_UNDO              0x01000000
+#define MEM_IMAGE                   0x01000000
+#define MEM_LARGE_PAGES             0x20000000
+#define MEM_4MB_PAGES               0x80000000
+
 #define SEC_NO_CHANGE    0x00400000
 #define SEC_FILE    0x00800000
 #define SEC_IMAGE    0x01000000
@@ -641,6 +716,7 @@
 #define IMAGE_FILE_MACHINE_TRICORE    0x0520
 #define IMAGE_FILE_MACHINE_CEF        0x0CEF
 #define IMAGE_FILE_MACHINE_ARM64      0xAA64
+#define IMAGE_FILE_MACHINE_CHPE_X86   0x3A64 // Compiled Hybrid Portable Executable, related to i386
 
 #define IMAGE_FILE_EXPORT_DIRECTORY        0
 #define IMAGE_FILE_IMPORT_DIRECTORY        1
@@ -702,7 +778,9 @@
 #define IMAGE_DLLCHARACTERISTICS_NO_ISOLATION 0x0200
 #define IMAGE_DLLCHARACTERISTICS_NO_SEH 0x0400
 #define IMAGE_DLLCHARACTERISTICS_NO_BIND 0x0800
+#define IMAGE_DLLCHARACTERISTICS_APPCONTAINER 0x1000
 #define IMAGE_DLLCHARACTERISTICS_WDM_DRIVER 0x2000
+#define IMAGE_DLLCHARACTERISTICS_GUARD_CF 0x4000 // Image supports Control Flow Guard.
 #define IMAGE_DLLCHARACTERISTICS_TERMINAL_SERVER_AWARE 0x8000
 #define IMAGE_FIRST_SECTION(h) ((PIMAGE_SECTION_HEADER) ((ULONG_PTR)h+FIELD_OFFSET(IMAGE_NT_HEADERS,OptionalHeader)+((PIMAGE_NT_HEADERS)(h))->FileHeader.SizeOfOptionalHeader))
 #define IMAGE_DIRECTORY_ENTRY_EXPORT    0
@@ -2560,9 +2638,16 @@ typedef struct _RTL_CRITICAL_SECTION_DEBUG {
   LIST_ENTRY ProcessLocksList;
   DWORD EntryCount;
   DWORD ContentionCount;
-  DWORD Flags;
-  WORD CreatorBackTraceIndexHigh;
-  WORD SpareWORD;
+  
+  union
+  {
+    struct {
+      DWORD Flags;
+      WORD CreatorBackTraceIndexHigh;
+      WORD SpareWORD;
+    };
+    DWORD_PTR Spare[8/sizeof(DWORD_PTR)];
+  };
 } RTL_CRITICAL_SECTION_DEBUG, *PRTL_CRITICAL_SECTION_DEBUG, RTL_RESOURCE_DEBUG, *PRTL_RESOURCE_DEBUG;
 
 #include "pshpack8.h"
@@ -3299,6 +3384,13 @@ typedef struct _IMAGE_RESOURCE_DATA_ENTRY {
   DWORD Reserved;
 } IMAGE_RESOURCE_DATA_ENTRY, *PIMAGE_RESOURCE_DATA_ENTRY;
 
+typedef struct _IMAGE_LOAD_CONFIG_CODE_INTEGRITY {
+  WORD Flags; // Flags to indicate if CI information is available, etc.
+  WORD Catalog; // 0xFFFF means not available
+  DWORD CatalogOffset;
+  DWORD Reserved; // Additional bitmask to be defined later
+} IMAGE_LOAD_CONFIG_CODE_INTEGRITY, *PIMAGE_LOAD_CONFIG_CODE_INTEGRITY;
+
 typedef struct _IMAGE_LOAD_CONFIG_DIRECTORY32 {
   DWORD Size;
   DWORD TimeDateStamp;
@@ -3309,17 +3401,43 @@ typedef struct _IMAGE_LOAD_CONFIG_DIRECTORY32 {
   DWORD CriticalSectionDefaultTimeout;
   DWORD DeCommitFreeBlockThreshold;
   DWORD DeCommitTotalFreeThreshold;
-  DWORD LockPrefixTable;
+  DWORD LockPrefixTable; // VA
   DWORD MaximumAllocationSize;
   DWORD VirtualMemoryThreshold;
   DWORD ProcessHeapFlags;
   DWORD ProcessAffinityMask;
   WORD CSDVersion;
-  WORD Reserved1;
-  DWORD EditList;
-  DWORD SecurityCookie;
-  DWORD SEHandlerTable;
+  WORD DependentLoadFlags;
+  DWORD EditList; // VA
+  DWORD SecurityCookie; // VA
+  DWORD SEHandlerTable; // VA
   DWORD SEHandlerCount;
+  // Windows 7 cut
+  DWORD GuardCFCheckFunctionPointer; // VA
+  DWORD GuardCFDispatchFunctionPointer; // VA
+  DWORD GuardCFFunctionTable; // VA
+  DWORD GuardCFFunctionCount;
+  DWORD GuardFlags;
+  // Windows 8 cut
+  IMAGE_LOAD_CONFIG_CODE_INTEGRITY CodeIntegrity;
+  DWORD GuardAddressTakenIatEntryTable; // VA
+  DWORD GuardAddressTakenIatEntryCount;
+  DWORD GuardLongJumpTargetTable; // VA
+  DWORD GuardLongJumpTargetCount;
+  DWORD DynamicValueRelocTable; // VA
+  DWORD CHPEMetadataPointer;
+  // Windows 10.0.14393 cut
+  DWORD GuardRFFailureRoutine; // VA
+  DWORD GuardRFFailureRoutineFunctionPointer; // VA
+  DWORD DynamicValueRelocTableOffset;
+  WORD DynamicValueRelocTableSection;
+  WORD Reserved2;
+  DWORD GuardRFVerifyStackPointerFunctionPointer; // VA
+  DWORD HotPatchTableOffset;
+  DWORD Reserved3;
+  DWORD EnclaveConfigurationPointer; // VA
+  DWORD VolatileMetadataPointer; // VA
+  // Windows 10.0.17763 cut
 } IMAGE_LOAD_CONFIG_DIRECTORY32, *PIMAGE_LOAD_CONFIG_DIRECTORY32;
 
 typedef struct _IMAGE_LOAD_CONFIG_DIRECTORY64 {
@@ -3332,17 +3450,43 @@ typedef struct _IMAGE_LOAD_CONFIG_DIRECTORY64 {
   DWORD CriticalSectionDefaultTimeout;
   ULONGLONG DeCommitFreeBlockThreshold;
   ULONGLONG DeCommitTotalFreeThreshold;
-  ULONGLONG LockPrefixTable;
+  ULONGLONG LockPrefixTable; // VA
   ULONGLONG MaximumAllocationSize;
   ULONGLONG VirtualMemoryThreshold;
   ULONGLONG ProcessAffinityMask;
   DWORD ProcessHeapFlags;
   WORD CSDVersion;
-  WORD Reserved1;
-  ULONGLONG EditList;
-  ULONGLONG SecurityCookie;
-  ULONGLONG SEHandlerTable;
+  WORD DependentLoadFlags;
+  ULONGLONG EditList; // VA
+  ULONGLONG SecurityCookie; // VA
+  ULONGLONG SEHandlerTable; // VA
   ULONGLONG SEHandlerCount;
+  // Windows 7 cut
+  ULONGLONG GuardCFCheckFunctionPointer; // VA
+  ULONGLONG GuardCFDispatchFunctionPointer; // VA
+  ULONGLONG GuardCFFunctionTable; // VA
+  ULONGLONG GuardCFFunctionCount;
+  DWORD GuardFlags;
+  // Windows 8 cut
+  IMAGE_LOAD_CONFIG_CODE_INTEGRITY CodeIntegrity;
+  ULONGLONG GuardAddressTakenIatEntryTable; // VA
+  ULONGLONG GuardAddressTakenIatEntryCount;
+  ULONGLONG GuardLongJumpTargetTable; // VA
+  ULONGLONG GuardLongJumpTargetCount;
+  ULONGLONG DynamicValueRelocTable; // VA
+  ULONGLONG CHPEMetadataPointer; // VA
+  // Windows 10.0.14393 cut
+  ULONGLONG GuardRFFailureRoutine; // VA
+  ULONGLONG GuardRFFailureRoutineFunctionPointer; // VA
+  DWORD DynamicValueRelocTableOffset;
+  WORD DynamicValueRelocTableSection;
+  WORD Reserved2;
+  ULONGLONG GuardRFVerifyStackPointerFunctionPointer; // VA
+  DWORD HotPatchTableOffset;
+  DWORD Reserved3;
+  ULONGLONG EnclaveConfigurationPointer; // VA
+  ULONGLONG VolatileMetadataPointer; // VA
+  // Windows 10.0.17763 cut
 } IMAGE_LOAD_CONFIG_DIRECTORY64, *PIMAGE_LOAD_CONFIG_DIRECTORY64;
 
 #ifdef _WIN64
@@ -3352,6 +3496,32 @@ typedef PIMAGE_LOAD_CONFIG_DIRECTORY64 PIMAGE_LOAD_CONFIG_DIRECTORY;
 typedef IMAGE_LOAD_CONFIG_DIRECTORY32 IMAGE_LOAD_CONFIG_DIRECTORY;
 typedef PIMAGE_LOAD_CONFIG_DIRECTORY32 PIMAGE_LOAD_CONFIG_DIRECTORY;
 #endif
+
+#define IMAGE_GUARD_CF_INSTRUMENTED                    0x00000100 // Module performs control flow integrity checks using system-supplied support
+#define IMAGE_GUARD_CFW_INSTRUMENTED                   0x00000200 // Module performs control flow and write integrity checks
+#define IMAGE_GUARD_CF_FUNCTION_TABLE_PRESENT          0x00000400 // Module contains valid control flow target metadata
+#define IMAGE_GUARD_SECURITY_COOKIE_UNUSED             0x00000800 // Module does not make use of the /GS security cookie
+#define IMAGE_GUARD_PROTECT_DELAYLOAD_IAT              0x00001000 // Module supports read only delay load IAT
+#define IMAGE_GUARD_DELAYLOAD_IAT_IN_ITS_OWN_SECTION   0x00002000 // Delayload import table in its own .didat section (with nothing else in it) that can be freely reprotected
+#define IMAGE_GUARD_CF_EXPORT_SUPPRESSION_INFO_PRESENT 0x00004000 // Module contains suppressed export information. This also infers that the address taken
+                                                                  // taken IAT table is also present in the load config.
+#define IMAGE_GUARD_CF_ENABLE_EXPORT_SUPPRESSION       0x00008000 // Module enables suppression of exports
+#define IMAGE_GUARD_CF_LONGJUMP_TABLE_PRESENT          0x00010000 // Module contains longjmp target information
+#define IMAGE_GUARD_RF_INSTRUMENTED                    0x00020000 // Module contains return flow instrumentation and metadata
+#define IMAGE_GUARD_RF_ENABLE                          0x00040000 // Module requests that the OS enable return flow protection
+#define IMAGE_GUARD_RF_STRICT                          0x00080000 // Module requests that the OS enable return flow protection in strict mode
+#define IMAGE_GUARD_RETPOLINE_PRESENT                  0x00100000 // Module was built with retpoline support
+
+#define IMAGE_GUARD_CF_FUNCTION_TABLE_SIZE_MASK        0xF0000000 // Stride of Guard CF function table encoded in these bits (additional count of bytes per element)
+#define IMAGE_GUARD_CF_FUNCTION_TABLE_SIZE_SHIFT       28         // Shift to right-justify Guard CF function table stride
+
+//
+// GFIDS table entry flags.
+//
+
+#define IMAGE_GUARD_FLAG_FID_SUPPRESSED               0x01       // The containing GFID entry is suppressed
+#define IMAGE_GUARD_FLAG_EXPORT_SUPPRESSED            0x02       // The containing GFID entry is export suppressed
+
 
 typedef struct _IMAGE_RUNTIME_FUNCTION_ENTRY {
   DWORD BeginAddress;
@@ -4227,8 +4397,12 @@ DbgRaiseAssertionFailure(VOID)
 #error Unknown architecture
 #endif
 
+typedef DWORD TP_WAIT_RESULT;
+typedef struct _TP_WAIT TP_WAIT, *PTP_WAIT;
+typedef struct _TP_IO TP_IO, *PTP_IO;
 typedef struct _TP_POOL TP_POOL, *PTP_POOL;
 typedef struct _TP_WORK TP_WORK, *PTP_WORK;
+typedef struct _TP_TIMER TP_TIMER, *PTP_TIMER;
 typedef struct _TP_CALLBACK_INSTANCE TP_CALLBACK_INSTANCE, *PTP_CALLBACK_INSTANCE;
 
 typedef DWORD TP_VERSION, *PTP_VERSION;
@@ -4241,11 +4415,36 @@ typedef enum _TP_CALLBACK_PRIORITY {
   TP_CALLBACK_PRIORITY_COUNT = TP_CALLBACK_PRIORITY_INVALID
 } TP_CALLBACK_PRIORITY;
 
+typedef struct _TP_POOL_STACK_INFORMATION
+{
+  SIZE_T StackReserve;
+  SIZE_T StackCommit;
+} TP_POOL_STACK_INFORMATION, *PTP_POOL_STACK_INFORMATION;
+
 typedef VOID
 (NTAPI *PTP_WORK_CALLBACK)(
   _Inout_ PTP_CALLBACK_INSTANCE Instance,
   _Inout_opt_ PVOID Context,
   _Inout_ PTP_WORK Work);
+typedef VOID
+(CALLBACK *PTP_TIMER_CALLBACK)(
+  _Inout_ PTP_CALLBACK_INSTANCE Instance,
+  _Inout_opt_ PVOID Context,
+  _Inout_ PTP_TIMER Timer);
+typedef VOID
+(CALLBACK *PTP_WAIT_CALLBACK)(
+  _Inout_ PTP_CALLBACK_INSTANCE Instance,
+  _Inout_opt_ PVOID Context,
+  _Inout_ PTP_WAIT Wait,
+  _In_ TP_WAIT_RESULT WaitResult);
+typedef VOID
+(CALLBACK *PTP_WIN32_IO_CALLBACK)(
+  _Inout_ PTP_CALLBACK_INSTANCE Instance,
+  _Inout_opt_ PVOID Context,
+  _Inout_opt_ PVOID Overlapped,
+  _In_ ULONG IoResult,
+  _In_ ULONG_PTR NumberOfBytesTransferred,
+  _Inout_ PTP_IO Io);
 
 typedef struct _TP_CLEANUP_GROUP TP_CLEANUP_GROUP, *PTP_CLEANUP_GROUP;
 

@@ -1168,11 +1168,12 @@ ImgpLoadPEImage (
         if (VirtualAddress != PreferredBase)
         {
             /* Yep -- do relocations */
-            Status = LdrRelocateImage(VirtualAddress,
-                                      "Boot Environment Library",
-                                      STATUS_SUCCESS,
-                                      STATUS_UNSUCCESSFUL,
-                                      STATUS_INVALID_IMAGE_FORMAT);
+            Status = LdrRelocateImageWithBias(VirtualAddress,
+                                              0,
+                                              "Boot Environment Library",
+                                              STATUS_SUCCESS,
+                                              STATUS_UNSUCCESSFUL,
+                                              STATUS_INVALID_IMAGE_FORMAT);
             if (!NT_SUCCESS(Status))
             {
                 /* That's bad */

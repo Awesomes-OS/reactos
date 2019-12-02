@@ -172,7 +172,7 @@ else()
     set(cl_includes_flag "/showIncludes")
 endif()
 
-if(MSVC_IDE AND (CMAKE_VERSION MATCHES "ReactOS"))
+if(MSVC_IDE)
     # For VS builds we'll only have en-US in resource files
     add_definitions(/DLANGUAGE_EN_US)
 else()
@@ -466,7 +466,7 @@ function(allow_warnings __module)
 endfunction()
 
 macro(add_asm_files _target)
-    if(MSVC_IDE AND (CMAKE_VERSION MATCHES "ReactOS"))
+    if(MSVC_IDE)
         get_defines(_directory_defines)
         get_includes(_directory_includes)
         get_directory_property(_defines COMPILE_DEFINITIONS)
@@ -558,14 +558,13 @@ function(add_linker_script _target _linker_script_file)
         # Generate at compile-time a linker response file and append it
         # to the linker command-line.
         add_custom_command(
-            # OUTPUT ${_generated_file}
-            TARGET ${_target} PRE_LINK # PRE_BUILD
+            OUTPUT ${_generated_file}
             COMMAND ${CMAKE_C_COMPILER} /nologo ${_no_std_includes_flag} /D__LINKER__ /EP /c "${_file_full_path}" > "${_generated_file}"
             DEPENDS ${_file_full_path}
             VERBATIM)
         set_source_files_properties(${_generated_file} PROPERTIES GENERATED TRUE)
-        # add_custom_target("${_target}_${_file_name}" ALL DEPENDS ${_generated_file})
-        # add_dependencies(${_target} "${_target}_${_file_name}")
+        add_custom_target("${_target}_${_file_name}" ALL DEPENDS ${_generated_file})
+        add_dependencies(${_target} "${_target}_${_file_name}")
         add_target_link_flags(${_target} "@${_generated_file}")
         add_target_property(${_target} LINK_DEPENDS ${_file_full_path})
     endif()

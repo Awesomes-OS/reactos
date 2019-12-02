@@ -21,11 +21,14 @@ PVOID KeUserPopEntrySListResume;
 GENERIC_MAPPING PspProcessMapping =
 {
     STANDARD_RIGHTS_READ    | PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+
     STANDARD_RIGHTS_WRITE   | PROCESS_CREATE_PROCESS    | PROCESS_CREATE_THREAD   |
     PROCESS_VM_OPERATION    | PROCESS_VM_WRITE          | PROCESS_DUP_HANDLE      |
     PROCESS_TERMINATE       | PROCESS_SET_QUOTA         | PROCESS_SET_INFORMATION |
     PROCESS_SUSPEND_RESUME,
+
     STANDARD_RIGHTS_EXECUTE | SYNCHRONIZE,
+
     PROCESS_ALL_ACCESS
 };
 
@@ -414,6 +417,8 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     OBJECT_TYPE_INITIALIZER ObjectTypeInitializer;
     ULONG i;
 
+    KiVBoxPrint("PspInitPhase0 1\n");
+
     /* Get the system size */
     SystemSize = MmQuerySystemSize();
 
@@ -454,6 +459,8 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         ExInitializeCallBack(&PspLoadImageNotifyRoutine[i]);
     }
 
+    KiVBoxPrint("PspInitPhase0 2\n");
+
     /* Setup the quantum table */
     PsChangeQuantumTable(FALSE, PsRawPrioritySeparation);
 
@@ -487,6 +494,8 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     PsIdleProcess->ProcessLock.Value = 0;
     ExInitializeRundownProtection(&PsIdleProcess->RundownProtect);
 
+    KiVBoxPrint("PspInitPhase0 3\n");
+
     /* Initialize the thread list */
     InitializeListHead(&PsIdleProcess->ThreadListHead);
 
@@ -507,6 +516,7 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     ObjectTypeInitializer.DefaultNonPagedPoolCharge = sizeof(EPROCESS);
     ObjectTypeInitializer.GenericMapping = PspProcessMapping;
     ObjectTypeInitializer.ValidAccessMask = PROCESS_ALL_ACCESS;
+    ObjectTypeInitializer.OpenProcedure = PspOpenProcess;
     ObjectTypeInitializer.DeleteProcedure = PspDeleteProcess;
     ObCreateObjectType(&Name, &ObjectTypeInitializer, NULL, &PsProcessType);
 
@@ -529,12 +539,16 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     ObjectTypeInitializer.DeleteProcedure = PspDeleteJob;
     ObCreateObjectType(&Name, &ObjectTypeInitializer, NULL, &PsJobType);
 
+    KiVBoxPrint("PspInitPhase0 4\n");
+
     /* Initialize job structures external to this file */
     PspInitializeJobStructures();
 
     /* Initialize the Working Set data */
     InitializeListHead(&PspWorkingSetChangeHead.List);
     KeInitializeGuardedMutex(&PspWorkingSetChangeHead.Lock);
+
+    KiVBoxPrint("PspInitPhase0 5\n");
 
     /* Create the CID Handle table */
     PspCidTable = ExCreateHandleTable(NULL);
@@ -552,8 +566,9 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     InitializeObjectAttributes(&ObjectAttributes,
                                NULL,
                                0,
-                               NULL,
-                               NULL);
+                               NULL, NULL);
+
+    KiVBoxPrint("PspInitPhase0 6\n");
 
     /* Create the Initial System Process */
     Status = PspCreateProcess(&PspInitialSystemProcessHandle,
@@ -567,6 +582,8 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                               FALSE);
     if (!NT_SUCCESS(Status)) return FALSE;
 
+    KiVBoxPrint("PspInitPhase0 7\n");
+
     /* Get a reference to it */
     ObReferenceObjectByHandle(PspInitialSystemProcessHandle,
                               0,
@@ -574,6 +591,8 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                               KernelMode,
                               (PVOID*)&PsInitialSystemProcess,
                               NULL);
+
+    KiVBoxPrint("PspInitPhase0 8\n");
 
     /* Copy the process names */
     strcpy(PsIdleProcess->ImageFileName, "Idle");
@@ -595,6 +614,8 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                   SeAuditProcessCreationInfo.ImageFileName,
                   sizeof(OBJECT_NAME_INFORMATION));
 
+    KiVBoxPrint("PspInitPhase0 9\n");
+
     /* Setup the system initialization thread */
     Status = PsCreateSystemThread(&SysThreadHandle,
                                   THREAD_ALL_ACCESS,
@@ -605,6 +626,8 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                                   LoaderBlock);
     if (!NT_SUCCESS(Status)) return FALSE;
 
+    KiVBoxPrint("PspInitPhase0 10\n");
+
     /* Create a handle to it */
     ObReferenceObjectByHandle(SysThreadHandle,
                               0,
@@ -613,6 +636,8 @@ PspInitPhase0(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
                               (PVOID*)&SysThread,
                               NULL);
     ObCloseHandle(SysThreadHandle, KernelMode);
+
+    KiVBoxPrint("PspInitPhase0 EXIT\n");
 
     /* Return success */
     return TRUE;

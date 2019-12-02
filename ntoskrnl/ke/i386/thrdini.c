@@ -267,57 +267,120 @@ KiInitializeContextThread(IN PKTHREAD Thread,
 }
 
 VOID
-FASTCALL
+NTAPI
 KiIdleLoop(VOID)
 {
     PKPRCB Prcb = KeGetCurrentPrcb();
-    PKTHREAD OldThread, NewThread;
 
     /* Now loop forever */
     while (TRUE)
     {
-        /* Start of the idle loop: disable interrupts */
-        _enable();
-        YieldProcessor();
-        YieldProcessor();
-        _disable();
+        PKTHREAD OldThread = NULL, NewThread;
+        BOOLEAN DoSwap = TRUE;
 
-        /* Check for pending timers, pending DPCs, or pending ready threads */
-        if ((Prcb->DpcData[0].DpcQueueDepth) ||
-            (Prcb->TimerRequest) ||
-            (Prcb->DeferredReadyListHead.Next))
+        do
         {
-            /* Quiesce the DPC software interrupt */
-            HalClearSoftwareInterrupt(DISPATCH_LEVEL);
+            /* Start of the idle loop: disable interrupts */
+            _enable();
+            YieldProcessor();
+            YieldProcessor();
+            _disable();
 
-            /* Handle it */
-            KiRetireDpcList(Prcb);
-        }
+            /* Check for pending timers, pending DPCs, or pending ready threads */
+            if ((Prcb->DpcData[0].DpcQueueDepth) || (Prcb->TimerRequest) || (Prcb->DeferredReadyListHead.Next))
+            {
+                /* Quiesce the DPC software interrupt */
+                HalClearSoftwareInterrupt(DISPATCH_LEVEL);
 
-        /* Check if a new thread is scheduled for execution */
-        if (Prcb->NextThread)
-        {
+                KiVBoxPrint("KiIdleLoop DPC\n");
+
+                /* Handle it */
+                KiRetireDpcList(Prcb);
+            }
+
+            if (Prcb->QuantumEnd)
+            {
+                Prcb->QuantumEnd = FALSE;
+
+                KiVBoxPrint("KiIdleLoop QuantumEnd\n");
+
+                _enable();
+                KiQuantumEnd();
+                _disable();
+            }
+
+            if (!Prcb->NextThread)
+                break;
+
             /* Enable interrupts */
             _enable();
 
             /* Capture current thread data */
-            OldThread = Prcb->CurrentThread;
+            OldThread = Prcb->IdleThread;
+
+            KiAcquirePrcbLock(Prcb);
+
             NewThread = Prcb->NextThread;
-
-            /* Set new thread data */
             Prcb->NextThread = NULL;
-            Prcb->CurrentThread = NewThread;
 
-            /* The thread is now running */
-            NewThread->State = Running;
+            if (NewThread != OldThread)
+            {
+                _disable();
+                KiVBoxPrint("KiIdleLoop 3\n");
+                KiEndThreadCycleAccumulation(Prcb, Prcb->IdleThread, NULL);
+                _enable();
 
-            /* Switch away from the idle thread */
-            KiSwapContext(APC_LEVEL, OldThread);
+                /* Set new thread data */
+                Prcb->CurrentThread = NewThread;
+
+                /* The thread is now running */
+                NewThread->State = Running;
+
+                DoSwap = TRUE;
+            }
+
+            KiReleasePrcbLock(Prcb);
+        } while (Prcb->NextThread);
+
+        if (Prcb->IdleSchedule)
+        {
+            KiVBoxPrint("KiIdleLoop IdleSchedule\n");
+
+            _enable();
+
+            NewThread = KiIdleSchedule(Prcb);
+
+            /* Capture current thread data */
+            OldThread = Prcb->IdleThread;
+
+            if (NewThread)
+            {
+                DoSwap = TRUE;
+            }
         }
         else
         {
             /* Continue staying idle. Note the HAL returns with interrupts on */
             Prcb->PowerState.IdleFunction(&Prcb->PowerState);
+        }
+
+        KiVBoxPrint("KiIdleLoop 1 : ");
+        KiVBoxPrintInteger(DoSwap ? 1 : 0);
+        KiVBoxPrintInteger(KdDebuggerEnabled ? 1 : 0);
+        KiVBoxPrintInteger(KdRefreshDebuggerNotPresent() ? 1 : 0);
+        KiVBoxPrint("\n");
+
+        /* Check if a new thread is scheduled for execution */
+        if (DoSwap)
+        {
+            /* Switch away from the idle thread */
+            KiSwapContext(APC_LEVEL, OldThread);
+
+            KiVBoxPrint("KiIdleLoop 2\n");
+
+            /* Break if debugger is enabled */
+            if (KdDebuggerEnabled)
+                DbgBreakPoint();
         }
     }
 }

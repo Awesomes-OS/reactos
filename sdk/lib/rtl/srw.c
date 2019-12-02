@@ -13,7 +13,7 @@
 
 /* INCLUDES *****************************************************************/
 
-#include <rtl_vista.h>
+#include <rtl.h>
 
 #define NDEBUG
 #include <debug.h>

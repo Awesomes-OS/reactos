@@ -576,11 +576,11 @@ KiEnterV86Mode(IN ULONG_PTR StackFrameUnaligned)
     KiEoiHelper(TrapFrame);
 }
 
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
 VOID
 NTAPI
 Ke386SetIOPL(VOID)
 {
-
     PKTHREAD Thread = KeGetCurrentThread();
     PKPROCESS Process = Thread->ApcState.Process;
     PKTRAP_FRAME TrapFrame;
@@ -603,6 +603,39 @@ Ke386SetIOPL(VOID)
     /* Convert back to a trap frame */
     KeContextToTrapFrame(&Context, NULL, TrapFrame, CONTEXT_CONTROL, UserMode);
 }
+#endif
+
+typedef struct _IOPM_OFFSET_UPDATE_INFO
+{
+    PKPROCESS Process;
+    USHORT MapOffset;
+} IOPM_OFFSET_UPDATE_INFO, *PIOPM_OFFSET_UPDATE_INFO;
+
+VOID
+NTAPI
+KiLoadIopmOffset(IN PKDPC Dpc,
+                 IN PVOID DeferredContext,
+                 IN PVOID SystemArgument1,
+                 IN PVOID SystemArgument2)
+{
+    UNREFERENCED_PARAMETER(Dpc);
+    UNREFERENCED_PARAMETER(SystemArgument2);
+    ASSERT_IRQL_EQUAL(DISPATCH_LEVEL);
+
+    PIOPM_OFFSET_UPDATE_INFO Context = DeferredContext;
+    PKPCR Pcr = KeGetPcr();
+    PKPRCB Prcb = Pcr->Prcb;
+    PKPROCESS CurrentProcess = Prcb->CurrentThread->ApcState.Process;
+
+    // 1. Update IOPM offset
+    Context->Process->IopmOffset = Context->MapOffset;
+
+    // 2. Update TSS IOPM
+    Pcr->TSS->IoMapBase = CurrentProcess->IopmOffset;
+
+    KeSignalCallDpcDone(SystemArgument1);
+}
+
 
 /* PUBLIC FUNCTIONS ***********************************************************/
 
@@ -709,21 +742,16 @@ NTAPI
 Ke386IoSetAccessProcess(IN PKPROCESS Process,
                         IN ULONG MapNumber)
 {
-    USHORT MapOffset;
-    PKPRCB Prcb;
-    KAFFINITY TargetProcessors;
+    IOPM_OFFSET_UPDATE_INFO MapInfo;
 
-    if(MapNumber > IOPM_COUNT)
+    if (MapNumber > IOPM_COUNT)
         return FALSE;
 
-    MapOffset = KiComputeIopmOffset(MapNumber);
+    MapInfo.Process = Process;
+    MapInfo.MapOffset = KiComputeIopmOffset(MapNumber);
 
-    Process->IopmOffset = MapOffset;
-
-    TargetProcessors = Process->ActiveProcessors;
-    Prcb = KeGetCurrentPrcb();
-    if (TargetProcessors & Prcb->SetMember)
-        KeGetPcr()->TSS->IoMapBase = MapOffset;
+    // Apply the change on all processors
+    KeGenericCallDpc(KiLoadIopmOffset, &MapInfo);
 
     return TRUE;
 }

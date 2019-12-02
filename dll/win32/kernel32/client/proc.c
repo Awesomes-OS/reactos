@@ -1486,42 +1486,10 @@ VOID
 WINAPI
 ExitProcess(IN UINT uExitCode)
 {
-    BASE_API_MESSAGE ApiMessage;
-    PBASE_EXIT_PROCESS ExitProcessRequest = &ApiMessage.Data.ExitProcessRequest;
-
     ASSERT(!BaseRunningInServerProcess);
 
-    _SEH2_TRY
-    {
-        /* Acquire the PEB lock */
-        RtlAcquirePebLock();
-
-        /* Kill all the threads */
-        NtTerminateProcess(NULL, uExitCode);
-
-        /* Unload all DLLs */
-        LdrShutdownProcess();
-
-        /* Notify Base Server of process termination */
-        ExitProcessRequest->uExitCode = uExitCode;
-        CsrClientCallServer((PCSR_API_MESSAGE)&ApiMessage,
-                            NULL,
-                            CSR_CREATE_API_NUMBER(BASESRV_SERVERDLL_INDEX, BasepExitProcess),
-                            sizeof(*ExitProcessRequest));
-
-        /* Now do it again */
-        NtTerminateProcess(NtCurrentProcess(), uExitCode);
-    }
-    _SEH2_FINALLY
-    {
-        /* Release the PEB lock */
-        RtlReleasePebLock();
-    }
-    _SEH2_END;
-
-    /* should never get here */
-    ASSERT(0);
-    while(1);
+    /* Call the NTDLL RTL routine */
+    RtlExitUserProcess(uExitCode);
 }
 
 /*
@@ -2821,6 +2789,8 @@ StartScan:
         (SxsPathType != RtlPathTypeRootLocalDevice) &&
         (SxsPathType != RtlPathTypeUncAbsolute))
     {
+        RTLP_PATH_INFO PathInfo;
+
         /* Relative-type path, get the full path */
         RtlInitEmptyUnicodeString(&PathBufferString, NULL, 0);
         Status = RtlGetFullPathName_UstrEx(&SxsWin32ExePath,
@@ -2829,7 +2799,7 @@ StartScan:
                                            NULL,
                                            NULL,
                                            NULL,
-                                           &SxsPathType,
+                                           &PathInfo,
                                            NULL);
         if (!NT_SUCCESS(Status))
         {
@@ -2844,6 +2814,7 @@ StartScan:
         SxsWin32ExePath = PathBufferString;
         PathBuffer = PathBufferString.Buffer;
         PathBufferString.Buffer = NULL;
+        SxsPathType = PathInfo.Type;
         DPRINT("SxS Path: %S\n", PathBuffer);
     }
 

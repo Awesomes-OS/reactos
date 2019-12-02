@@ -382,6 +382,13 @@ KdpPrint(
     /* Log the print */
     //KdLogDbgPrint(&OutputString);
 
+    for (ULONG_PTR i = 0; i < OutputString.Length; ++i)
+    {
+        WRITE_PORT_UCHAR((PUCHAR)0x504, (UCHAR)String[i]);
+    }
+
+    WRITE_PORT_UCHAR((PUCHAR)0x504, '\n');
+
     /* Check for a debugger */
     if (KdDebuggerNotPresent)
     {

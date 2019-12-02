@@ -8,12 +8,13 @@
 
 
 #include <ntdll.h>
+#include <ldrp.h>
+#include <reactos/ldrp.h>
 #include <reactos/verifier.h>
 
 #define NDEBUG
 #include <debug.h>
 
-extern PLDR_DATA_TABLE_ENTRY LdrpImageEntry;
 ULONG AVrfpVerifierFlags = 0;
 WCHAR AVrfpVerifierDllsString[256] = { 0 };
 ULONG AVrfpDebug = 0;
@@ -267,7 +268,7 @@ AvrfpResolveThunks(IN PLDR_DATA_TABLE_ENTRY LdrEntry)
 
                     RtlInitAnsiString(&ThunkName, ThunkDescriptor->ThunkName);
                     /* We cannot call the public api, because that would run init routines! */
-                    if (NT_SUCCESS(LdrpGetProcedureAddress(LdrEntry->DllBase, &ThunkName, 0, &ThunkDescriptor->ThunkOldAddress, FALSE)))
+                    if (NT_SUCCESS(LdrpGetProcedureAddress(LdrEntry->DllBase, ThunkDescriptor->ThunkName, 0, &ThunkDescriptor->ThunkOldAddress)))
                     {
                         if (AVrfpDebug & RTL_VRF_DBG_SHOWFOUNDEXPORTS)
                             DbgPrint("AVRF: (%wZ) %Z export found.\n", &LdrEntry->BaseDllName, &ThunkName);

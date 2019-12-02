@@ -1067,6 +1067,8 @@ DispatchToUser:
             return;
         }
 
+        __debugbreak();
+
         /* 3rd strike, kill the process */
         DPRINT1("Kill %.16s, ExceptionCode: %lx, ExceptionAddress: %p, BaseAddress: %p, P0: %lx, P1: %lx\n",
                 PsGetCurrentProcess()->ImageFileName,

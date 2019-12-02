@@ -1,0 +1,112 @@
+namespace Ki
+{
+
+struct KTHREAD Thread ASSERT_THREAD(o)
+{
+    enum Thread KTF ThreadFlags
+    {
+        Spare 1
+        Auto Alignment
+        Disable Boost
+        Force Defer Schedule
+        Alerted By Thread Id
+        Quantum Donation
+        System Thread
+    }
+}
+
+struct KPROCESS Process ASSERT_PROCESS(o)
+{
+    enum Process KPSF ProcessFlags
+    {
+        Auto Alignment
+        Disable Boost
+        Disable Quantum
+        Deep Freeze
+    }
+}
+
+}
+
+namespace Psp
+{
+
+struct ETHREAD Thread ASSERT_THREAD(&o->Tcb)
+{
+    enum Cross_Thread CT CrossThreadFlags
+    {
+        Terminated
+        Thread Inserted
+        Hide From Debugger
+        Active Impersonation Info
+        Hard Errors Are Disabled
+        Break On Termination
+        Skip Creation Msg
+        Skip Termination Msg
+    }
+
+    enum Same_Thread_Passive STP SameThreadPassiveFlags
+    {
+        Active Ex Worker
+        Ex Worker Can Wait User
+        Memory Maker
+        Keyed Event In Use
+    }
+
+    enum Same_Thread_Apc STA SameThreadApcFlags
+    {
+        Lpc Received Msg Id Valid
+        Lpc Exit Thread Called
+        Apc Needed
+        Owns Process Address Space Exclusive
+        Owns Process Address Space Shared
+        Owns Process Working Set Exclusive
+        Owns Process Working Set Shared
+        Owns System Cache Working Set Exclusive
+        Owns System Cache Working Set Shared
+        Owns Session Working Set Exclusive
+        Owns Session Working Set Shared
+        Owns Paged Pool Working Set Exclusive
+        Owns Paged Pool Working Set Shared
+        Owns System Ptes Working Set Exclusive
+        Owns System Ptes Working Set Shared
+    }
+}
+
+struct EPROCESS Process ASSERT_PROCESS(&o->Pcb)
+{
+    enum Process PSF Flags
+    {
+        Create Reported
+        No Debug Inherit
+        Process Exiting
+        Process Delete
+        Wow64 Split Pages
+        Vm Deleted
+        Outswap Enabled
+        Outswapped
+        Fork Failed
+        Wow64 Va Space 4gb
+        Address Space Initialized : 2
+        Set Timer Resolution
+        Break On Termination
+        Session Creation Underway
+        Write Watch
+        Process In Session
+        Override Address Space
+        Has Address Space
+        Launch Prefetched
+        Inject Inpage Errors
+        Vm Top Down
+        Image Notify Done
+        Pde Update Needed
+        Vdm Allowed
+        Swap Allowed
+        Create Failed
+        Default Io Priority : 3
+        System Process
+        Propagate Node
+    }
+}
+
+}

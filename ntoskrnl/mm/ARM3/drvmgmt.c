@@ -222,7 +222,7 @@ MmIsDriverVerifying(IN PDRIVER_OBJECT DriverObject)
     //
     // Check if we're verifying or not
     //
-    return (LdrEntry->Flags & LDRP_IMAGE_VERIFYING) ? TRUE: FALSE;
+    return (LdrEntry->ReactOSDriverVerifying) ? TRUE : FALSE;
 }
 
 /*

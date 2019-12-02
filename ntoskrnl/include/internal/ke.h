@@ -85,7 +85,24 @@ typedef PCHAR
     IN ULONG Length
 );
 
-extern KAFFINITY KeActiveProcessors;
+typedef struct _PROCESSOR_GROUP_BLOCK
+{
+    KAFFINITY ProcessorSet;
+    KAFFINITY InitialProcessorSet;
+    // The following are introduced in 19H1 for AMD & NUMA
+    // see ProcessorOnly in _flags for KNODE
+    KAFFINITY Value3;
+    KAFFINITY Value4;
+} PROCESSOR_GROUP_BLOCK, *PPROCESSOR_GROUP_BLOCK;
+
+typedef struct _THREAD_PRIORITY_VALUES
+{
+    BYTE FullPriority;
+    BYTE Major;
+    BYTE Minor;
+} THREAD_PRIORITY_VALUES;
+
+extern KAFFINITY_EX KeActiveProcessors;
 extern PKNMI_HANDLER_CALLBACK KiNmiCallbackListHead;
 extern KSPIN_LOCK KiNmiCallbackListLock;
 extern PVOID KeUserApcDispatcher;
@@ -99,9 +116,9 @@ extern USHORT KeProcessorArchitecture;
 extern USHORT KeProcessorLevel;
 extern USHORT KeProcessorRevision;
 extern ULONG KeFeatureBits;
-extern KNODE KiNode0;
-extern PKNODE KeNodeBlock[1];
-extern UCHAR KeNumberNodes;
+extern KNODE ExNode0;
+extern PKNODE KeNodeBlock[];
+extern UINT16 KeNumberNodes;
 extern UCHAR KeProcessNodeSeed;
 extern ETHREAD KiInitialThread;
 extern EPROCESS KiInitialProcess;
@@ -132,8 +149,15 @@ extern LIST_ENTRY KiProcessInSwapListHead, KiProcessOutSwapListHead;
 extern LIST_ENTRY KiStackInSwapListHead;
 extern KEVENT KiSwapEvent;
 extern PKPRCB KiProcessorBlock[];
-extern ULONG KiMask32Array[MAXIMUM_PRIORITY];
-extern ULONG_PTR KiIdleSummary;
+extern PROCESSOR_GROUP_BLOCK KiGroupBlock[];
+extern BOOLEAN KeForceGroupAwareness;
+extern ULONG32 KiProcessorIndexToNumberMappingTable[];
+extern ULONG32 KiProcessorNumberToIndexMappingTable[];
+extern UINT16 KiActiveGroups;
+extern UINT16 KiMaximumGroups;
+extern ULONG_PTR KeNumberProcessors_0;
+extern CCHAR KeNumberProcessorsGroup0;
+// extern ULONG_PTR KiIdleSummary;
 extern PVOID KeUserApcDispatcher;
 extern PVOID KeUserCallbackDispatcher;
 extern PVOID KeUserExceptionDispatcher;
@@ -152,8 +176,11 @@ extern VOID __cdecl KiInterruptTemplate(VOID);
 
 /* MACROS *************************************************************************/
 
-#define AFFINITY_MASK(Id) KiMask32Array[Id]
-#define PRIORITY_MASK(Id) KiMask32Array[Id]
+#define AFFINITY_MASK(Id) (((ULONG_PTR) 1) << (Id))
+#define PRIORITY_MASK(Id) (((ULONG_PTR) 1) << (Id))
+#define PROCESSOR_INDEX_GROUP_MASK(Index) ((Index) >> 6)
+#define PROCESSOR_INDEX_NUMBER_MASK(Index) ((Index) & 0x3F)
+#define PROCESSOR_NUMBER_TO_INDEX_LOOKUP(Group, Number) (((Group) << 6) + (Number))
 
 /* Tells us if the Timer or Event is a Syncronization or Notification Object */
 #define TIMER_OR_EVENT_TYPE 0x7L
@@ -198,11 +225,12 @@ KeSetAutoAlignmentProcess(
     IN BOOLEAN Enable
 );
 
-KAFFINITY
+NTSTATUS
 NTAPI
 KeSetAffinityProcess(
     IN PKPROCESS Process,
-    IN KAFFINITY Affinity
+    IN UINT8 Flags,
+    IN PKAFFINITY_EX Affinity
 );
 
 VOID
@@ -219,6 +247,10 @@ KeBalanceSetManager(IN PVOID Context);
 VOID
 NTAPI
 KiReadyThread(IN PKTHREAD Thread);
+
+BOOLEAN
+FASTCALL
+KiSuspendThread(PKTHREAD Thread, PKPRCB Prcb);
 
 ULONG
 NTAPI
@@ -259,12 +291,21 @@ KiProcessDeferredReadyList(
     IN PKPRCB Prcb
 );
 
-KAFFINITY
+#if 1 || (NTDDI_VERSION >= NTDDI_WIN7)
+void
+FASTCALL
+KiSetAffinityThread(
+    IN PKTHREAD Thread,
+    IN PGROUP_AFFINITY Affinity
+);
+#else
+void
 FASTCALL
 KiSetAffinityThread(
     IN PKTHREAD Thread,
     IN KAFFINITY Affinity
 );
+#endif
 
 PKTHREAD
 FASTCALL
@@ -334,6 +375,12 @@ KeWaitForGate(
 
 /* ipi.c ********************************************************************/
 
+typedef enum _IPI_TYPE {
+    IpiAffinity = 0,
+    IpiAllButSelf,
+    IpiAll
+} IPI_TYPE;
+
 VOID
 FASTCALL
 KiIpiSend(
@@ -344,7 +391,8 @@ KiIpiSend(
 VOID
 NTAPI
 KiIpiSendPacket(
-    IN KAFFINITY TargetProcessors,
+    IN IPI_TYPE IpiType,
+    IN PKAFFINITY_EX TargetProcessors,
     IN PKIPI_WORKER WorkerFunction,
     IN PKIPI_BROADCAST_WORKER BroadcastFunction,
     IN ULONG_PTR Context,
@@ -511,13 +559,13 @@ KeReleaseThread(PKTHREAD Thread);
 
 VOID
 NTAPI
-KiSuspendRundown(
+KiSchedulerRundown(
     IN PKAPC Apc
 );
 
 VOID
 NTAPI
-KiSuspendNop(
+KiSchedulerNop(
     IN PKAPC Apc,
     IN PKNORMAL_ROUTINE *NormalRoutine,
     IN PVOID *NormalContext,
@@ -527,7 +575,7 @@ KiSuspendNop(
 
 VOID
 NTAPI
-KiSuspendThread(
+KiSchedulerApc(
     IN PVOID NormalContext,
     IN PVOID SystemArgument1,
     IN PVOID SystemArgument2
@@ -567,6 +615,36 @@ KiUnwaitThread(
     IN KPRIORITY Increment
 );
 
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+VOID
+NTAPI
+KeInitializeProcess(
+    struct _KPROCESS *Process,
+    IN KPRIORITY Priority,
+    IN PGROUP_AFFINITY Affinity,
+    IN BOOLEAN Enable
+);
+#elif (NTDDI_VERSION >= NTDDI_LONGHORN)
+VOID
+NTAPI
+KeInitializeProcess(
+    struct _KPROCESS *Process,
+    KPRIORITY Priority,
+    KAFFINITY Affinity,
+    ULONG_PTR DirectoryTableBase,
+    IN BOOLEAN Enable
+);
+#elif 1
+VOID
+NTAPI
+KeInitializeProcess(
+    struct _KPROCESS *Process,
+    KPRIORITY Priority,
+    PGROUP_AFFINITY Affinity,
+    PULONG_PTR DirectoryTableBase,
+    BOOLEAN Enable
+);
+#else
 VOID
 NTAPI
 KeInitializeProcess(
@@ -576,6 +654,7 @@ KeInitializeProcess(
     PULONG_PTR DirectoryTableBase,
     IN BOOLEAN Enable
 );
+#endif
 
 VOID
 NTAPI
@@ -596,6 +675,7 @@ ULONG
 NTAPI
 KeForceResumeThread(IN PKTHREAD Thread);
 
+#if (NTDDI_VERSION < NTDDI_WIN8)
 VOID
 NTAPI
 KeThawAllThreads(
@@ -607,6 +687,7 @@ NTAPI
 KeFreezeAllThreads(
     VOID
 );
+#endif
 
 BOOLEAN
 NTAPI
@@ -941,15 +1022,21 @@ KiComputeReciprocal(
 INIT_FUNCTION
 VOID
 NTAPI
-KiInitSystem(
-    VOID
-);
+KiInitSystem(IN PEPROCESS InitProcess);
 
 VOID
 FASTCALL
 KiInsertQueueApc(
+    IN PKAPC Apc
+);
+
+VOID
+FASTCALL
+KiSignalThreadForApc(
+    IN PKPRCB Prcb,
     IN PKAPC Apc,
-    IN KPRIORITY PriorityBoost
+    IN KPRIORITY PriorityBoost,
+    IN KIRQL OldIrql
 );
 
 NTSTATUS
@@ -1025,10 +1112,8 @@ KiQuantumEnd(
 );
 
 VOID
-FASTCALL
-KiIdleLoop(
-    VOID
-);
+NTAPI
+KiIdleLoop(VOID);
 
 DECLSPEC_NORETURN
 VOID
@@ -1057,5 +1142,212 @@ KeBugCheckUnicodeToAnsi(
     OUT PCHAR Ansi,
     IN ULONG Length
 );
+
+ULONG64
+NTAPI
+KiEndThreadCycleAccumulation(
+    IN PKPRCB Prcb,
+    IN PKTHREAD Thread,
+    OUT ULONG64* CurrentClock OPTIONAL
+);
+
+ULONG64
+NTAPI
+KiUpdateTotalCyclesCurrentThread(
+    IN PKPRCB Prcb,
+    IN PKTHREAD Thread,
+    OUT ULONG64* CurrentClock OPTIONAL
+);
+
+void
+FASTCALL
+KiConfigureInitialNodes(IN PKPRCB Prcb);
+
+void
+FASTCALL
+KiConfigureProcessorBlock(IN PKPRCB Prcb);
+
+void
+FASTCALL
+KeSetGroupMaskProcess(PKPROCESS Process, ULONG GroupMask);
+
+NTSTATUS
+NTAPI
+KeFirstGroupAffinityEx(IN OUT PGROUP_AFFINITY ThreadAffinity, IN PKAFFINITY_EX ProcessAffinity);
+
+BOOLEAN
+NTAPI
+KiPrcbInGroupAffinity(IN const KPRCB* const Prcb, IN const GROUP_AFFINITY* const Affinity);
+
+UINT16
+NTAPI
+KeSelectIdealProcessor(
+    IN PKNODE Node,
+    IN PGROUP_AFFINITY ThreadAffinity,
+    IN PUINT16 SeedPointer OPTIONAL
+);
+
+PKNODE
+FASTCALL
+KeSelectNodeForAffinity(PGROUP_AFFINITY Affinity);
+
+ULONG32
+FASTCALL
+KiSetIdealNodeProcessByGroup(PKPROCESS Process, PKNODE Node, UINT16 Group);
+
+void
+FASTCALL
+KiExtendProcessAffinity(PKPROCESS Process, UINT16 Group);
+
+void
+FASTCALL
+KiUpdateNodeAffinitizedFlag(PKTHREAD Thread);
+
+ULONGLONG
+NTAPI
+KiQueryUnbiasedInterruptTime(BOOLEAN WaitForSafePoint);
+
+BOOLEAN
+NTAPI
+KiFreezeSingleThread(PKPRCB Prcb, PKTHREAD Thread);
+
+BOOLEAN
+NTAPI
+KeFreezeProcess(PKPROCESS Process, BOOLEAN DeepFreeze);
+
+VOID
+NTAPI
+KeForceResumeProcess(PKPROCESS Process);
+
+BOOLEAN
+NTAPI
+PsFreezeProcess(PEPROCESS Process, BOOLEAN DeepFreeze);
+
+ULONG32
+NTAPI
+KeThawProcess(PKPROCESS Process, BOOLEAN DeepUnfreeze);
+
+void
+NTAPI
+PsThawProcess(PEPROCESS Process, BOOLEAN DeepUnfreeze);
+
+ULONG32
+NTAPI
+KeFindFirstSetLeftGroupAffinity(PGROUP_AFFINITY Affinity);
+
+ULONG32
+NTAPI
+KeFindFirstSetRightGroupAffinity(PGROUP_AFFINITY Affinity);
+
+ULONG
+NTAPI
+KeCountSetBitsGroupAffinity(PGROUP_AFFINITY Affinity);
+
+BOOLEAN
+NTAPI
+KiVerifyReservedFieldGroupAffinity(const GROUP_AFFINITY* const Affinity);
+
+BOOLEAN
+NTAPI
+KeVerifyGroupAffinity(const GROUP_AFFINITY* const Affinity, const BOOLEAN AllowEmptyMask);
+
+PKPRCB
+NTAPI
+KiConsumeNextProcessor(GROUP_AFFINITY* const Affinity);
+
+KAFFINITY
+NTAPI
+KeQueryGroupAffinityEx(IN PKAFFINITY_EX Affinity, IN USHORT GroupNumber);
+
+#if 0
+NTSTATUS
+NTAPI
+KeConnectInterrupt(
+    _Inout_ PKINTERRUPT* InterruptObject,
+    _In_ ULONG InterruptCount
+);
+
+NTSTATUS
+NTAPI
+KeDisconnectInterrupt(
+    _Inout_ PKINTERRUPT* InterruptObject,
+    _In_ ULONG InterruptCount
+);
+#else
+BOOLEAN
+NTAPI
+KeConnectInterrupt(IN PKINTERRUPT Interrupt);
+
+BOOLEAN
+NTAPI
+KeDisconnectInterrupt(IN PKINTERRUPT Interrupt);
+#endif
+
+BOOLEAN
+NTAPI
+KeAndAffinityEx(const PKAFFINITY_EX Affinity1, const PKAFFINITY_EX Affinity2, const PKAFFINITY_EX AffinityResult);
+
+BOOLEAN
+NTAPI
+KeIsEqualAffinityEx(const PKAFFINITY_EX Affinity1, const PKAFFINITY_EX Affinity2);
+
+BOOLEAN
+NTAPI
+KeIsSubsetAffinityEx(const PKAFFINITY_EX AffinitySubset, const PKAFFINITY_EX Affinity);
+
+KAFFINITY
+NTAPI
+KeSetLegacyAffinityThread(
+    IN PKTHREAD Thread,
+    IN KAFFINITY Affinity
+);
+
+void
+NTAPI
+KiSetSystemAffinityThreadToProcessor(ULONG32 Index, PGROUP_AFFINITY OldAffinity);
+
+ULONG
+FASTCALL
+KeAddProcessorAffinityEx(IN OUT PKAFFINITY_EX TargetAffinity, IN ULONG32 ProcessorIndex);
+
+void
+NTAPI
+KeSetPriorityBoost(IN PKTHREAD Thread, IN KPRIORITY Priority);
+
+void
+NTAPI
+KiSetQuantumTargetThread(IN PKPRCB Prcb, IN PKTHREAD Thread, IN BOOLEAN UpdateCurrentThread);
+
+ULARGE_INTEGER
+NTAPI
+KiCaptureThreadCycleTime(IN PKTHREAD Thread);
+
+THREAD_PRIORITY_VALUES
+NTAPI
+KiExtractThreadPriorityValues(IN BYTE Priority);
+
+void
+NTAPI
+KiVBoxPrint(const char *s);
+
+void
+NTAPI
+KiVBoxPrintInteger(ULONG Value);
+
+void
+NTAPI
+KiUpdateProcessorCount(ULONG ProcIndex, USHORT Group);
+
+VOID
+NTAPI
+KiUpdateThreadPriority(IN PKPRCB Prcb, IN PKTHREAD Thread, IN SCHAR Priority);
+
+void
+NTAPI
+KiSetProcessorIdle(IN PKPRCB Prcb, BOOLEAN Idle, BOOLEAN UseIdleScheduler);
+
+BOOLEAN
+NTAPI
+KeAreInterruptsEnabled(VOID);
 
 #include "ke_x.h"

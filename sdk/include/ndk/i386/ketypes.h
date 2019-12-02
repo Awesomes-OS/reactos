@@ -493,10 +493,13 @@ typedef struct _KPRCB
     struct _KTHREAD *CurrentThread;
     struct _KTHREAD *NextThread;
     struct _KTHREAD *IdleThread;
-    UCHAR Number;
-    UCHAR Reserved;
+    UINT8 NestingLevel;
+    UINT8 LegacyNumber;
+    ULONG32 Number;
     USHORT BuildType;
+#if 0 && (NTDDI_VERSION < NTDDI_WIN7)
     KAFFINITY SetMember;
+#endif
     UCHAR CpuType;
     UCHAR CpuID;
     USHORT CpuStep;
@@ -521,30 +524,20 @@ typedef struct _KPRCB
     ULONG PageColor;
     UCHAR SkipTick;
     UCHAR DebuggerSavedIRQL;
-#if (NTDDI_VERSION >= NTDDI_WS03)
     UCHAR NodeColor;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
     UCHAR PollSlot;
-#else
-    UCHAR Spare1;
-#endif
     ULONG NodeShiftedColor;
-#else
-    UCHAR Spare1[6];
-#endif
     struct _KNODE *ParentNode;
+#if 0 && (NTDDI_VERSION < NTDDI_WIN7)
     ULONG MultiThreadProcessorSet;
-    struct _KPRCB *MultiThreadSetMaster;
-#if (NTDDI_VERSION >= NTDDI_WS03)
+    struct _KPRCB* MultiThreadSetMaster;
+#else
+    UINT_PTR GroupSetMember;
+    UINT8 Group;
+    UINT8 GroupIndex;
+#endif
     ULONG SecondaryColorMask;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
     ULONG DpcTimeLimit;
-#else
-    LONG Sleeping;
-#endif
-#else
-    ULONG ThreadStartCount[2];
-#endif
     ULONG CcFastReadNoWait;
     ULONG CcFastReadWait;
     ULONG CcFastReadNotPossible;
@@ -644,6 +637,9 @@ typedef struct _KPRCB
     ULONG PeriodicCount;
     ULONG PeriodicBias;
     UCHAR PrcbPad5[6];
+#elif 1
+    LONG Sleeping;
+    UCHAR PrcbPad5[14];
 #else
     UCHAR PrcbPad5[18];
 #endif
@@ -665,7 +661,7 @@ typedef struct _KPRCB
     LIST_ENTRY WaitListHead;
     ULONG ReadySummary;
     ULONG QueueIndex;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+#if 1 || (NTDDI_VERSION >= NTDDI_LONGHORN)
     SINGLE_LIST_ENTRY DeferredReadyListHead;
     ULONGLONG StartCycles;
     ULONGLONG CycleTime;
@@ -710,6 +706,8 @@ typedef struct _KPRCB
     LARGE_INTEGER SpareField1;
     FX_SAVE_AREA NpxSaveArea;
     PROCESSOR_POWER_STATE PowerState;
+    CACHE_DESCRIPTOR Cache[5];
+    ULONG CacheCount;
 #if (NTDDI_VERSION >= NTDDI_LONGHORN)
     KDPC DpcWatchdogDoc;
     KTIMER DpcWatchdogTimer;
@@ -719,14 +717,12 @@ typedef struct _KPRCB
     LARGE_INTEGER HyperCallPagePhysical;
     LARGE_INTEGER HyperCallPageVirtual;
     PVOID RateControl;
-    CACHE_DESCRIPTOR Cache[5];
-    ULONG CacheCount;
-    ULONG CacheProcessorMask[5];
     UCHAR LogicalProcessorsPerCore;
     UCHAR PrcbPad8[3];
-    ULONG PackageProcessorSet;
-    ULONG CoreProcessorSet;
 #endif
+    KAFFINITY CoreProcessorSet;
+    KAFFINITY_EX PackageProcessorSet;
+    KAFFINITY CacheProcessorMask[5];
 } KPRCB, *PKPRCB;
 
 //

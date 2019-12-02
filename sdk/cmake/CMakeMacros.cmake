@@ -324,6 +324,8 @@ function(add_cd_file)
         message(FATAL_ERROR "You must provide a cd name (or \"all\" for all of them) to install the file on!")
     endif()
 
+    if (NOT NTDLL_WORK)
+
     # get file if we need to
     if(NOT _CD_FILE)
         set(_CD_FILE "$<TARGET_FILE:${_CD_TARGET}>")
@@ -448,6 +450,8 @@ function(add_cd_file)
             #endif()
         endif()
     endif() #end bootcd
+
+    endif()
 endfunction()
 
 function(create_iso_lists)
