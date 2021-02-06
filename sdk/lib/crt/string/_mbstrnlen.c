@@ -12,7 +12,7 @@
 
 _Success_(return>0)
 _Check_return_
-_CRTIMP
+_DCRTIMP
 size_t
 __cdecl
 _mbstrnlen(

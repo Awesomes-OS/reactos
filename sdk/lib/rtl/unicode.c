@@ -2132,15 +2132,20 @@ RtlStringFromGUID (IN REFGUID Guid,
                    OUT PUNICODE_STRING GuidString)
 {
     /* Setup the string */
-    GuidString->Length = 38 * sizeof(WCHAR);
+    GuidString->Length = /* GUID_STRING_LENGTH */ 38 * sizeof(WCHAR);
     GuidString->MaximumLength = GuidString->Length + sizeof(UNICODE_NULL);
     GuidString->Buffer = RtlpAllocateStringMemory(GuidString->MaximumLength,
                                                   TAG_USTR);
-    if (!GuidString->Buffer) return STATUS_NO_MEMORY;
+    if (!GuidString->Buffer)
+    {
+        GuidString->Length = GuidString->MaximumLength = 0;
+        return STATUS_NO_MEMORY;
+    }
 
     /* Now format the GUID */
     swprintf(GuidString->Buffer,
-             L"{%08lx-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}",
+             GuidString->MaximumLength / sizeof(WCHAR),
+             L"{%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
              Guid->Data1,
              Guid->Data2,
              Guid->Data3,

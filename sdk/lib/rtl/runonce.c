@@ -3,7 +3,6 @@
 
 #include "rtl_vista.h"
 #include <wine/config.h>
-#include <wine/port.h>
 
 /******************************************************************
  *              RtlRunOnceInitialize (NTDLL.@)
@@ -35,16 +34,16 @@ DWORD WINAPI RtlRunOnceBeginInitialize( RTL_RUN_ONCE *once, ULONG flags, void **
         switch (val & 3)
         {
         case 0:  /* first time */
-            if (!interlocked_cmpxchg_ptr( &once->Ptr,
-                                          (flags & RTL_RUN_ONCE_ASYNC) ? (void *)3 : (void *)1, 0 ))
+            if (!InterlockedCompareExchangePointer( &once->Ptr,
+                                                    (flags & RTL_RUN_ONCE_ASYNC) ? (void *)3 : (void *)1, 0 ))
                 return STATUS_PENDING;
             break;
 
         case 1:  /* in progress, wait */
             if (flags & RTL_RUN_ONCE_ASYNC) return STATUS_INVALID_PARAMETER;
             next = val & ~3;
-            if (interlocked_cmpxchg_ptr( &once->Ptr, (void *)((ULONG_PTR)&next | 1),
-                                         (void *)val ) == (void *)val)
+            if (InterlockedCompareExchangePointer( &once->Ptr, (void *)((ULONG_PTR)&next | 1),
+                                                   (void *)val ) == (void *)val)
                 NtWaitForKeyedEvent( 0, &next, FALSE, NULL );
             break;
 
@@ -80,7 +79,7 @@ DWORD WINAPI RtlRunOnceComplete( RTL_RUN_ONCE *once, ULONG flags, void *context 
         switch (val & 3)
         {
         case 1:  /* in progress */
-            if (interlocked_cmpxchg_ptr( &once->Ptr, context, (void *)val ) != (void *)val) break;
+            if (InterlockedCompareExchangePointer( &once->Ptr, context, (void *)val ) != (void *)val) break;
             val &= ~3;
             while (val)
             {
@@ -92,7 +91,7 @@ DWORD WINAPI RtlRunOnceComplete( RTL_RUN_ONCE *once, ULONG flags, void *context 
 
         case 3:  /* in progress, async */
             if (!(flags & RTL_RUN_ONCE_ASYNC)) return STATUS_INVALID_PARAMETER;
-            if (interlocked_cmpxchg_ptr( &once->Ptr, context, (void *)val ) != (void *)val) break;
+            if (InterlockedCompareExchangePointer( &once->Ptr, context, (void *)val ) != (void *)val) break;
             return STATUS_SUCCESS;
 
         default:

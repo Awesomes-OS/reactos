@@ -14,6 +14,8 @@
 
 #define TAG_SID 'diSp'
 
+#define RTL_ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+
 /* FUNCTIONS ***************************************************************/
 
 BOOLEAN
@@ -353,12 +355,13 @@ RtlConvertSidToUnicodeString(IN PUNICODE_STRING String,
     if (!RtlValidSid(Sid)) return STATUS_INVALID_SID;
 
     wcs = Buffer;
-    wcs += swprintf(wcs, L"S-1-");
+    wcs += swprintf(wcs, RTL_ARRAY_SIZE(Buffer) - (wcs - Buffer), L"S-1-");
 
     if ((Sid->IdentifierAuthority.Value[0] == 0) &&
         (Sid->IdentifierAuthority.Value[1] == 0))
     {
         wcs += swprintf(wcs,
+                        RTL_ARRAY_SIZE(Buffer) - (wcs - Buffer),
                         L"%lu",
                         (ULONG)Sid->IdentifierAuthority.Value[2] << 24 |
                         (ULONG)Sid->IdentifierAuthority.Value[3] << 16 |
@@ -368,6 +371,7 @@ RtlConvertSidToUnicodeString(IN PUNICODE_STRING String,
     else
     {
         wcs += swprintf(wcs,
+                        RTL_ARRAY_SIZE(Buffer) - (wcs - Buffer),
                         L"0x%02hx%02hx%02hx%02hx%02hx%02hx",
                         Sid->IdentifierAuthority.Value[0],
                         Sid->IdentifierAuthority.Value[1],
@@ -379,7 +383,7 @@ RtlConvertSidToUnicodeString(IN PUNICODE_STRING String,
 
     for (i = 0; i < Sid->SubAuthorityCount; i++)
     {
-        wcs += swprintf(wcs, L"-%u", Sid->SubAuthority[i]);
+        wcs += swprintf(wcs, RTL_ARRAY_SIZE(Buffer) - (wcs - Buffer), L"-%u", Sid->SubAuthority[i]);
     }
 
     if (AllocateBuffer)

@@ -32,12 +32,8 @@
 #include <string.h>
 #include <ctype.h>
 
-#ifdef __REACTOS__
-#include <typedefs.h>
-#else
 #include "windef.h"
 #include "winbase.h"
-#endif
 
 #include "widl.h"
 #include "utils.h"
@@ -48,9 +44,6 @@
 #include "typelib_struct.h"
 #include "typetree.h"
 
-#ifdef __REACTOS__
-static typelib_t *typelib;
-#endif
 
 /* List of oleauto types that should be recognized by name.
  * (most of) these seem to be intrinsic types in mktyplib.
@@ -71,7 +64,6 @@ static const struct oatype {
   {"VARIANT",       VT_VARIANT},
   {"VARIANT_BOOL",  VT_BOOL}
 };
-#define NTYPES (sizeof(oatypes)/sizeof(oatypes[0]))
 #define KWP(p) ((const struct oatype *)(p))
 
 static int kw_cmp_func(const void *s1, const void *s2)
@@ -86,11 +78,11 @@ static unsigned short builtin_vt(const type_t *t)
   const struct oatype *kwp;
   key.kw = kw;
 #ifdef KW_BSEARCH
-  kwp = bsearch(&key, oatypes, NTYPES, sizeof(oatypes[0]), kw_cmp_func);
+  kwp = bsearch(&key, oatypes, ARRAY_SIZE(oatypes), sizeof(oatypes[0]), kw_cmp_func);
 #else
   {
     unsigned int i;
-    for (kwp=NULL, i=0; i < NTYPES; i++)
+    for (kwp = NULL, i = 0; i < ARRAY_SIZE(oatypes); i++)
       if (!kw_cmp_func(&key, &oatypes[i])) {
         kwp = &oatypes[i];
         break;
@@ -104,9 +96,9 @@ static unsigned short builtin_vt(const type_t *t)
   {
     const type_t *elem_type;
     if (is_array(t))
-      elem_type = type_array_get_element(t);
+      elem_type = type_array_get_element_type(t);
     else
-      elem_type = type_pointer_get_ref(t);
+      elem_type = type_pointer_get_ref_type(t);
     if (type_get_type(elem_type) == TYPE_BASIC)
     {
       switch (type_basic_get_type(elem_type))
@@ -136,7 +128,8 @@ unsigned short get_type_vt(type_t *t)
     if (vt) return vt;
   }
 
-  if (type_is_alias(t) && is_attr(t->attrs, ATTR_PUBLIC))
+  if (type_is_alias(t) &&
+        (is_attr(t->attrs, ATTR_PUBLIC) || is_attr(t->attrs, ATTR_WIREMARSHAL)))
     return VT_USERDEFINED;
 
   switch (type_get_type(t)) {
@@ -205,7 +198,7 @@ unsigned short get_type_vt(type_t *t)
   case TYPE_ARRAY:
     if (type_array_is_decl_as_ptr(t))
     {
-      if (match(type_array_get_element(t)->name, "SAFEARRAY"))
+      if (match(type_array_get_element_type(t)->name, "SAFEARRAY"))
         return VT_SAFEARRAY;
       return VT_PTR;
     }
@@ -225,13 +218,18 @@ unsigned short get_type_vt(type_t *t)
   case TYPE_MODULE:
   case TYPE_UNION:
   case TYPE_ENCAPSULATED_UNION:
+  case TYPE_RUNTIMECLASS:
+  case TYPE_DELEGATE:
     return VT_USERDEFINED;
 
   case TYPE_VOID:
     return VT_VOID;
 
   case TYPE_ALIAS:
-    /* aliases should be filtered out by the type_get_type call above */
+  case TYPE_APICONTRACT:
+  case TYPE_PARAMETERIZED_TYPE:
+  case TYPE_PARAMETER:
+    /* not supposed to be here */
     assert(0);
     break;
 
@@ -245,21 +243,6 @@ unsigned short get_type_vt(type_t *t)
   }
   return 0;
 }
-
-#ifdef __REACTOS__
-void start_typelib(typelib_t *typelib_type)
-{
-    if (!do_typelib) return;
-    typelib = typelib_type;
-}
-
-void end_typelib(void)
-{
-    if (!typelib) return;
-
-    create_msft_typelib(typelib);
-}
-#endif
 
 static void tlb_read(int fd, void *buf, int count)
 {
@@ -385,11 +368,7 @@ static void read_importlib(importlib_t *importlib)
     close(fd);
 }
 
-#ifdef __REACTOS__
-void add_importlib(const char *name)
-#else
 void add_importlib(const char *name, typelib_t *typelib)
-#endif
 {
     importlib_t *importlib;
 

@@ -19,9 +19,9 @@
 #ifndef __MSXMLDID_H__
 #define __MSXMLDID_H__
 
-#define DISPID_XOBJ_MIN                     0x10000
-#define DISPID_XOBJ_MAX                     0x1FFFF
-#define DISPID_XOBJ_BASE                    0x10000
+#define DISPID_XOBJ_MIN                     0x00010000
+#define DISPID_XOBJ_MAX                     0x0001FFFF
+#define DISPID_XOBJ_BASE                    DISPID_XOBJ_MIN
 
 #define DISPID_XMLELEMENTCOLLECTION         0x10000
 #define DISPID_XMLELEMENTCOLLECTION_LENGTH  0x10001

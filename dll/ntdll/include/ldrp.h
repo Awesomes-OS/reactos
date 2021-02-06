@@ -197,10 +197,12 @@ typedef union
 
     struct
     {
+#if 0
         ULONG32 LogWarning : 1;
         ULONG32 LogInformation : 1;
         ULONG32 LogDebug : 1;
         ULONG32 LogTrace : 1;
+#endif
         ULONG32 BreakInDebugger : 1;
     };
 } LDRP_DEBUG_FLAGS;

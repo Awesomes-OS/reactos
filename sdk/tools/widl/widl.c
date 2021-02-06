@@ -60,6 +60,8 @@ static const char usage[] =
 "   --local-stubs=file Write empty stubs for call_as/local methods to file\n"
 "   -m32, -m64         Set the target architecture (Win32 or Win64)\n"
 "   -N                 Do not preprocess input\n"
+"   --nostdinc         Do not search the standard include path\n"
+"   --ns_prefix        Prefix namespaces with ABI namespace\n"
 "   --oldnames         Use old naming conventions\n"
 "   --oldtlb           Use old typelib (SLTG) format\n"
 "   -o, --output=NAME  Set the output file name\n"
@@ -70,16 +72,17 @@ static const char usage[] =
 "   --prefix-server=p  Prefix names of server functions with 'p'\n"
 "   -r                 Generate registration script\n"
 "   -robust            Ignored, present for midl compatibility\n"
-"   --winrt            Enable Windows Runtime mode\n"
-"   --ns_prefix        Prefix namespaces with ABI namespace\n"
+"   --sysroot=DIR      Prefix include paths with DIR\n"
 "   -s                 Generate server stub\n"
 "   -t                 Generate typelib\n"
+"   --tmp=dir          ReactOS: Path to the directory for WPP temporary files\n"
 "   -u                 Generate interface identifiers file\n"
 "   -V                 Print version and exit\n"
 "   -W                 Enable pedantic warnings\n"
 "   --win32, --win64   Set the target architecture (Win32 or Win64)\n"
 "   --win32-align n    Set win32 structure alignment to 'n'\n"
 "   --win64-align n    Set win64 structure alignment to 'n'\n"
+"   --winrt            Enable Windows Runtime mode\n"
 "Debug level 'n' is a bitmask with following meaning:\n"
 "    * 0x01 Tell which resource is parsed (verbose mode)\n"
 "    * 0x02 Dump internal structures\n"
@@ -128,6 +131,7 @@ int win32_packing = 8;
 int win64_packing = 8;
 int winrt_mode = 0;
 int use_abi_namespace = 0;
+static int stdinc = 1;
 static enum stub_mode stub_mode = MODE_Os;
 
 char *input_name;
@@ -150,6 +154,8 @@ static char *idfile_name;
 char *temp_name;
 const char *prefix_client = "";
 const char *prefix_server = "";
+static const char *includedir;
+char *temp_dir_name;
 
 int line_number = 1;
 
@@ -166,6 +172,7 @@ enum {
     DLLDATA_OPTION,
     DLLDATA_ONLY_OPTION,
     LOCAL_STUBS_OPTION,
+    NOSTDINC_OPTION,
     OLD_TYPELIB_OPTION,
     PREFIX_ALL_OPTION,
     PREFIX_CLIENT_OPTION,
@@ -174,6 +181,8 @@ enum {
     RT_NS_PREFIX,
     RT_OPTION,
     ROBUST_OPTION,
+    SYSROOT_OPTION,
+    TMP_WPP_OPTION,
     WIN32_OPTION,
     WIN64_OPTION,
     WIN32_ALIGN_OPTION,
@@ -189,6 +198,7 @@ static const struct option long_options[] = {
     { "dlldata-only", 0, NULL, DLLDATA_ONLY_OPTION },
     { "help", 0, NULL, PRINT_HELP },
     { "local-stubs", 1, NULL, LOCAL_STUBS_OPTION },
+    { "nostdinc", 0, NULL, NOSTDINC_OPTION },
     { "ns_prefix", 0, NULL, RT_NS_PREFIX },
     { "oldnames", 0, NULL, OLDNAMES_OPTION },
     { "oldtlb", 0, NULL, OLD_TYPELIB_OPTION },
@@ -197,7 +207,9 @@ static const struct option long_options[] = {
     { "prefix-client", 1, NULL, PREFIX_CLIENT_OPTION },
     { "prefix-server", 1, NULL, PREFIX_SERVER_OPTION },
     { "robust", 0, NULL, ROBUST_OPTION },
+    { "sysroot", 1, NULL, SYSROOT_OPTION },
     { "target", 0, NULL, 'b' },
+    { "tmp", 1, NULL, TMP_WPP_OPTION },
     { "winrt", 0, NULL, RT_OPTION },
     { "win32", 0, NULL, WIN32_OPTION },
     { "win64", 0, NULL, WIN64_OPTION },
@@ -246,6 +258,7 @@ static char *dup_basename_token(const char *name, const char *ext)
 
 static void add_widl_version_define(void)
 {
+    char version_str[32];
     unsigned int version;
     const char *p = PACKAGE_VERSION;
 
@@ -264,14 +277,8 @@ static void add_widl_version_define(void)
     if (p)
         version += atoi(p + 1);
 
-    if (version != 0)
-    {
-        char version_str[11];
-        snprintf(version_str, sizeof(version_str), "0x%x", version);
-        wpp_add_define("__WIDL__", version_str);
-    }
-    else
-        wpp_add_define("__WIDL__", NULL);
+    snprintf(version_str, sizeof(version_str), "__WIDL__=0x%x", version);
+    wpp_add_cmdline_define(version_str);
 }
 
 /* set the target platform */
@@ -295,6 +302,7 @@ static void set_target( const char *target )
         { "armv5",   CPU_ARM },
         { "armv6",   CPU_ARM },
         { "armv7",   CPU_ARM },
+        { "armv7a",  CPU_ARM },
         { "arm64",   CPU_ARM64 },
         { "aarch64", CPU_ARM64 },
     };
@@ -306,7 +314,7 @@ static void set_target( const char *target )
 
     if (!(p = strchr( spec, '-' ))) error( "Invalid target specification '%s'\n", target );
     *p++ = 0;
-    for (i = 0; i < sizeof(cpu_names)/sizeof(cpu_names[0]); i++)
+    for (i = 0; i < ARRAY_SIZE( cpu_names ); i++)
     {
         if (!strcmp( cpu_names[i].name, spec ))
         {
@@ -505,10 +513,10 @@ static void write_id_data_stmts(const statement_list_t *stmts)
         uuid = get_attrp(type->attrs, ATTR_UUID);
         write_id_guid(idfile, "IID", is_attr(type->attrs, ATTR_DISPINTERFACE) ? "DIID" : "IID",
                    type->name, uuid);
-        if (type->details.iface->async_iface)
+        if (type_iface_get_async_iface(type))
         {
-          uuid = get_attrp(type->details.iface->async_iface->attrs, ATTR_UUID);
-          write_id_guid(idfile, "IID", "IID", type->details.iface->async_iface->name, uuid);
+          uuid = get_attrp(type_iface_get_async_iface(type)->attrs, ATTR_UUID);
+          write_id_guid(idfile, "IID", "IID", type_iface_get_async_iface(type)->name, uuid);
         }
       }
       else if (type_get_type(type) == TYPE_COCLASS)
@@ -582,18 +590,41 @@ void write_id_data(const statement_list_t *stmts)
   fclose(idfile);
 }
 
+static void init_argv0_dir( const char *argv0 )
+{
+#ifndef _WIN32
+    char *p, *dir;
+
+#if defined(__linux__) || defined(__FreeBSD_kernel__) || defined(__NetBSD__)
+    dir = realpath( "/proc/self/exe", NULL );
+#elif defined (__FreeBSD__) || defined(__DragonFly__)
+    dir = realpath( "/proc/curproc/file", NULL );
+#else
+    dir = realpath( argv0, NULL );
+#endif
+    if (!dir) return;
+    if (!(p = strrchr( dir, '/' ))) return;
+    if (p == dir) p++;
+    *p = 0;
+    includedir = strmake( "%s/%s", dir, BIN_TO_INCLUDEDIR );
+    free( dir );
+#endif
+}
+
 int main(int argc,char *argv[])
 {
-  int optc;
+  int i, optc;
   int ret = 0;
   int opti = 0;
   char *output_name = NULL;
+  const char *sysroot = "";
 
   signal( SIGTERM, exit_on_signal );
   signal( SIGINT, exit_on_signal );
 #ifdef SIGHUP
   signal( SIGHUP, exit_on_signal );
 #endif
+  init_argv0_dir( argv[0] );
 
   now = time(NULL);
 
@@ -609,6 +640,9 @@ int main(int argc,char *argv[])
     case LOCAL_STUBS_OPTION:
       do_everything = 0;
       local_stubs_name = xstrdup(optarg);
+      break;
+    case NOSTDINC_OPTION:
+      stdinc = 0;
       break;
     case OLDNAMES_OPTION:
       old_names = 1;
@@ -631,6 +665,12 @@ int main(int argc,char *argv[])
       break;
     case RT_NS_PREFIX:
       use_abi_namespace = 1;
+      break;
+    case SYSROOT_OPTION:
+      sysroot = xstrdup(optarg);
+      break;
+    case TMP_WPP_OPTION:
+      temp_dir_name = xstrdup(optarg);
       break;
     case WIN32_OPTION:
       pointer_size = 4;
@@ -753,9 +793,12 @@ int main(int argc,char *argv[])
     }
   }
 
+  if (stdinc)
+  {
 #ifdef DEFAULT_INCLUDE_DIR
-  wpp_add_include_path(DEFAULT_INCLUDE_DIR);
+    wpp_add_include_path(DEFAULT_INCLUDE_DIR);
 #endif
+  }
 
   switch (target_cpu)
   {
@@ -798,24 +841,6 @@ int main(int argc,char *argv[])
     set_everything(TRUE);
   }
 
-  if (!output_name) output_name = dup_basename(input_name, ".idl");
-
-  if (do_header + do_typelib + do_proxies + do_client +
-      do_server + do_regscript + do_idfile + do_dlldata == 1)
-  {
-      if (do_header) header_name = output_name;
-      else if (do_typelib) typelib_name = output_name;
-      else if (do_proxies) proxy_name = output_name;
-      else if (do_client) client_name = output_name;
-      else if (do_server) server_name = output_name;
-      else if (do_regscript) regscript_name = output_name;
-      else if (do_idfile) idfile_name = output_name;
-      else if (do_dlldata) dlldata_name = output_name;
-  }
-
-  if (!dlldata_name && do_dlldata)
-    dlldata_name = xstrdup("dlldata.c");
-
   if(optind < argc) {
     if (do_dlldata && !do_everything) {
       struct list filenames = LIST_INIT(filenames);
@@ -850,6 +875,25 @@ int main(int argc,char *argv[])
   wpp_set_debug( (debuglevel & DEBUGLEVEL_PPLEX) != 0,
                  (debuglevel & DEBUGLEVEL_PPTRACE) != 0,
                  (debuglevel & DEBUGLEVEL_PPMSG) != 0 );
+
+  if (output_name)
+  {
+    if (do_header + do_typelib + do_proxies + do_client +
+        do_server + do_regscript + do_idfile + do_dlldata == 1)
+    {
+        if (do_header && !header_name) header_name = output_name;
+        else if (do_typelib && !typelib_name) typelib_name = output_name;
+        else if (do_proxies && !proxy_name) proxy_name = output_name;
+        else if (do_client && !client_name) client_name = output_name;
+        else if (do_server && !server_name) server_name = output_name;
+        else if (do_regscript && !regscript_name) regscript_name = output_name;
+        else if (do_idfile && !idfile_name) idfile_name = output_name;
+        else if (do_dlldata && !dlldata_name) dlldata_name = output_name;
+    }
+  }
+
+  if (!dlldata_name && do_dlldata)
+    dlldata_name = xstrdup("dlldata.c");
 
   if (!header_name) {
     header_name = dup_basename(input_name, ".idl");
@@ -892,7 +936,7 @@ int main(int argc,char *argv[])
   if (do_regscript) regscript_token = dup_basename_token(regscript_name,"_r.rgs");
 
   add_widl_version_define();
-  wpp_add_define("_WIN32", NULL);
+  wpp_add_cmdline_define("_WIN32=1");
 
   atexit(rm_tempfile);
   if (!no_preprocess)
@@ -903,13 +947,25 @@ int main(int argc,char *argv[])
     {
         FILE *output;
         int fd;
-        char *name = xmalloc( strlen(header_name) + 8 );
+        char* base_input_name = dup_basename(input_name, ".idl");
+        char *name = xmalloc( (temp_dir_name ? strlen(temp_dir_name) : 0) + strlen(base_input_name) + 8 );
 
-        strcpy( name, header_name );
+        if (temp_dir_name)
+        {
+            strcpy( name, temp_dir_name );
+            strcat( name, base_input_name );
+        }
+        else
+        {
+            strcpy( name, base_input_name );
+        }
+
         strcat( name, ".XXXXXX" );
 
+        free(base_input_name);
+
         if ((fd = mkstemps( name, 0 )) == -1)
-            error("Could not generate a temp name from %s\n", name);
+            error("Could not generate a root temp name from %s\n", name);
 
         temp_name = name;
         if (!(output = fdopen(fd, "wt")))

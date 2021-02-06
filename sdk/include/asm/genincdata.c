@@ -1,12 +1,14 @@
 #undef __MSVCRT__
-#include <psdk/ntverp.h>
+#include <ntverp.h>
 
 /* DDK/IFS/NDK Headers */
 #define _NTSYSTEM_
+//#define _NTHALLIB_
 #include <excpt.h>
 #include <setjmp.h>
 #include <ntdef.h>
 #include <ntifs.h>
+#include <ntddk.h>
 #include <arc/arc.h>
 #include <ntndk.h>
 #include <bugcodes.h>

@@ -558,6 +558,23 @@ interface IWinInetHttpInfo : IWinInetInfo
 }
 
 /*****************************************************************************
+ * IWinInetHttpTimeouts interface
+ */
+[
+    local,
+    object,
+    uuid(f286fa56-c1fd-4270-8e67-b3eb790a81e8),
+    pointer_default(unique)
+]
+interface IWinInetHttpTimeouts : IUnknown
+{
+    HRESULT GetRequestTimeouts(
+        [out] DWORD *connect_timeout,
+        [out] DWORD *send_timeout,
+        [out] DWORD *receive_timeout);
+}
+
+/*****************************************************************************
  * IWindowForBindingUI interface
  */
 [
@@ -749,7 +766,9 @@ interface IInternetBindInfo : IUnknown
         BINDSTRING_INITIAL_FILENAME,
         BINDSTRING_PROXY_USERNAME,
         BINDSTRING_PROXY_PASSWORD,
-        BINDSTRING_ENTERPRISE_ID
+        BINDSTRING_ENTERPRISE_ID,
+        BINDSTRING_DOC_URL,
+        BINDSTRING_SAMESITE_COOKIE_LEVEL
     } BINDSTRING;
 
     HRESULT GetBindInfo(
@@ -1998,7 +2017,7 @@ interface IUriBuilder: IUnknown
 
     HRESULT HasBeenModified(
         [out] BOOL *pfModified);
-};
+}
 
 cpp_quote("HRESULT WINAPI CreateIUriBuilder(IUri*,DWORD,DWORD_PTR,IUriBuilder**);")
 
@@ -2120,39 +2139,39 @@ cpp_quote("#ifndef S_ASYNCHRONOUS")
 cpp_quote("#define S_ASYNCHRONOUS                   MK_S_ASYNCHRONOUS")
 cpp_quote("#endif")
 
-cpp_quote("#define INET_E_ERROR_FIRST               _HRESULT_TYPEDEF_(0x800C0002)")
-cpp_quote("#define INET_E_INVALID_URL               _HRESULT_TYPEDEF_(0x800C0002)")
-cpp_quote("#define INET_E_NO_SESSION                _HRESULT_TYPEDEF_(0x800C0003)")
-cpp_quote("#define INET_E_CANNOT_CONNECT            _HRESULT_TYPEDEF_(0x800C0004)")
-cpp_quote("#define INET_E_RESOURCE_NOT_FOUND        _HRESULT_TYPEDEF_(0x800C0005)")
-cpp_quote("#define INET_E_OBJECT_NOT_FOUND          _HRESULT_TYPEDEF_(0x800C0006)")
-cpp_quote("#define INET_E_DATA_NOT_AVAILABLE        _HRESULT_TYPEDEF_(0x800C0007)")
-cpp_quote("#define INET_E_DOWNLOAD_FAILURE          _HRESULT_TYPEDEF_(0x800C0008)")
-cpp_quote("#define INET_E_AUTHENTICATION_REQUIRED   _HRESULT_TYPEDEF_(0x800C0009)")
-cpp_quote("#define INET_E_NO_VALID_MEDIA            _HRESULT_TYPEDEF_(0x800C000A)")
-cpp_quote("#define INET_E_CONNECTION_TIMEOUT        _HRESULT_TYPEDEF_(0x800C000B)")
-cpp_quote("#define INET_E_INVALID_REQUEST           _HRESULT_TYPEDEF_(0x800C000C)")
-cpp_quote("#define INET_E_UNKNOWN_PROTOCOL          _HRESULT_TYPEDEF_(0x800C000D)")
-cpp_quote("#define INET_E_SECURITY_PROBLEM          _HRESULT_TYPEDEF_(0x800C000E)")
-cpp_quote("#define INET_E_CANNOT_LOAD_DATA          _HRESULT_TYPEDEF_(0x800C000F)")
-cpp_quote("#define INET_E_CANNOT_INSTANTIATE_OBJECT _HRESULT_TYPEDEF_(0x800C0010)")
-cpp_quote("#define INET_E_USE_DEFAULT_PROTOCOLHANDLER _HRESULT_TYPEDEF_(0x800C0011)")
-cpp_quote("#define INET_E_USE_DEFAULT_SETTING       _HRESULT_TYPEDEF_(0x800C0012L)")
-cpp_quote("#define INET_E_DEFAULT_ACTION            INET_E_USE_DEFAULT_PROTOCOLHANDLER")
-cpp_quote("#define INET_E_QUERYOPTION_UNKNOWN       _HRESULT_TYPEDEF_(0x800C0013)")
-cpp_quote("#define INET_E_REDIRECT_FAILED           _HRESULT_TYPEDEF_(0x800C0014)")
-cpp_quote("#define INET_E_REDIRECT_TO_DIR           _HRESULT_TYPEDEF_(0x800C0015)")
-cpp_quote("#define INET_E_CANNOT_LOCK_REQUEST       _HRESULT_TYPEDEF_(0x800C0016)")
-cpp_quote("#define INET_E_USE_EXTENDED_BINDING      _HRESULT_TYPEDEF_(0x800C0017)")
-cpp_quote("#define INET_E_TERMINATED_BIND           _HRESULT_TYPEDEF_(0x800C0018)")
-cpp_quote("#define INET_E_INVALID_CERTIFICATE       _HRESULT_TYPEDEF_(0x800C0019)")
-cpp_quote("#define INET_E_CODE_DOWNLOAD_DECLINED    _HRESULT_TYPEDEF_(0x800C0100)")
-cpp_quote("#define INET_E_RESULT_DISPATCHED         _HRESULT_TYPEDEF_(0x800C0200)")
-cpp_quote("#define INET_E_CANNOT_REPLACE_SFP_FILE   _HRESULT_TYPEDEF_(0x800C0300)")
-cpp_quote("#define INET_E_CODE_INSTALL_SUPPRESSED   _HRESULT_TYPEDEF_(0x800C0400)")
-cpp_quote("#define INET_E_CODE_INSTALL_BLOCKED_BY_HASH_POLICY  _HRESULT_TYPEDEF_(0x800C0500)")
-cpp_quote("#define INET_E_DOWNLOAD_BLOCKED_BY_INPRIVATE        _HRESULT_TYPEDEF_(0x800C0501)")
-cpp_quote("#define INET_E_ERROR_LAST                INET_E_DOWNLOAD_BLOCKED_BY_INPRIVATE")
+cpp_quote("#define INET_E_ERROR_FIRST                          _HRESULT_TYPEDEF_(0x800C0002L)")
+cpp_quote("#define INET_E_INVALID_URL                          _HRESULT_TYPEDEF_(0x800C0002L)")
+cpp_quote("#define INET_E_NO_SESSION                           _HRESULT_TYPEDEF_(0x800C0003L)")
+cpp_quote("#define INET_E_CANNOT_CONNECT                       _HRESULT_TYPEDEF_(0x800C0004L)")
+cpp_quote("#define INET_E_RESOURCE_NOT_FOUND                   _HRESULT_TYPEDEF_(0x800C0005L)")
+cpp_quote("#define INET_E_OBJECT_NOT_FOUND                     _HRESULT_TYPEDEF_(0x800C0006L)")
+cpp_quote("#define INET_E_DATA_NOT_AVAILABLE                   _HRESULT_TYPEDEF_(0x800C0007L)")
+cpp_quote("#define INET_E_DOWNLOAD_FAILURE                     _HRESULT_TYPEDEF_(0x800C0008L)")
+cpp_quote("#define INET_E_AUTHENTICATION_REQUIRED              _HRESULT_TYPEDEF_(0x800C0009L)")
+cpp_quote("#define INET_E_NO_VALID_MEDIA                       _HRESULT_TYPEDEF_(0x800C000AL)")
+cpp_quote("#define INET_E_CONNECTION_TIMEOUT                   _HRESULT_TYPEDEF_(0x800C000BL)")
+cpp_quote("#define INET_E_INVALID_REQUEST                      _HRESULT_TYPEDEF_(0x800C000CL)")
+cpp_quote("#define INET_E_UNKNOWN_PROTOCOL                     _HRESULT_TYPEDEF_(0x800C000DL)")
+cpp_quote("#define INET_E_SECURITY_PROBLEM                     _HRESULT_TYPEDEF_(0x800C000EL)")
+cpp_quote("#define INET_E_CANNOT_LOAD_DATA                     _HRESULT_TYPEDEF_(0x800C000FL)")
+cpp_quote("#define INET_E_CANNOT_INSTANTIATE_OBJECT            _HRESULT_TYPEDEF_(0x800C0010L)")
+cpp_quote("#define INET_E_USE_DEFAULT_PROTOCOLHANDLER          _HRESULT_TYPEDEF_(0x800C0011L)")
+cpp_quote("#define INET_E_USE_DEFAULT_SETTING                  _HRESULT_TYPEDEF_(0x800C0012L)")
+cpp_quote("#define INET_E_DEFAULT_ACTION                       INET_E_USE_DEFAULT_PROTOCOLHANDLER")
+cpp_quote("#define INET_E_QUERYOPTION_UNKNOWN                  _HRESULT_TYPEDEF_(0x800C0013L)")
+cpp_quote("#define INET_E_REDIRECT_FAILED                      _HRESULT_TYPEDEF_(0x800C0014L)")
+cpp_quote("#define INET_E_REDIRECT_TO_DIR                      _HRESULT_TYPEDEF_(0x800C0015L)")
+cpp_quote("#define INET_E_CANNOT_LOCK_REQUEST                  _HRESULT_TYPEDEF_(0x800C0016L)")
+cpp_quote("#define INET_E_USE_EXTENDED_BINDING                 _HRESULT_TYPEDEF_(0x800C0017L)")
+cpp_quote("#define INET_E_TERMINATED_BIND                      _HRESULT_TYPEDEF_(0x800C0018L)")
+cpp_quote("#define INET_E_INVALID_CERTIFICATE                  _HRESULT_TYPEDEF_(0x800C0019L)")
+cpp_quote("#define INET_E_CODE_DOWNLOAD_DECLINED               _HRESULT_TYPEDEF_(0x800C0100L)")
+cpp_quote("#define INET_E_RESULT_DISPATCHED                    _HRESULT_TYPEDEF_(0x800C0200L)")
+cpp_quote("#define INET_E_CANNOT_REPLACE_SFP_FILE              _HRESULT_TYPEDEF_(0x800C0300L)")
+cpp_quote("#define INET_E_CODE_INSTALL_SUPPRESSED              _HRESULT_TYPEDEF_(0x800C0400L)")
+cpp_quote("#define INET_E_CODE_INSTALL_BLOCKED_BY_HASH_POLICY  _HRESULT_TYPEDEF_(0x800C0500L)")
+cpp_quote("#define INET_E_DOWNLOAD_BLOCKED_BY_INPRIVATE        _HRESULT_TYPEDEF_(0x800C0501L)")
+cpp_quote("#define INET_E_ERROR_LAST                           INET_E_DOWNLOAD_BLOCKED_BY_INPRIVATE")
 
 cpp_quote("HRESULT WINAPI CoGetClassObjectFromURL(REFCLSID, LPCWSTR, DWORD, DWORD, LPCWSTR, LPBINDCTX, DWORD, LPVOID, REFIID, LPVOID*);")
 cpp_quote("HRESULT WINAPI CreateURLMoniker(IMoniker *pmkContext, LPCWSTR szURL, IMoniker **ppmk);")

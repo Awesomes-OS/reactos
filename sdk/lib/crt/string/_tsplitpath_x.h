@@ -14,7 +14,7 @@
 #define _SUCCESS 0
 
 _Check_return_wat_
-_CRTIMP_ALTERNATIVE
+_ACRTIMP
 errno_t
 __cdecl
 _tsplitpath_x(
@@ -32,7 +32,7 @@ _tsplitpath_x(
 #define _SUCCESS
 
 _CRT_INSECURE_DEPRECATE(_splitpath_s)
-_CRTIMP
+_ACRTIMP
 void
 __cdecl
 _tsplitpath_x(

@@ -10,12 +10,16 @@
 #define RTL_H
 
 /* We're a core NT DLL, we don't import syscalls */
+#define _CRT_SECURE_NO_WARNINGS
 #define _INC_SWPRINTF_INL_
 #undef __MSVCRT__
 
 /* C Headers */
 #include <stdlib.h>
 #include <stdio.h>
+
+// todo (andrew.boyarshin): proper definition
+#define DECLSPEC_HOTPATCH
 
 /* PSDK/NDK Headers */
 #define WIN32_NO_STATUS

@@ -11,6 +11,8 @@
 
 #include <rtl.h>
 
+#include <stdarg.h>
+
 #include <ndk/kdfuncs.h>
 
 #define NDEBUG

@@ -83,7 +83,7 @@ target_link_libraries(user32 user32_wsprintf wine win32ksys ${PSEH_LIB})
 add_dependencies(user32 asm)
 
 if(MSVC AND (ARCH STREQUAL "i386"))
-    target_sources(user32 PRIVATE $<TARGET_OBJECTS:ftol2_sse>)
+    # target_sources(user32 PRIVATE $<TARGET_OBJECTS:ftol2_sse>)
 endif()
 
 add_delay_importlibs(user32 imm32 usp10)

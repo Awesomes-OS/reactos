@@ -20,6 +20,21 @@ EXTERN_C
 
 }
 
+#include <wil/resource.h>
+
+using unique_ntdll_handle = wil::unique_any<HANDLE, decltype(&::NtClose), ::NtClose>;
+
+namespace
+{
+    inline void __stdcall CloseSectionView(_In_ PVOID ViewBase) WI_NOEXCEPT
+    {
+        // todo (andrew.boyarshin): assert and ignore
+        NtUnmapViewOfSection(NtCurrentProcess(), ViewBase);
+    }
+}
+
+using unique_ntdll_section_handle = wil::unique_any<PVOID, decltype(&::CloseSectionView), ::CloseSectionView>;
+
 /* GLOBALS *******************************************************************/
 
 BOOLEAN LdrpShowRecursiveLoads, LdrpBreakOnRecursiveDllLoads;
@@ -36,16 +51,20 @@ LdrFindCreateProcessManifest(IN ULONG Flags,
                              IN ULONG IdPathLength,
                              IN PVOID OutDataEntry)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    LDR_FUNC(NTSTATUS, Flags, Image, IdPath, IdPathLength, OutDataEntry)
+        UNIMPLEMENTED;
+        return STATUS_NOT_IMPLEMENTED;
+    LDR_FUNC_END_RETURN
 }
 
 NTSTATUS
 NTAPI
 LdrDestroyOutOfProcessImage(IN PVOID Image)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    LDR_FUNC(NTSTATUS, Image)
+        UNIMPLEMENTED;
+        return STATUS_NOT_IMPLEMENTED;
+    LDR_FUNC_END_RETURN
 }
 
 NTSTATUS
@@ -55,8 +74,10 @@ LdrCreateOutOfProcessImage(IN ULONG Flags,
                            IN HANDLE DllHandle,
                            IN PVOID Unknown3)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    LDR_FUNC(NTSTATUS, Flags, ProcessHandle, DllHandle, Unknown3)
+        UNIMPLEMENTED;
+        return STATUS_NOT_IMPLEMENTED;
+    LDR_FUNC_END_RETURN
 }
 
 NTSTATUS
@@ -67,8 +88,10 @@ LdrAccessOutOfProcessResource(IN PVOID Unknown,
                               IN PVOID Unknown2,
                               IN PVOID Unknown3)
 {
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    LDR_FUNC(NTSTATUS, Unknown, Image, Unknown1, Unknown2, Unknown3)
+        UNIMPLEMENTED;
+        return STATUS_NOT_IMPLEMENTED;
+    LDR_FUNC_END_RETURN
 }
 
 VOID
@@ -76,15 +99,19 @@ NTAPI
 LdrSetDllManifestProber(
     _In_ PLDR_MANIFEST_PROBER_ROUTINE Routine)
 {
-    LdrpManifestProberRoutine = Routine;
+    LDR_FUNC_VOID(Routine)
+        LdrpManifestProberRoutine = Routine;
+    LDR_FUNC_END_VOID
 }
 
 BOOLEAN
 NTAPI
 LdrAlternateResourcesEnabled(VOID)
 {
-    /* ReactOS does not support this */
-    return FALSE;
+    LDR_FUNC_MANUAL(BOOLEAN)
+        /* ReactOS does not support this */
+        return FALSE;
+    LDR_FUNC_END_IMPL(return FALSE)
 }
 
 /*
@@ -97,95 +124,103 @@ LdrLoadDll(IN PWSTR SearchPath OPTIONAL,
            IN PUNICODE_STRING DllName,
            OUT PVOID* BaseAddress)
 {
-    NTSTATUS Status = STATUS_UNSUCCESSFUL;
-    PUNICODE_STRING OldTldDll;
-    PTEB Teb = NtCurrentTeb();
-    LDRP_LOAD_CONTEXT_FLAGS LoaderFlags = {0};
+    LDR_FUNC(NTSTATUS, SearchPath, DllCharacteristics, DllName, BaseAddress)
+        NTSTATUS Status = STATUS_UNSUCCESSFUL;
+        PUNICODE_STRING OldTldDll;
+        PTEB Teb = NtCurrentTeb();
+        LDRP_LOAD_CONTEXT_FLAGS LoaderFlags = {0};
 
-    if (DllCharacteristics)
-        LoaderFlags = LdrpDllCharacteristicsToLoadFlags(*DllCharacteristics);
+        if (DllCharacteristics)
+            LoaderFlags = LdrpDllCharacteristicsToLoadFlags(*DllCharacteristics);
 
-    LoaderFlags.CallInit = TRUE;
+        LoaderFlags.CallInit = TRUE;
 
-    if (NtCurrentTeb()->LoaderWorker)
-    {
-        Status = STATUS_INVALID_THREAD;
-    }
-    else
-    {
-        /* Check if there's a TLD DLL being loaded */
-        OldTldDll = LdrpTopLevelDllBeingLoaded;
-        __try
+        if (NtCurrentTeb()->LoaderWorker)
         {
-            PLDR_DATA_TABLE_ENTRY Module = NULL;
-            if (OldTldDll)
+            Status = STATUS_INVALID_THREAD;
+        }
+        else
+        {
+            /* Check if there's a TLD DLL being loaded */
+            OldTldDll = LdrpTopLevelDllBeingLoaded;
+            __try
             {
-                /* This is a recursive load, do something about it? */
-                if ((LdrpDebugFlags.LogInformation) || (LdrpShowRecursiveLoads) || (LdrpBreakOnRecursiveDllLoads))
+                PLDR_DATA_TABLE_ENTRY Module = NULL;
+                if (OldTldDll)
                 {
-                    /* Print out debug messages */
-                    DPRINT1(
-                        "[" LDR_HEXPTR_FMT ", " LDR_HEXPTR_FMT "] LDR: Recursive DLL Load\n", Teb->RealClientId.UniqueProcess,
-                        Teb->RealClientId.UniqueThread);
-                    DPRINT1(
-                        "[" LDR_HEXPTR_FMT ", " LDR_HEXPTR_FMT "]      Previous DLL being loaded \"%wZ\"\n", Teb->RealClientId.UniqueProcess,
-                        Teb->RealClientId.UniqueThread, OldTldDll);
-                    DPRINT1(
-                        "[" LDR_HEXPTR_FMT ", " LDR_HEXPTR_FMT "]      DLL being requested \"%wZ\"\n", Teb->RealClientId.UniqueProcess,
-                        Teb->RealClientId.UniqueThread, DllName);
+                    /* This is a recursive load, do something about it? */
+                    if (LdrpShowRecursiveLoads || LdrpBreakOnRecursiveDllLoads)
+                    {
+                        /* Print out debug messages */
+                        LDR_INFO(
+                            "[" LDR_HEXPTR_FMT ", " LDR_HEXPTR_FMT "] LDR: Recursive DLL Load",
+                            Teb->RealClientId.UniqueProcess, Teb->RealClientId.UniqueThread
+                        );
+                        LDR_INFO(
+                            "[" LDR_HEXPTR_FMT ", " LDR_HEXPTR_FMT "]      Previous DLL being loaded \"{}\"",
+                            Teb->RealClientId.UniqueProcess, Teb->RealClientId.UniqueThread, OldTldDll
+                        );
+                        LDR_INFO(
+                            "[" LDR_HEXPTR_FMT ", " LDR_HEXPTR_FMT "]      DLL being requested \"{}\"",
+                            Teb->RealClientId.UniqueProcess, Teb->RealClientId.UniqueThread, DllName
+                        );
 
-                    /* Was it initializing too? */
-                    if (!LdrpCurrentDllInitializer)
-                    {
-                        DPRINT1(
-                            "[" LDR_HEXPTR_FMT ", " LDR_HEXPTR_FMT "] LDR: No DLL Initializer was running\n", Teb->RealClientId.UniqueProcess,
-                            Teb->RealClientId.UniqueThread);
-                    }
-                    else
-                    {
-                        DPRINT1(
-                            "[" LDR_HEXPTR_FMT ", " LDR_HEXPTR_FMT "]      DLL whose initializer was currently running \"%wZ\"\n",
-                            Teb->ClientId.UniqueProcess, Teb->ClientId.UniqueThread,
-                            &LdrpCurrentDllInitializer->BaseDllName);
+                        /* Was it initializing too? */
+                        if (!LdrpCurrentDllInitializer)
+                        {
+                            LDR_INFO(
+                                "[" LDR_HEXPTR_FMT ", " LDR_HEXPTR_FMT "] LDR: No DLL Initializer was running",
+                                Teb->RealClientId.UniqueProcess, Teb->RealClientId.UniqueThread
+                            );
+                        }
+                        else
+                        {
+                            LDR_INFO(
+                                "[" LDR_HEXPTR_FMT ", " LDR_HEXPTR_FMT
+                                "]      DLL whose initializer was currently running \"{}\"",
+                                Teb->ClientId.UniqueProcess, Teb->ClientId.UniqueThread,
+                                &LdrpCurrentDllInitializer->BaseDllName
+                            );
+                        }
                     }
                 }
+
+                /* Set this one as the TLD DLL being loaded */
+                LdrpTopLevelDllBeingLoaded = DllName;
+
+                LDRP_PATH_SEARCH_CONTEXT PathSearchContext = {0};
+                RtlInitUnicodeString(&PathSearchContext.DllSearchPath, SearchPath);
+
+                /* Load the DLL */
+                Status = LdrpLoadDll(DllName, &PathSearchContext, LoaderFlags, &Module);
+
+                if (NT_SUCCESS(Status))
+                {
+                    ASSERT_TRUE(BaseAddress);
+                    ASSERT_TRUE(Module);
+
+                    *BaseAddress = Module->DllBase;
+
+                    LdrpDereferenceModule(Module);
+                }
             }
-
-            /* Set this one as the TLD DLL being loaded */
-            LdrpTopLevelDllBeingLoaded = DllName;
-
-            LDRP_PATH_SEARCH_CONTEXT PathSearchContext = {0};
-            RtlInitUnicodeString(&PathSearchContext.DllSearchPath, SearchPath);
-
-            /* Load the DLL */
-            Status = LdrpLoadDll(DllName, &PathSearchContext, LoaderFlags, &Module);
-
-            if (NT_SUCCESS(Status))
+            __finally
             {
-                ASSERT(BaseAddress);
-                ASSERT(Module);
-
-                *BaseAddress = Module->DllBase;
-
-                LdrpDereferenceModule(Module);
+                /* Restore the old TLD DLL */
+                LdrpTopLevelDllBeingLoaded = OldTldDll;
             }
         }
-        _SEH2_FINALLY
+
+        if (Status != STATUS_NO_SUCH_FILE &&
+            Status != STATUS_DLL_NOT_FOUND &&
+            Status != STATUS_OBJECT_NAME_NOT_FOUND &&
+            Status != STATUS_DLL_INIT_FAILED)
         {
-            /* Restore the old TLD DLL */
-            LdrpTopLevelDllBeingLoaded = OldTldDll;
         }
-    }
 
-    if (Status != STATUS_NO_SUCH_FILE &&
-        Status != STATUS_DLL_NOT_FOUND &&
-        Status != STATUS_OBJECT_NAME_NOT_FOUND &&
-        Status != STATUS_DLL_INIT_FAILED)
-    {
-    }
-
-    /* Return */
-    return Status;
+        /* Return */
+        return Status;
+    LDR_FUNC_END_RETURN
 }
 
 /*
@@ -194,67 +229,69 @@ LdrLoadDll(IN PWSTR SearchPath OPTIONAL,
 NTSTATUS
 NTAPI
 LdrFindEntryForAddress(PVOID Address,
-                       PLDR_DATA_TABLE_ENTRY *Module)
+                       PLDR_DATA_TABLE_ENTRY* Module)
 {
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
-    PIMAGE_NT_HEADERS NtHeader;
-    PPEB_LDR_DATA Ldr = NtCurrentPeb()->Ldr;
-    ULONG_PTR DllBase, DllEnd;
+    LDR_FUNC(NTSTATUS, Address, Module)
+        PLDR_DATA_TABLE_ENTRY LdrEntry;
+        PIMAGE_NT_HEADERS NtHeader;
+        PPEB_LDR_DATA Ldr = NtCurrentPeb()->Ldr;
+        ULONG_PTR DllBase, DllEnd;
 
-    /* Nothing to do */
-    if (!Ldr)
-        return STATUS_NO_MORE_ENTRIES;
+        /* Nothing to do */
+        if (!Ldr)
+            return STATUS_NO_MORE_ENTRIES;
 
-    /* Get the current entry */
-    LdrEntry = (PLDR_DATA_TABLE_ENTRY)Ldr->EntryInProgress;
-    if (LdrEntry)
-    {
-        /* Get the NT Headers */
-        NtHeader = RtlImageNtHeader(LdrEntry->DllBase);
-        if (NtHeader)
+        /* Get the current entry */
+        LdrEntry = (PLDR_DATA_TABLE_ENTRY)Ldr->EntryInProgress;
+        if (LdrEntry)
         {
+            /* Get the NT Headers */
+            NtHeader = RtlImageNtHeader(LdrEntry->DllBase);
+            if (NtHeader)
+            {
+                /* Get the Image Base */
+                DllBase = (ULONG_PTR)LdrEntry->DllBase;
+                DllEnd = DllBase + NtHeader->OptionalHeader.SizeOfImage;
+
+                /* Check if they match */
+                if (((ULONG_PTR)Address >= DllBase) &&
+                    ((ULONG_PTR)Address < DllEnd))
+                {
+                    /* Return it */
+                    *Module = LdrEntry;
+
+                    return STATUS_SUCCESS;
+                }
+            }
+        }
+
+        /* Loop the module list */
+        const auto* const ListHead = &Ldr->InMemoryOrderModuleList;
+        for (const auto* NextEntry = ListHead->Flink; NextEntry != ListHead; NextEntry = NextEntry->Flink)
+        {
+            /* Get the entry and NT Headers */
+            LdrEntry = CONTAINING_RECORD(NextEntry, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
+            NtHeader = RtlImageNtHeader(LdrEntry->DllBase);
+
+            if (!NtHeader)
+                continue;
+
             /* Get the Image Base */
-            DllBase = (ULONG_PTR) LdrEntry->DllBase;
+            DllBase = (ULONG_PTR)LdrEntry->DllBase;
             DllEnd = DllBase + NtHeader->OptionalHeader.SizeOfImage;
 
             /* Check if they match */
-            if (((ULONG_PTR) Address >= DllBase) &&
-                ((ULONG_PTR) Address < DllEnd))
+            if (((ULONG_PTR)Address >= DllBase) &&
+                ((ULONG_PTR)Address < DllEnd))
             {
                 /* Return it */
                 *Module = LdrEntry;
-
                 return STATUS_SUCCESS;
             }
         }
-    }
 
-    /* Loop the module list */
-    const auto* const ListHead = &Ldr->InMemoryOrderModuleList;
-    for (const auto* NextEntry = ListHead->Flink; NextEntry != ListHead; NextEntry = NextEntry->Flink)
-    {
-        /* Get the entry and NT Headers */
-        LdrEntry = CONTAINING_RECORD(NextEntry, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
-        NtHeader = RtlImageNtHeader(LdrEntry->DllBase);
-
-        if (!NtHeader)
-            continue;
-
-        /* Get the Image Base */
-        DllBase = (ULONG_PTR) LdrEntry->DllBase;
-        DllEnd = DllBase + NtHeader->OptionalHeader.SizeOfImage;
-
-        /* Check if they match */
-        if (((ULONG_PTR) Address >= DllBase) &&
-            ((ULONG_PTR) Address < DllEnd))
-        {
-            /* Return it */
-            *Module = LdrEntry;
-            return STATUS_SUCCESS;
-        }
-    }
-    
-    return STATUS_NO_MORE_ENTRIES;
+        return STATUS_NO_MORE_ENTRIES;
+    LDR_FUNC_END_RETURN
 }
 
 /*
@@ -265,14 +302,16 @@ NTAPI
 LdrGetProcedureAddress(IN PVOID BaseAddress,
                        IN PANSI_STRING Name,
                        IN ULONG Ordinal,
-                       OUT PVOID *ProcedureAddress)
+                       OUT PVOID* ProcedureAddress)
 {
-    return LdrGetProcedureAddressForCaller(BaseAddress,
-                                           Name,
-                                           Ordinal,
-                                           ProcedureAddress,
-                                           0,
-                                           (PVOID*)_ReturnAddress());
+    LDR_FUNC(NTSTATUS, BaseAddress, Name, Ordinal, ProcedureAddress)
+        return LdrGetProcedureAddressForCaller(BaseAddress,
+                                               Name,
+                                               Ordinal,
+                                               ProcedureAddress,
+                                               0,
+                                               (PVOID*)_ReturnAddress());
+    LDR_FUNC_END_RETURN
 }
 
 /*
@@ -283,15 +322,17 @@ NTAPI
 LdrGetProcedureAddressEx(IN PVOID BaseAddress,
                          IN PANSI_STRING FunctionName OPTIONAL,
                          IN ULONG Ordinal OPTIONAL,
-                         OUT PVOID *ProcedureAddress,
+                         OUT PVOID* ProcedureAddress,
                          IN UINT8 Flags)
 {
-    return LdrGetProcedureAddressForCaller(BaseAddress,
-                                           FunctionName,
-                                           Ordinal,
-                                           ProcedureAddress,
-                                           Flags,
-                                           (PVOID*)_ReturnAddress());
+    LDR_FUNC(NTSTATUS, BaseAddress, FunctionName, Ordinal, ProcedureAddress, Flags)
+        return LdrGetProcedureAddressForCaller(BaseAddress,
+                                               FunctionName,
+                                               Ordinal,
+                                               ProcedureAddress,
+                                               Flags,
+                                               (PVOID*)_ReturnAddress());
+    LDR_FUNC_END_RETURN
 }
 
 /*
@@ -304,134 +345,120 @@ LdrVerifyImageMatchesChecksum(IN HANDLE FileHandle,
                               IN PVOID CallbackContext,
                               OUT PUSHORT ImageCharacteristics)
 {
-    FILE_STANDARD_INFORMATION FileStandardInfo;
-    PIMAGE_SECTION_HEADER LastSection = NULL;
-    IO_STATUS_BLOCK IoStatusBlock;
-    HANDLE SectionHandle;
-    SIZE_T ViewSize;
-    PVOID ViewBase;
-    BOOLEAN Result, NoActualCheck;
-    NTSTATUS Status;
-    ULONG Size;
+    LDR_FUNC(NTSTATUS, FileHandle, Callback, CallbackContext, ImageCharacteristics)
+        FILE_STANDARD_INFORMATION FileStandardInfo;
+        PIMAGE_SECTION_HEADER LastSection = NULL;
+        IO_STATUS_BLOCK IoStatusBlock;
+        SIZE_T ViewSize;
+        BOOLEAN Result, NoActualCheck;
+        NTSTATUS Status;
+        ULONG Size;
 
-    /* If the handle has the magic KnownDll flag, skip actual checksums */
-    NoActualCheck = ((ULONG_PTR) FileHandle & 1);
+        /* If the handle has the magic KnownDll flag, skip actual checksums */
+        NoActualCheck = ((ULONG_PTR)FileHandle & 1);
 
-    /* Create the section */
-    Status = NtCreateSection(&SectionHandle,
-                             SECTION_MAP_EXECUTE,
-                             NULL,
-                             NULL,
-                             PAGE_EXECUTE,
-                             SEC_COMMIT,
-                             FileHandle);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1 ("NtCreateSection() failed (Status 0x%x)\n", Status);
-        return Status;
-    }
+        /* Create the section */
+        unique_ntdll_handle SectionHandle;
 
-    /* Map the section */
-    ViewSize = 0;
-    ViewBase = NULL;
-    Status = NtMapViewOfSection(SectionHandle,
-                                NtCurrentProcess(),
-                                &ViewBase,
-                                0,
-                                0,
-                                NULL,
-                                &ViewSize,
-                                ViewShare,
-                                0,
-                                PAGE_EXECUTE);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("NtMapViewOfSection() failed (Status 0x%08lX)\n", Status);
-        NtClose(SectionHandle);
-        return Status;
-    }
+        Status = NtCreateSection(SectionHandle.put(),
+                                 SECTION_MAP_EXECUTE,
+                                 NULL,
+                                 NULL,
+                                 PAGE_EXECUTE,
+                                 SEC_COMMIT,
+                                 FileHandle);
 
-    /* Get the file information */
-    Status = NtQueryInformationFile(FileHandle,
-                                    &IoStatusBlock,
-                                    &FileStandardInfo,
-                                    sizeof(FILE_STANDARD_INFORMATION),
-                                    FileStandardInformation);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("NtMapViewOfSection() failed (Status 0x%08lX)\n", Status);
-        NtUnmapViewOfSection(NtCurrentProcess(), ViewBase);
-        NtClose(SectionHandle);
-        return Status;
-    }
+        ASSERT_SUCCESS_OR_RETURN(Status);
 
-    /* Protect with SEH */
-    __try
-    {
-        /* Check if this is the KnownDll hack */
-        if (NoActualCheck)
+        /* Map the section */
+        unique_ntdll_section_handle ViewBase;
+        ViewSize = 0;
+        Status = NtMapViewOfSection(SectionHandle.get(),
+                                    NtCurrentProcess(),
+                                    ViewBase.put(),
+                                    0,
+                                    0,
+                                    NULL,
+                                    &ViewSize,
+                                    ViewShare,
+                                    0,
+                                    PAGE_EXECUTE);
+
+        ASSERT_SUCCESS_OR_RETURN(Status);
+
+        /* Get the file information */
+        Status = NtQueryInformationFile(FileHandle,
+                                        &IoStatusBlock,
+                                        &FileStandardInfo,
+                                        sizeof(FILE_STANDARD_INFORMATION),
+                                        FileStandardInformation);
+
+        ASSERT_SUCCESS_OR_RETURN(Status);
+
+        /* Protect with SEH */
+        __try
         {
-            /* Don't actually do it */
-            Result = TRUE;
-        }
-        else
-        {
-            /* Verify the checksum */
-            Result = LdrVerifyMappedImageMatchesChecksum(ViewBase,
-                                                         FileStandardInfo.EndOfFile.LowPart,
-                                                         FileStandardInfo.EndOfFile.LowPart);
-        }
-
-        /* Check if a callback was supplied */
-        if (Result && Callback)
-        {
-            /* Get the NT Header */
-            auto* const NtHeader = RtlImageNtHeader(ViewBase);
-
-            /* Check if caller requested this back */
-            if (ImageCharacteristics)
+            /* Check if this is the KnownDll hack */
+            if (NoActualCheck)
             {
-                /* Return to caller */
-                *ImageCharacteristics = NtHeader->FileHeader.Characteristics;
+                /* Don't actually do it */
+                Result = TRUE;
+            }
+            else
+            {
+                /* Verify the checksum */
+                Result = LdrVerifyMappedImageMatchesChecksum(ViewBase.get(),
+                                                             FileStandardInfo.EndOfFile.LowPart,
+                                                             FileStandardInfo.EndOfFile.LowPart);
             }
 
-            /* Get the Import Directory Data */
-            const auto* ImportData = (PIMAGE_IMPORT_DESCRIPTOR)RtlImageDirectoryEntryToData(ViewBase,
-                                                                                     FALSE,
-                                                                                     IMAGE_DIRECTORY_ENTRY_IMPORT,
-                                                                                     &Size);
-
-            /* Make sure there is one */
-            if (ImportData)
+            /* Check if a callback was supplied */
+            if (Result && Callback)
             {
-                /* Loop the imports */
-                while (ImportData->Name)
-                {
-                    /* Get the name */
-                    auto* const ImportName = RtlImageRvaToVa(NtHeader,
-                                                      ViewBase,
-                                                      ImportData->Name,
-                                                      &LastSection);
+                /* Get the NT Header */
+                auto* const NtHeader = RtlImageNtHeader(ViewBase.get());
 
-                    /* Notify the callback */
-                    Callback(CallbackContext, static_cast<PCHAR>(ImportName));
-                    ImportData++;
+                /* Check if caller requested this back */
+                if (ImageCharacteristics)
+                {
+                    /* Return to caller */
+                    *ImageCharacteristics = NtHeader->FileHeader.Characteristics;
+                }
+
+                /* Get the Import Directory Data */
+                const auto* ImportData = (PIMAGE_IMPORT_DESCRIPTOR)RtlImageDirectoryEntryToData(ViewBase.get(),
+                    FALSE,
+                    IMAGE_DIRECTORY_ENTRY_IMPORT,
+                    &Size);
+
+                /* Make sure there is one */
+                if (ImportData)
+                {
+                    /* Loop the imports */
+                    while (ImportData->Name)
+                    {
+                        /* Get the name */
+                        auto* const ImportName = RtlImageRvaToVa(NtHeader,
+                                                                 ViewBase.get(),
+                                                                 ImportData->Name,
+                                                                 &LastSection);
+
+                        /* Notify the callback */
+                        Callback(CallbackContext, static_cast<PCHAR>(ImportName));
+                        ImportData++;
+                    }
                 }
             }
         }
-    }
-    __except(EXCEPTION_EXECUTE_HANDLER)
-    {
-        /* Fail the request returning STATUS_IMAGE_CHECKSUM_MISMATCH */
-        Result = FALSE;
-    }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            /* Fail the request returning STATUS_IMAGE_CHECKSUM_MISMATCH */
+            Result = FALSE;
+        }
 
-    /* Unmap file and close handle */
-    NtUnmapViewOfSection(NtCurrentProcess(), ViewBase);
-    NtClose(SectionHandle);
-
-    /* Return status */
-    return Result ? Status : STATUS_IMAGE_CHECKSUM_MISMATCH;
+        /* Return status */
+        return Result ? Status : STATUS_IMAGE_CHECKSUM_MISMATCH;
+    LDR_FUNC_END_RETURN
 }
 
 NTSTATUS

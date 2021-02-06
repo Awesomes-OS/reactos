@@ -142,7 +142,7 @@ CONSTANT(KENTROPY_TIMING_ANALYSIS),
 HEADER("Lock Queue"),
 CONSTANT(LOCK_QUEUE_WAIT),
 CONSTANT(LOCK_QUEUE_OWNER),
-CONSTANT(LockQueueDispatcherLock), /// FIXE: obsolete
+///CONSTANT(LockQueueDispatcherLock), /// FIXE: obsolete
 
 //HEADER("Performance Definitions"),
 //CONSTANT(PERF_CONTEXTSWAP_OFFSET),
@@ -272,7 +272,7 @@ CONSTANT(WrExecutive),
 CONSTANT(WrMutex), /// FIXME: Obsolete
 CONSTANT(WrDispatchInt),
 CONSTANT(WrQuantumEnd), /// FIXME: Obsolete
-CONSTANT(WrEventPair), /// FIXME: Obsolete
+//CONSTANT(WrEventPair), /// FIXME: Obsolete
 CONSTANT(WaitAny),
 CONSTANT(WaitAll),
 
@@ -379,9 +379,9 @@ CONSTANTX(ApcRecordLength, 4 * sizeof(PVOID)),
 HEADER("KAPC_STATE"),
 OFFSET(AsApcListHead, KAPC_STATE, ApcListHead),
 OFFSET(AsProcess, KAPC_STATE, Process),
-OFFSET(AsKernelApcInProgress, KAPC_STATE, KernelApcInProgress), // FIXME: obsolete
+//OFFSET(AsKernelApcInProgress, KAPC_STATE, KernelApcInProgress), // FIXME: obsolete
 OFFSET(AsKernelApcPending, KAPC_STATE, KernelApcPending),
-OFFSET(AsUserApcPending, KAPC_STATE, UserApcPending),
+//OFFSET(AsUserApcPending, KAPC_STATE, UserApcPending),
 
 HEADER("CLIENT_ID"),
 OFFSET(CidUniqueProcess, CLIENT_ID, UniqueProcess),
@@ -815,7 +815,7 @@ HEADER("KTIMER"),
 OFFSET(TiType, KTIMER, Header.Type),
 OFFSET(TiSize, KTIMER, Header.Size),
 #if (NTDDI_VERSION < NTDDI_WIN7)
-OFFSET(TiInserted, KTIMER, Header.Inserted),
+//OFFSET(TiInserted, KTIMER, Header.Inserted),
 #endif
 OFFSET(TiSignalState, KTIMER, Header.SignalState),
 OFFSET(TiDueTime, KTIMER, DueTime),

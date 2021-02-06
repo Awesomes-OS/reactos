@@ -19,23 +19,26 @@
 
 import "unknwn.idl";
 import "objidl.idl";
-import "strmif.idl";
+
+cpp_quote("#ifdef __strmif_h__")
+cpp_quote("typedef AM_MEDIA_TYPE DMO_MEDIA_TYPE;")
+cpp_quote("#else")
+typedef struct _DMOMediaType {
+    GUID                      majortype;
+    GUID                      subtype;
+    BOOL                      bFixedSizeSamples;
+    BOOL                      bTemporalCompression;
+    ULONG                     lSampleSize;
+    GUID                      formattype;
+    IUnknown                  *pUnk;
+    ULONG                     cbFormat;
+    [size_is(cbFormat)] BYTE* pbFormat;
+} DMO_MEDIA_TYPE;
+typedef LONGLONG REFERENCE_TIME;
+cpp_quote("#endif")
 
 interface IDMOQualityControl;
 interface IDMOVideoOutputOptimizations;
-
-typedef struct _DMOMediaType
-{
-    GUID majortype;
-    GUID subtype;
-    BOOL bFixedSizeSamples;
-    BOOL bTemporalCompression;
-    ULONG lSampleSize;
-    GUID formattype;
-    IUnknown *pUnk;
-    ULONG cbFormat;
-    BYTE *pbFormat;
-} DMO_MEDIA_TYPE;
 
 /*****************************************************************************
  * IEnumDMO interface

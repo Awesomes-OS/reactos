@@ -19,9 +19,7 @@
 import "unknwn.idl";
 import "propsys.idl";
 import "mediaobj.idl";
-
-cpp_quote("#include <mmreg.h>")
-#include <mmreg.h>
+import "mmreg.h";
 
 typedef ULONGLONG QWORD;
 
@@ -169,6 +167,36 @@ interface IMFAudioMediaType : IMFMediaType
 {
     const WAVEFORMATEX *GetAudioFormat();
 }
+
+cpp_quote("#ifndef _WINGDI_")
+
+#ifndef RGBQUAD
+typedef DWORD RGBQUAD;
+#endif // RGBQUAD
+
+typedef struct
+{
+
+    DWORD      biSize;
+    LONG       biWidth;
+    LONG       biHeight;
+    WORD       biPlanes;
+    WORD       biBitCount;
+    DWORD      biCompression;
+    DWORD      biSizeImage;
+    LONG       biXPelsPerMeter;
+    LONG       biYPelsPerMeter;
+    DWORD      biClrUsed;
+    DWORD      biClrImportant;
+} BITMAPINFOHEADER;
+
+typedef struct
+{
+    BITMAPINFOHEADER    bmiHeader;
+    RGBQUAD             bmiColors[1];
+} BITMAPINFO;
+
+cpp_quote("#endif")
 
 typedef struct {
     GUID guidMajorType;

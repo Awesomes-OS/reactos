@@ -1,15 +1,6 @@
-/*
- * PROJECT:     ReactOS PSDK
- * LICENSE:     MIT (https://spdx.org/licenses/MIT)
- * PURPOSE:     Documents all the macros approved for use in windows source
- * COPYRIGHT:   Microsoft Corporation.
- * SOURCE:      https://github.com/microsoft/ChakraCore/blob/master/pal/inc/rt/specstrings_strict.h
- */
 //
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information. 
+//    Copyright (C) Microsoft.  All rights reserved.
 //
-
 /************************************************************************* 
 *  This file documents all the macros approved for use in windows source
 *  code. It includes some experimental macros which should only be used by
@@ -32,9 +23,6 @@
 *  3 - Use VS 2005 Source Annotation to make sure every macro 
 *      is used in the right context. For example placing __in on a return 
 *      parameter will result in an error.
-*
-
-*
 ************************************************************************/
 #ifndef __SPECSTRINGS_STRICT_LEVEL
 #define __SPECSTRINGS_STRICT_LEVEL 1

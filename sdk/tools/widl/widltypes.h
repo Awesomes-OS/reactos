@@ -37,9 +37,11 @@ typedef GUID UUID;
 
 typedef struct _loc_info_t loc_info_t;
 typedef struct _attr_t attr_t;
+typedef struct _attr_custdata_t attr_custdata_t;
 typedef struct _expr_t expr_t;
 typedef struct _type_t type_t;
 typedef struct _var_t var_t;
+typedef struct _decl_spec_t decl_spec_t;
 typedef struct _declarator_t declarator_t;
 typedef struct _ifref_t ifref_t;
 typedef struct _typelib_entry_t typelib_entry_t;
@@ -67,6 +69,7 @@ typedef struct list warning_list_t;
 
 enum attr_type
 {
+    ATTR_ACTIVATABLE,
     ATTR_AGGREGATABLE,
     ATTR_ALLOCATE,
     ATTR_ANNOTATION,
@@ -81,9 +84,11 @@ enum attr_type
     ATTR_CASE,
     ATTR_CODE,
     ATTR_COMMSTATUS,
-    ATTR_CONST, /* const pseudo-attribute */
     ATTR_CONTEXTHANDLE,
+    ATTR_CONTRACT,
+    ATTR_CONTRACTVERSION,
     ATTR_CONTROL,
+    ATTR_CUSTOM,
     ATTR_DECODE,
     ATTR_DEFAULT,
     ATTR_DEFAULTBIND,
@@ -99,8 +104,12 @@ enum attr_type
     ATTR_ENCODE,
     ATTR_ENDPOINT,
     ATTR_ENTRY,
+    ATTR_EVENTADD,
+    ATTR_EVENTREMOVE,
+    ATTR_EXCLUSIVETO,
     ATTR_EXPLICIT_HANDLE,
     ATTR_FAULTSTATUS,
+    ATTR_FLAGS,
     ATTR_FORCEALLOCATE,
     ATTR_HANDLE,
     ATTR_HELPCONTEXT,
@@ -116,12 +125,12 @@ enum attr_type
     ATTR_IMMEDIATEBIND,
     ATTR_IMPLICIT_HANDLE,
     ATTR_IN,
-    ATTR_INLINE,
     ATTR_INPUTSYNC,
     ATTR_LENGTHIS,
     ATTR_LIBLCID,
     ATTR_LICENSED,
     ATTR_LOCAL,
+    ATTR_MARSHALING_BEHAVIOR,
     ATTR_MAYBE,
     ATTR_MESSAGE,
     ATTR_NOCODE,
@@ -154,6 +163,7 @@ enum attr_type
     ATTR_RETVAL,
     ATTR_SIZEIS,
     ATTR_SOURCE,
+    ATTR_STATIC,
     ATTR_STRICTCONTEXTHANDLE,
     ATTR_STRING,
     ATTR_SWITCHIS,
@@ -235,6 +245,16 @@ enum storage_class
     STG_REGISTER,
 };
 
+enum type_qualifier
+{
+    TYPE_QUALIFIER_CONST = 1,
+};
+
+enum function_specifier
+{
+    FUNCTION_SPECIFIER_INLINE = 1,
+};
+
 enum statement_type
 {
     STMT_LIBRARY,
@@ -256,6 +276,14 @@ enum threading_type
     THREADING_SINGLE,
     THREADING_FREE,
     THREADING_BOTH
+};
+
+enum marshaling_type
+{
+    MARSHALING_INVALID = 0,
+    MARSHALING_NONE,
+    MARSHALING_AGILE,
+    MARSHALING_STANDARD,
 };
 
 enum type_basic_type
@@ -294,6 +322,14 @@ struct str_list_entry_t
     struct list entry;
 };
 
+struct _decl_spec_t
+{
+  type_t *type;
+  enum storage_class stgclass;
+  enum type_qualifier qualifier;
+  enum function_specifier func_specifier;
+};
+
 struct _attr_t {
   enum attr_type type;
   union {
@@ -312,13 +348,18 @@ struct _expr_t {
     double dval;
     const char *sval;
     const expr_t *ext;
-    type_t *tref;
+    decl_spec_t tref;
   } u;
   const expr_t *ext2;
   int is_const;
   int cval;
   /* parser-internal */
   struct list entry;
+};
+
+struct _attr_custdata_t {
+  GUID id;
+  expr_t *pval;
 };
 
 struct struct_details
@@ -335,7 +376,6 @@ struct func_details
 {
   var_list_t *args;
   struct _var_t *retval;
-  int idx;
 };
 
 struct iface_details
@@ -346,6 +386,7 @@ struct iface_details
   struct _type_t *inherit;
   struct _type_t *disp_inherit;
   struct _type_t *async_iface;
+  type_list_t *requires;
 };
 
 struct module_details
@@ -357,9 +398,8 @@ struct array_details
 {
   expr_t *size_is;
   expr_t *length_is;
-  struct _type_t *elem;
+  struct _decl_spec_t elem;
   unsigned int dim;
-  unsigned char ptr_def_fc;
   unsigned char declptr; /* if declared as a pointer */
   unsigned short ptr_tfsoff;  /* offset of pointer definition for declptr */
 };
@@ -377,14 +417,34 @@ struct basic_details
 
 struct pointer_details
 {
-  struct _type_t *ref;
-  unsigned char def_fc;
+  struct _decl_spec_t ref;
 };
 
 struct bitfield_details
 {
   struct _type_t *field;
   const expr_t *bits;
+};
+
+struct alias_details
+{
+    struct _decl_spec_t aliasee;
+};
+
+struct runtimeclass_details
+{
+    ifref_list_t *ifaces;
+};
+
+struct parameterized_details
+{
+    type_t *type;
+    type_list_t *params;
+};
+
+struct delegate_details
+{
+    type_t *iface;
 };
 
 #define HASHMAX 64
@@ -413,6 +473,11 @@ enum type_type
     TYPE_POINTER,
     TYPE_ARRAY,
     TYPE_BITFIELD,
+    TYPE_APICONTRACT,
+    TYPE_RUNTIMECLASS,
+    TYPE_PARAMETERIZED_TYPE,
+    TYPE_PARAMETER,
+    TYPE_DELEGATE,
 };
 
 struct _type_t {
@@ -432,9 +497,15 @@ struct _type_t {
     struct basic_details basic;
     struct pointer_details pointer;
     struct bitfield_details bitfield;
+    struct alias_details alias;
+    struct runtimeclass_details runtimeclass;
+    struct parameterized_details parameterized;
+    struct delegate_details delegate;
   } details;
   const char *c_name;
-  type_t *orig;                   /* dup'd types */
+  const char *signature;
+  const char *short_name;
+  const char *qualified_name;
   unsigned int typestring_offset;
   unsigned int ptrdesc;           /* used for complex structs */
   int typelib_idx;
@@ -445,19 +516,22 @@ struct _type_t {
   unsigned int user_types_registered : 1;
   unsigned int tfswrite : 1;   /* if the type needs to be written to the TFS */
   unsigned int checked : 1;
-  unsigned int is_alias : 1; /* is the type an alias? */
 };
 
 struct _var_t {
   char *name;
-  type_t *type;
+  decl_spec_t declspec;
   attr_list_t *attrs;
   expr_t *eval;
-  enum storage_class stgclass;
-  unsigned int procstring_offset;
+
   unsigned int typestring_offset;
 
+  /* fields specific to functions */
+  unsigned int procstring_offset, func_idx;
+
   struct _loc_info_t loc_info;
+
+  unsigned int declonly : 1;
 
   /* parser-internal */
   struct list entry;
@@ -466,7 +540,7 @@ struct _var_t {
 struct _declarator_t {
   var_t *var;
   type_t *type;
-  type_t *func_type;
+  enum type_qualifier qualifier;
   expr_t *bits;
 
   /* parser-internal */
@@ -498,6 +572,7 @@ struct _importinfo_t {
 };
 
 struct _importlib_t {
+    int offset;
     char *name;
 
     int version;
@@ -516,6 +591,9 @@ struct _typelib_t {
     const attr_list_t *attrs;
     struct list importlibs;
     statement_list_t *stmts;
+
+    type_t **reg_ifaces;
+    unsigned int reg_iface_count;
 };
 
 struct _user_type_t {
@@ -540,6 +618,7 @@ struct _statement_t {
         typelib_t *lib;
         type_list_t *type_list;
     } u;
+    unsigned int declonly : 1; /* for STMT_TYPE and STMT_TYPEDEF */
 };
 
 struct _warning_t {
@@ -557,7 +636,7 @@ typedef enum {
 extern user_type_list_t user_type_list;
 extern context_handle_list_t context_handle_list;
 extern generic_handle_list_t generic_handle_list;
-void check_for_additional_prototype_types(const var_list_t *list);
+void check_for_additional_prototype_types(type_t *type);
 
 void init_types(void);
 type_t *alloc_type(void);
@@ -573,31 +652,26 @@ type_t *find_type(const char *name, struct namespace *namespace, int t);
 type_t *make_type(enum type_type type);
 type_t *get_type(enum type_type type, char *name, struct namespace *namespace, int t);
 type_t *reg_type(type_t *type, const char *name, struct namespace *namespace, int t);
-void add_incomplete(type_t *t);
 
 var_t *make_var(char *name);
 var_list_t *append_var(var_list_t *list, var_t *var);
 
 void init_loc_info(loc_info_t *);
 
-char *format_namespace(struct namespace *namespace, const char *prefix, const char *separator, const char *suffix);
-
-static inline var_list_t *type_get_function_args(const type_t *func_type)
-{
-  return func_type->details.function->args;
-}
+char *format_namespace(struct namespace *namespace, const char *prefix, const char *separator, const char *suffix,
+                       const char *abi_prefix);
+char *format_parameterized_type_name(type_t *type, type_list_t *params);
+char *format_type_signature(type_t *type);
 
 static inline enum type_type type_get_type_detect_alias(const type_t *type)
 {
-    if (type->is_alias)
-        return TYPE_ALIAS;
     return type->type_type;
 }
 
 #define STATEMENTS_FOR_EACH_FUNC(stmt, stmts) \
   if (stmts) LIST_FOR_EACH_ENTRY( stmt, stmts, statement_t, entry ) \
-    if (stmt->type == STMT_DECLARATION && stmt->u.var->stgclass == STG_NONE && \
-        type_get_type_detect_alias(stmt->u.var->type) == TYPE_FUNCTION)
+    if (stmt->type == STMT_DECLARATION && stmt->u.var->declspec.stgclass == STG_NONE && \
+        type_get_type_detect_alias(stmt->u.var->declspec.type) == TYPE_FUNCTION)
 
 static inline int statements_has_func(const statement_list_t *stmts)
 {
@@ -614,6 +688,16 @@ static inline int statements_has_func(const statement_list_t *stmts)
 static inline int is_global_namespace(const struct namespace *namespace)
 {
     return !namespace->name;
+}
+
+static inline decl_spec_t *init_declspec(decl_spec_t *declspec, type_t *type)
+{
+  declspec->type = type;
+  declspec->stgclass = STG_NONE;
+  declspec->qualifier = 0;
+  declspec->func_specifier = 0;
+
+  return declspec;
 }
 
 #endif

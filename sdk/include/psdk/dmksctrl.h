@@ -1,43 +1,80 @@
-/*
- * Definition of IKsControl
- *
- * Copyright (C) 2012 Christian Costa
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
- */
+/************************************************************************
+*                                                                       *
+*   dmksctrl.h -- Definition of IKsControl                              *
+*                                                                       *
+*   Copyright (c) Microsoft Corporation.  All rights reserved.          *
+*                                                                       *
+*   This header file contains the definition of IKsControl, which       *
+*   duplicates definitions from ks.h and ksproxy.h. Your code should    *
+*   include ks.h and ksproxy.h directly if you have them (they are      *
+*   provided in the Windows 98 DDK and will be in the Windows NT 5      *
+*   SDK).                                                               *
+*                                                                       *
+************************************************************************/
 
 #ifndef _DMKSCTRL_
 #define _DMKSCTRL_
+#include <winapifamily.h>
+
+#pragma region Desktop Family
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+
+
+#if _MSC_VER >= 1200
+#pragma warning(push)
+#endif
+#pragma warning(disable:4201)   /* Disable warnings on anonymous unions */
 
 #include <pshpack8.h>
 
 #include <objbase.h>
 
+#if !defined(_NTRTL_)
+    #ifndef DEFINE_GUIDEX
+        #define DEFINE_GUIDEX(name) EXTERN_C const CDECL GUID name
+    #endif /* !defined(DEFINE_GUIDEX) */
+
+    #ifndef STATICGUIDOF
+        #define STATICGUIDOF(guid) STATIC_##guid
+    #endif /* !defined(STATICGUIDOF) */
+#endif /* !defined(_NTRTL_) */
+
+#ifndef STATIC_IID_IKsControl
+#define STATIC_IID_IKsControl\
+    0x28F54685L, 0x06FD, 0x11D2, 0xB2, 0x7A, 0x00, 0xA0, 0xC9, 0x22, 0x31, 0x96
+#endif /* STATIC_IID_IKsControl */
+
+/* 
+ * Warning: This will prevent the rest of ks.h from being pulled in if ks.h is 
+ * included after dmksctrl.h. Make sure you do not include both headers in
+ * the same source file.
+ */
 #ifndef _KS_
 #define _KS_
 
+#if (defined(_MSC_EXTENSIONS) || defined(__cplusplus)) && !defined(CINTERFACE)
 typedef struct {
     union {
         struct {
             GUID    Set;
             ULONG   Id;
             ULONG   Flags;
-        } DUMMYSTRUCTNAME;
+        };
         LONGLONG    Alignment;
-    } DUMMYUNIONNAME;
+    };
 } KSIDENTIFIER, *PKSIDENTIFIER;
+#else
+typedef struct {
+    union {
+        struct {
+            GUID    Set;
+            ULONG   Id;
+            ULONG   Flags;
+        } Data;
+        LONGLONG    Alignment;
+    };
+} KSIDENTIFIER, *PKSIDENTIFIER;
+#endif
 
 typedef KSIDENTIFIER KSPROPERTY, *PKSPROPERTY, KSMETHOD, *PKSMETHOD, KSEVENT, *PKSEVENT;
 
@@ -64,47 +101,75 @@ typedef KSIDENTIFIER KSPROPERTY, *PKSPROPERTY, KSMETHOD, *PKSMETHOD, KSEVENT, *P
 #define KSPROPERTY_TYPE_DEFAULTVALUES       0x00010000
 
 #define KSPROPERTY_TYPE_TOPOLOGY            0x10000000
+#endif  /* _KS_ */
 
-#define INTERFACE IKsControl
-DECLARE_INTERFACE_(IKsControl,IUnknown)
-{
-    /*** IUnknown methods ***/
-    STDMETHOD_(HRESULT,QueryInterface)(THIS_ REFIID riid, void** ppvObject) PURE;
-    STDMETHOD_(ULONG,AddRef)(THIS) PURE;
-    STDMETHOD_(ULONG,Release)(THIS) PURE;
-    /*** IKsControl methods ***/
-    STDMETHOD(KsProperty)(THIS_ PKSPROPERTY Property, ULONG PropertyLength, LPVOID PropertyData,
-                          ULONG DataLength, ULONG* BytesReturned) PURE;
-    STDMETHOD(KsMethod)(THIS_ PKSMETHOD Method, ULONG MethodLength, LPVOID MethodData,
-                        ULONG DataLength, ULONG* BytesReturned) PURE;
-    STDMETHOD(KsEvent)(THIS_ PKSEVENT Event, ULONG EventLength, LPVOID EventData,
-                       ULONG DataLength, ULONG* BytesReturned) PURE;
-};
+#ifndef _IKsControl_
+#define _IKsControl_
+
+#ifdef DECLARE_INTERFACE_
+
+
 #undef INTERFACE
+#define INTERFACE IKsControl
+DECLARE_INTERFACE_(IKsControl, IUnknown)
+{
+     /* IUnknown */
+    STDMETHOD(QueryInterface)       (THIS_ REFIID, LPVOID FAR *) PURE;
+    STDMETHOD_(ULONG,AddRef)        (THIS) PURE;
+    STDMETHOD_(ULONG,Release)       (THIS) PURE;
 
-#if !defined(__cplusplus) || defined(CINTERFACE)
-/*** IUnknown methods ***/
-#define IKsControl_QueryInterface(p,a,b)   (p)->lpVtbl->QueryInterface(p,a,b)
-#define IKsControl_AddRef(p)               (p)->lpVtbl->AddRef(p)
-#define IKsControl_Release(p)              (p)->lpVtbl->Release(p)
-/*** IKsControl methods ***/
-#define IKsControl_KsProperty(p,a,b,c,d,e) (p)->lpVtbl->KsProperty(p,a,b,c,d,e)
-#define IKsControl_KsMethod(p,a,b,c,d,e)   (p)->lpVtbl->KsMethod(p,a,b,c,d,e)
-#define IKsControl_KsEvent(p,a,b,c,d,e)    (p)->lpVtbl->KsEvent(p,a,b,c,d,e)
-#endif
+    /*IKsControl*/
+    STDMETHOD(KsProperty)(
+        THIS_
+        _In_reads_bytes_(PropertyLength) PKSPROPERTY Property,
+        _In_ ULONG PropertyLength,
+        _Inout_updates_bytes_(DataLength) LPVOID PropertyData,
+        _In_ ULONG DataLength,
+        _Out_ ULONG* BytesReturned
+    ) PURE;
+    STDMETHOD(KsMethod)(
+        THIS_
+        _In_reads_bytes_(MethodLength) PKSMETHOD Method,
+        _In_ ULONG MethodLength,
+        _Inout_updates_bytes_(DataLength)  LPVOID MethodData,
+        _In_ ULONG DataLength,
+        _Out_ ULONG* BytesReturned
+    ) PURE;
+    STDMETHOD(KsEvent)(
+        THIS_
+        _In_reads_bytes_(EventLength) PKSEVENT Event OPTIONAL,
+        _In_ ULONG EventLength,
+        _Inout_updates_bytes_(DataLength) LPVOID EventData,
+        _In_ ULONG DataLength,
+        _Out_ ULONG* BytesReturned
+    ) PURE;
+};
 
-#endif /* _KS_ */
+#endif /* DECLARE_INTERFACE_ */
+#endif /* _IKsControl_ */
 
 #include <poppack.h>
 
+DEFINE_GUID(IID_IKsControl, 0x28F54685, 0x06FD, 0x11D2, 0xB2, 0x7A, 0x00, 0xA0, 0xC9, 0x22, 0x31, 0x96);
 
-DEFINE_GUID(IID_IKsControl, 0x28f54685, 0x06fd, 0x11d2, 0xb2, 0x7a, 0x00, 0xa0, 0xc9, 0x22, 0x31, 0x96);
-
+/* These formats are in ksmedia.h
+ */
 #ifndef _KSMEDIA_
 
-DEFINE_GUID(KSDATAFORMAT_SUBTYPE_MIDI, 0x1d262760, 0xe957, 0x11cf, 0xa5, 0xd6, 0x28, 0xdb, 0x04, 0xc1, 0x00, 0x00);
-DEFINE_GUID(KSDATAFORMAT_SUBTYPE_DIRECTMUSIC, 0x1a82f8bc, 0x3f8b, 0x11d2, 0xb7, 0x74, 0x00, 0x60, 0x08, 0x33, 0x16, 0xc1);
+DEFINE_GUID(KSDATAFORMAT_SUBTYPE_MIDI, 0x1D262760L, 0xE957, 0x11CF, 0xA5, 0xD6, 0x28, 0xDB, 0x04, 0xC1, 0x00, 0x00);
+DEFINE_GUID(KSDATAFORMAT_SUBTYPE_DIRECTMUSIC, 0x1a82f8bc,  0x3f8b, 0x11d2, 0xb7, 0x74, 0x00, 0x60, 0x08, 0x33, 0x16, 0xc1);
 
 #endif
 
-#endif /* _DMKSCTRL_ */
+#if _MSC_VER >= 1200
+#pragma warning(pop)
+#endif
+
+
+#endif /* WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) */
+#pragma endregion
+
+#endif /* _DMKSCTRL */
+
+
+

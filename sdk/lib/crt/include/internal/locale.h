@@ -1,6 +1,15 @@
 #ifndef __CRT_INTERNAL_LOCALE_H
 #define __CRT_INTERNAL_LOCALE_H
 
+#ifndef _TAGLC_ID_DEFINED
+#define _TAGLC_ID_DEFINED
+  typedef struct tagLC_ID {
+    unsigned short wLanguage;
+    unsigned short wCountry;
+    unsigned short wCodePage;
+  } LC_ID,*LPLC_ID;
+#endif
+
 typedef struct MSVCRT_threadlocaleinfostruct {
     LONG refcount;
     unsigned int lc_codepage;

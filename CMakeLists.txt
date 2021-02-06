@@ -17,8 +17,8 @@ set(CMAKE_SKIP_PREPROCESSED_SOURCE_RULES TRUE)
 set(CMAKE_SKIP_ASSEMBLY_SOURCE_RULES TRUE)
 set(CMAKE_COLOR_MAKEFILE OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
-set(CMAKE_C_STANDARD 99)
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 20)
 #set_property(GLOBAL PROPERTY RULE_MESSAGES OFF)
 
 if(NOT ARCH)
@@ -241,14 +241,12 @@ Enable this if the module uses typeid or dynamic_cast. You will probably need to
     include_directories(
         sdk/include
         sdk/include/psdk
-        sdk/include/dxsdk
         ${REACTOS_BINARY_DIR}/sdk/include
         ${REACTOS_BINARY_DIR}/sdk/include/psdk
-        ${REACTOS_BINARY_DIR}/sdk/include/dxsdk
         ${REACTOS_BINARY_DIR}/sdk/include/ddk
         ${REACTOS_BINARY_DIR}/sdk/include/reactos
         ${REACTOS_BINARY_DIR}/sdk/include/reactos/mc
-        sdk/include/crt
+        # sdk/include/crt
         sdk/include/ddk
         sdk/include/ndk
         sdk/include/reactos
@@ -263,7 +261,6 @@ Enable this if the module uses typeid or dynamic_cast. You will probably need to
     add_subdirectory(sdk/include/ndk/tests)
     add_subdirectory(sdk/include/xdk)
     add_subdirectory(sdk/include/psdk)
-    add_subdirectory(sdk/include/dxsdk)
     add_subdirectory(sdk/include/reactos/wine)
     add_subdirectory(sdk/include/reactos/mc)
     add_subdirectory(sdk/include/asm)

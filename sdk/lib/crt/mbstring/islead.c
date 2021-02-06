@@ -4,8 +4,7 @@
 /*
  * @implemented
  */
-int isleadbyte(int c)
+extern __inline int (__cdecl isleadbyte)(int const c)
 {
     return _isctype( c, _LEADBYTE );
-
 }

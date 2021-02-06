@@ -10,7 +10,7 @@
 
 _Success_(return!=EINVAL)
 _Check_return_wat_
-_CRTIMP
+_ACRTIMP
 errno_t
 __cdecl
 wcstombs_s(

@@ -618,11 +618,16 @@ RtlQueryAtomInAtomTable(
     PRTL_ATOM_TABLE_ENTRY Entry;
     NTSTATUS Status = STATUS_SUCCESS;
 
-    if (Atom < 0xC000)
+    if (!AtomTable)
+        Status = STATUS_INVALID_PARAMETER;
+    else if (Atom < 0xC000)
     {
+        if (!Atom) return STATUS_INVALID_PARAMETER;
+
         /* Synthesize an entry */
         NumberEntry.AtomTableEntry.Atom = Atom;
-        NumberEntry.AtomTableEntry.NameLength = swprintf(NumberEntry.AtomTableEntry.Name,
+        NumberEntry.AtomTableEntry.NameLength = _snwprintf(NumberEntry.AtomTableEntry.Name,
+                                                sizeof(NumberEntry.AtomTableEntry.Name) / sizeof(WCHAR),
                                                 L"#%lu",
                                                 (ULONG)Atom);
         NumberEntry.AtomTableEntry.ReferenceCount = 1;
@@ -631,7 +636,9 @@ RtlQueryAtomInAtomTable(
     }
     else
     {
-        RtlpLockAtomTable(AtomTable);
+        if (!RtlpLockAtomTable(AtomTable))
+            return STATUS_INVALID_PARAMETER;
+
         Unlock = TRUE;
 
         Entry = RtlpGetAtomEntry(AtomTable, (ULONG)((USHORT)Atom - 0xC000));

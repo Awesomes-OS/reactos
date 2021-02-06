@@ -968,8 +968,7 @@ public:
         local_watches.push_back(new LoaderFunctionLocal<T>(name, type_name, value));
     }
 
-    template <typename TBuffer>
-    void log_stacktrace(TBuffer& buffer)
+    void log_stacktrace()
     {
         log_context.log_stacktrace();
     }

@@ -30,13 +30,8 @@
 
 #define NONAMELESSUNION
 
-#ifdef __REACTOS__
-#include <typedefs.h>
-#include <nls.h>
-#else
 #include "windef.h"
 #include "winbase.h"
-#endif
 
 #include "widl.h"
 #include "typelib.h"
@@ -833,7 +828,7 @@ static short write_var_desc(struct sltg_typelib *typelib, struct sltg_data *data
             num_dims++;
             elements *= type_array_get_dim(atype);
 
-            atype = type_array_get_element(atype);
+            atype = type_array_get_element_type(atype);
         }
 
         chat("write_var_desc: VT_CARRAY: %d dimensions, %d elements\n", num_dims, elements);
@@ -861,7 +856,7 @@ static short write_var_desc(struct sltg_typelib *typelib, struct sltg_data *data
             bound[1] = 0;
             bound += 2;
 
-            atype = type_array_get_element(atype);
+            atype = type_array_get_element_type(atype);
         }
 
         if (size_instance)
@@ -888,7 +883,7 @@ static short write_var_desc(struct sltg_typelib *typelib, struct sltg_data *data
 
     if (vt == VT_PTR)
     {
-        type_t *ref = is_ptr(type) ? type_pointer_get_ref(type) : type_array_get_element(type);
+        type_t *ref = is_ptr(type) ? type_pointer_get_ref_type(type) : type_array_get_element_type(type);
 
         if (is_ptr(ref))
         {
@@ -912,7 +907,7 @@ static short write_var_desc(struct sltg_typelib *typelib, struct sltg_data *data
         short href;
 
         while (type->typelib_idx < 0 && type_is_alias(type))
-            type = type_alias_get_aliasee(type);
+            type = type_alias_get_aliasee_type(type);
 
         chat("write_var_desc: VT_USERDEFINED, type %p, name %s, real type %d, href %d\n",
              type, type->name, type_get_type(type), type->typelib_idx);
@@ -994,12 +989,12 @@ static void add_structure_typeinfo(struct sltg_typelib *typelib, type_t *type)
             short base_offset;
 
             chat("add_structure_typeinfo: var %p (%s), type %p (%s)\n",
-                 var, var->name, var->type, var->type->name);
+                 var, var->name, var->declspec.type, var->declspec.type->name);
 
             init_sltg_data(&var_data[i]);
 
             base_offset = var_data_size + (i + 1) * sizeof(struct sltg_variable);
-            type_desc_offset[i] = write_var_desc(typelib, &var_data[i], var->type, 0, 0,
+            type_desc_offset[i] = write_var_desc(typelib, &var_data[i], var->declspec.type, 0, 0,
                                                  base_offset, &size_instance, &hrefmap);
             dump_var_desc(var_data[i].data, var_data[i].size);
 
@@ -1245,7 +1240,7 @@ static int add_func_desc(struct sltg_typelib *typelib, struct sltg_data *data, v
     old_size = data->size;
 
     init_sltg_data(&ret_data);
-    ret_desc_offset = write_var_desc(typelib, &ret_data, type_function_get_rettype(func->type),
+    ret_desc_offset = write_var_desc(typelib, &ret_data, type_function_get_rettype(func->declspec.type),
                                      0, 0, base_offset, NULL, hrefmap);
     dump_var_desc(ret_data.data, ret_data.size);
 
@@ -1258,28 +1253,29 @@ static int add_func_desc(struct sltg_typelib *typelib, struct sltg_data *data, v
         arg_offset += ret_data.size;
     }
 
-    if (type_get_function_args(func->type))
+    if (type_function_get_args(func->declspec.type))
     {
         int i = 0;
 
-        arg_count = list_count(type_get_function_args(func->type));
+        arg_count = list_count(type_function_get_args(func->declspec.type));
 
         arg_data = xmalloc(arg_count * sizeof(*arg_data));
         arg_desc_offset = xmalloc(arg_count * sizeof(*arg_desc_offset));
 
         arg_offset += arg_count * 2 * sizeof(short);
 
-        LIST_FOR_EACH_ENTRY(arg, type_get_function_args(func->type), const var_t, entry)
+        LIST_FOR_EACH_ENTRY(arg, type_function_get_args(func->declspec.type), const var_t, entry)
         {
             const attr_t *attr;
             short param_flags = get_param_flags(arg);
 
             chat("add_func_desc: arg[%d] %p (%s), type %p (%s)\n",
-                 i, arg, arg->name, arg->type, arg->type->name);
+                 i, arg, arg->name, arg->declspec.type, arg->declspec.type->name);
 
             init_sltg_data(&arg_data[i]);
 
-            arg_desc_offset[i] = write_var_desc(typelib, &arg_data[i], arg->type, param_flags, 0,
+
+            arg_desc_offset[i] = write_var_desc(typelib, &arg_data[i], arg->declspec.type, param_flags, 0,
                                                 arg_offset, NULL, hrefmap);
             dump_var_desc(arg_data[i].data, arg_data[i].size);
 
@@ -1356,7 +1352,7 @@ static int add_func_desc(struct sltg_typelib *typelib, struct sltg_data *data, v
 
         arg_offset += arg_count * 2 * sizeof(short);
 
-        LIST_FOR_EACH_ENTRY(arg, type_get_function_args(func->type), const var_t, entry)
+        LIST_FOR_EACH_ENTRY(arg, type_function_get_args(func->declspec.type), const var_t, entry)
         {
             short name, type_offset;
 

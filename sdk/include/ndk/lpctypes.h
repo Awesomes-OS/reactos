@@ -146,8 +146,8 @@ typedef struct _PORT_MESSAGE
     ULONG MessageId;
     union
     {
-        LPC_SIZE_T ClientViewSize;
-        ULONG CallbackId;
+        LPC_SIZE_T ClientViewSize; // only valid for LPC_CONNECTION_REQUEST messages
+        ULONG CallbackId;          // only valid for LPC_REQUEST messages
     };
 } PORT_MESSAGE, *PPORT_MESSAGE;
 

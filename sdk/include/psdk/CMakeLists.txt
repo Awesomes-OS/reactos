@@ -8,13 +8,19 @@ list(APPEND SOURCE
     activaut.idl
     activdbg.idl
     activscp.idl
+    amstream.idl
+    amvideo.idl
     asptlb.idl
 #   asynot.idl
 #   asysta.idl
     atliface.idl
     audioclient.idl
     audiopolicy.idl
+    austream.idl
+#   axcore.idl
+#   axextend.idl
     bdaiface.idl
+    bdatif.idl
 #   binres.idl
     bits.idl
     bits1_5.idl
@@ -29,6 +35,7 @@ list(APPEND SOURCE
     cor.idl
     cordebug.idl
 #   crtrow.idl
+    ctfutb.idl
     ctxtcall.idl
 #   dbccmd.idl
 #   dbcses.idl
@@ -36,14 +43,18 @@ list(APPEND SOURCE
 #   dbinit.idl
 #   dbprop.idl
 #   dbs.idl
+    ddstream.idl
+    devenum.idl
     devenum.idl
     devicetopology.idl
     dimm.idl
     dispex.idl
+    dmodshow.idl
     docobj.idl
     docobjectservice.idl
     downloadmgr.idl
     drmexternals.idl
+#   dshowasf.idl
 #   dyngraph.idl
     endpointvolume.idl
     exdisp.idl
@@ -61,14 +72,18 @@ list(APPEND SOURCE
     inputscope.idl
     inseng.idl
     mediaobj.idl
+    mediaobj.idl
+    medparam.idl
     metahost.idl
     mfidl.idl
     mfobjects.idl
     mftransform.idl
     mimeinfo.idl
     mimeole.idl
+    mixerocx.idl
     mlang.idl
     mmdeviceapi.idl
+    mmstream.idl
     mscoree.idl
     msctf.idl
     msdadc.idl
@@ -97,6 +112,8 @@ list(APPEND SOURCE
     propidl.idl
     propsys.idl
     pstore.idl
+    qedit.idl
+    regbag.idl
     richole.idl
 #   row.idl
 #   rowchg.idl
@@ -119,11 +136,14 @@ list(APPEND SOURCE
     tom.idl
     transact.idl
     tuner.idl
+    tvratings.idl
     txcoord.idl
     txdtc.idl
     unknwn.idl
     urlhist.idl
     urlmon.idl
+    vidcap.idl
+    videoacc.idl
     vmr9.idl
 #   vmrender.idl
     vsbackup.idl
@@ -145,8 +165,8 @@ list(APPEND SOURCE
     wuapi.idl
     xmldom.idl
     xmldso.idl
-    ctfutb.idl
-    xmllite.idl)
+    xmllite.idl
+)
 
 add_idl_headers(psdk ${SOURCE})
 add_dependencies(psdk xdk)
@@ -154,6 +174,9 @@ add_typelib(stdole2.idl)
 add_custom_target(stdole2 DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/stdole2.tlb)
 
 add_idl_headers(d3d_idl_headers d3dcommon.idl)
+
+add_custom_target(dxsdk)
+add_dependencies(dxsdk psdk)
 
 add_iid_library(adsiid iads.idl transact.idl)
 add_iid_library(wuguid wuapi.idl)

@@ -75,50 +75,6 @@ list(APPEND LIBCNTPR_SOURCE
     mem/memicmp.c
     misc/fltused.c
 
-    printf/_cprintf.c
-    printf/_cwprintf.c
-    printf/_scprintf.c
-    printf/_scwprintf.c
-    printf/_snprintf.c
-    printf/_snprintf_s.c
-    printf/_snwprintf.c
-    printf/_snwprintf_s.c
-    printf/_vcprintf.c
-    printf/_vcwprintf.c
-    printf/_vscprintf.c
-    printf/_vscwprintf.c
-    printf/_vsnprintf.c
-    printf/_vsnprintf_s.c
-    printf/_vsnwprintf.c
-    printf/_vsnwprintf_s.c
-    printf/_vsprintf_p.c
-    printf/fprintf_s.c
-    printf/fwprintf.c
-    printf/fwprintf_s.c
-    printf/printf.c
-    printf/printf_s.c
-    printf/sprintf.c
-    printf/sprintf_s.c
-    printf/streamout.c
-    printf/swprintf.c
-    printf/swprintf_s.c
-    printf/vfprintf_s.c
-    printf/vfwprintf.c
-    printf/vfwprintf_s.c
-    printf/vprintf.c
-    printf/vprintf_s.c
-    printf/vsprintf.c
-    printf/vsprintf_s.c
-    printf/vsnprintf.c
-    printf/vsnprintf_s.c
-    printf/vswprintf.c
-    printf/vswprintf_s.c
-    printf/vwprintf.c
-    printf/vwprintf_s.c
-    printf/wprintf.c
-    printf/wprintf_s.c
-    printf/wstreamout.c
-
     search/bsearch.c
     search/lfind.c
     stdlib/qsort.c
@@ -180,6 +136,52 @@ list(APPEND LIBCNTPR_SOURCE
     wstring/wcscspn.c
     wstring/wcsspn.c
     wstring/wcsstr.c)
+
+list(APPEND LIBCNTPR_PRINTF_SOURCE
+    printf/_cprintf.c
+    printf/_cwprintf.c
+    printf/_scprintf.c
+    printf/_scwprintf.c
+    printf/_snprintf.c
+    printf/_snprintf_s.c
+    printf/_snwprintf.c
+    printf/_snwprintf_s.c
+    printf/_vcprintf.c
+    printf/_vcwprintf.c
+    printf/_vscprintf.c
+    printf/_vscwprintf.c
+    printf/_vsnprintf.c
+    printf/_vsnprintf_s.c
+    printf/_vsnwprintf.c
+    printf/_vsnwprintf_s.c
+    printf/_vsprintf_p.c
+    printf/fprintf_s.c
+    printf/fwprintf.c
+    printf/fwprintf_s.c
+    printf/printf.c
+    printf/printf_s.c
+    printf/sprintf.c
+    printf/sprintf_s.c
+    printf/streamout.c
+    printf/swprintf.c
+    printf/swprintf_s.c
+    printf/vfprintf_s.c
+    printf/vfwprintf.c
+    printf/vfwprintf_s.c
+    printf/vprintf.c
+    printf/vprintf_s.c
+    printf/vsprintf.c
+    printf/vsprintf_s.c
+    printf/vsnprintf.c
+    printf/vsnprintf_s.c
+    printf/vswprintf.c
+    printf/vswprintf_s.c
+    printf/vwprintf.c
+    printf/vwprintf_s.c
+    printf/wprintf.c
+    printf/wprintf_s.c
+    printf/wstreamout.c
+)
 
 if(ARCH STREQUAL "i386")
     list(APPEND LIBCNTPR_ASM_SOURCE
@@ -352,12 +354,18 @@ endif()
 set_source_files_properties(${LIBCNTPR_ASM_SOURCE} PROPERTIES COMPILE_DEFINITIONS "NO_RTL_INLINES;_NTSYSTEM_;_NTDLLBUILD_;_LIBCNT_;__CRT__NO_INLINE;CRTDLL")
 add_asm_files(libcntpr_asm ${LIBCNTPR_ASM_SOURCE})
 
-add_library(libcntpr ${LIBCNTPR_SOURCE} ${libcntpr_asm})
-target_compile_definitions(libcntpr
+set_source_files_properties(${LIBCNTPR_PRINTF_SOURCE} PROPERTIES COMPILE_DEFINITIONS "_NO_CRT_STDIO_INLINE")
+
+add_library(ntlibc ${LIBCNTPR_SOURCE} ${LIBCNTPR_PRINTF_SOURCE} ${libcntpr_asm})
+target_compile_definitions(ntlibc
  PRIVATE    NO_RTL_INLINES
     _NTSYSTEM_
     _NTDLLBUILD_
     _LIBCNT_
     __CRT__NO_INLINE
+    _CORECRT_BUILD
+    _CRTBLD
+    _CRT_SECURE_NO_WARNINGS
+    _CRT_DECLARE_NONSTDC_NAMES
     CRTDLL)
-add_dependencies(libcntpr psdk asm)
+add_dependencies(ntlibc asm)

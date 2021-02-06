@@ -65,7 +65,7 @@ void _lock( int locknum );
 #define _STREAM_LOCKS   28
 
 /* Must match definition in msvcrt/stdio.h */
-#define _IOB_ENTRIES    20
+// #define _IOB_ENTRIES    20
 #define _LAST_STREAM_LOCK  (_STREAM_LOCKS+_IOB_ENTRIES-1)
 #define _TOTAL_LOCKS        (_LAST_STREAM_LOCK+1)
 

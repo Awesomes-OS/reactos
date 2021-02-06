@@ -9,7 +9,7 @@
 #include <mbstring.h>
 
 _Check_return_
-_CRTIMP
+_DCRTIMP
 size_t
 __cdecl
 _mbsnlen(

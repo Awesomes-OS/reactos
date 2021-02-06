@@ -27,5 +27,6 @@ import "objidl.idl";
 
 #include <dyngraph.idl>
 
-/* TODO: #include <dvdif.h> */
 #include <vmrender.idl>
+
+#include <dvdif.idl>

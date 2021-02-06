@@ -55,6 +55,7 @@ static void write_function_stub(const type_t *iface, const var_t *func, unsigned
     unsigned char explicit_fc, implicit_fc;
     int has_full_pointer = is_full_pointer_function(func);
     const var_t *handle_var = get_func_handle_var( iface, func, &explicit_fc, &implicit_fc );
+    type_t *ret_type = type_function_get_rettype(func->declspec.type);
 
     if (is_interpreted_func( iface, func )) return;
 
@@ -75,7 +76,7 @@ static void write_function_stub(const type_t *iface, const var_t *func, unsigned
     indent++;
     write_remoting_arguments(server, indent, func, "__frame->", PASS_OUT, PHASE_FREE);
 
-    if (!is_void(type_function_get_rettype(func->type)))
+    if (!is_void(ret_type))
         write_remoting_arguments(server, indent, func, "__frame->", PASS_RETURN, PHASE_FREE);
 
     if (has_full_pointer)
@@ -120,7 +121,7 @@ static void write_function_stub(const type_t *iface, const var_t *func, unsigned
     if (has_full_pointer)
         write_full_pointer_init(server, indent, func, TRUE);
 
-    if (type_get_function_args(func->type))
+    if (type_function_get_args(func->declspec.type))
     {
         print_server("if ((_pRpcMessage->DataRepresentation & 0x0000FFFFUL) != NDR_LOCAL_DATA_REPRESENTATION)\n");
         indent++;
@@ -154,35 +155,42 @@ static void write_function_stub(const type_t *iface, const var_t *func, unsigned
     assign_stub_out_args(server, indent, func, "__frame->");
 
     /* Call the real server function */
-    print_server("%s%s%s",
-                 is_void(type_function_get_rettype(func->type)) ? "" : "__frame->_RetVal = ",
-                 prefix_server, get_name(func));
+    if (is_context_handle(ret_type))
+    {
+        print_server("__frame->_RetVal = NDRSContextUnmarshall((char*)0, _pRpcMessage->DataRepresentation);\n");
+        print_server("*((");
+        write_type_decl(server, type_function_get_ret(func->declspec.type), NULL);
+        fprintf(server, "*)NDRSContextValue(__frame->_RetVal)) = ");
+    }
+    else
+        print_server("%s", is_void(ret_type) ? "" : "__frame->_RetVal = ");
+    fprintf(server, "%s%s", prefix_server, get_name(func));
 
-    if (type_get_function_args(func->type))
+    if (type_function_get_args(func->declspec.type))
     {
         int first_arg = 1;
 
         fprintf(server, "(\n");
         indent++;
-        LIST_FOR_EACH_ENTRY( var, type_get_function_args(func->type), const var_t, entry )
+        LIST_FOR_EACH_ENTRY( var, type_function_get_args(func->declspec.type), const var_t, entry )
         {
             if (first_arg)
                 first_arg = 0;
             else
                 fprintf(server, ",\n");
-            if (is_context_handle(var->type))
+            if (is_context_handle(var->declspec.type))
             {
                 /* if the context_handle attribute appears in the chain of types
                  * without pointers being followed, then the context handle must
                  * be direct, otherwise it is a pointer */
-                const char *ch_ptr = is_aliaschain_attr(var->type, ATTR_CONTEXTHANDLE) ? "*" : "";
+                const char *ch_ptr = is_aliaschain_attr(var->declspec.type, ATTR_CONTEXTHANDLE) ? "*" : "";
                 print_server("(");
-                write_type_decl_left(server, var->type);
+                write_type_decl_left(server, &var->declspec);
                 fprintf(server, ")%sNDRSContextValue(__frame->%s)", ch_ptr, var->name);
             }
             else
             {
-                print_server("%s__frame->%s", is_array(var->type) && !type_array_is_decl_as_ptr(var->type) ? "*" : "", var->name);
+                print_server("%s__frame->%s", is_array(var->declspec.type) && !type_array_is_decl_as_ptr(var->declspec.type) ? "*" : "", var->name);
             }
         }
         fprintf(server, ");\n");
@@ -197,7 +205,7 @@ static void write_function_stub(const type_t *iface, const var_t *func, unsigned
     {
         write_remoting_arguments(server, indent, func, "__frame->", PASS_OUT, PHASE_BUFFERSIZE);
 
-        if (!is_void(type_function_get_rettype(func->type)))
+        if (!is_void(ret_type))
             write_remoting_arguments(server, indent, func, "__frame->", PASS_RETURN, PHASE_BUFFERSIZE);
 
         print_server("_pRpcMessage->BufferLength = __frame->_StubMsg.BufferLength;\n");
@@ -216,7 +224,7 @@ static void write_function_stub(const type_t *iface, const var_t *func, unsigned
     write_remoting_arguments(server, indent, func, "__frame->", PASS_OUT, PHASE_MARSHAL);
 
     /* marshall the return value */
-    if (!is_void(type_function_get_rettype(func->type)))
+    if (!is_void(ret_type))
         write_remoting_arguments(server, indent, func, "__frame->", PASS_RETURN, PHASE_MARSHAL);
 
     indent--;
@@ -299,7 +307,7 @@ static void write_routinetable(type_t *iface)
     {
         var_t *func = stmt->u.var;
         if (is_local( func->attrs )) continue;
-        print_server( "(SERVER_ROUTINE)%s%s,\n", prefix_server, get_name(func));
+        print_server( "(void *)%s%s,\n", prefix_server, get_name(func));
     }
     indent--;
     print_server( "};\n\n" );
@@ -378,7 +386,7 @@ static void write_stubdescriptor(type_t *iface, int expr_eval_routines)
     print_server("1, /* -error bounds_check flag */\n");
     print_server("0x%x, /* Ndr library version */\n", get_stub_mode() == MODE_Oif ? 0x50002 : 0x10001);
     print_server("0,\n");
-    print_server("0x50100a4, /* MIDL Version 5.1.164 */\n");
+    print_server("0x50200ca, /* MIDL Version 5.2.202 */\n");
     print_server("0,\n");
     print_server("%s,\n", list_empty(&user_type_list) ? "0" : "UserMarshalRoutines");
     print_server("0,  /* notify & notify_flag routine table */\n");

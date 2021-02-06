@@ -11,7 +11,7 @@
 
 _Success_(return!=EINVAL)
 _Check_return_opt_
-_CRTIMP
+_ACRTIMP
 errno_t
 __cdecl
 mbstowcs_s(

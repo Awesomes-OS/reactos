@@ -6,69 +6,74 @@ void
 NTAPI
 LdrpDereferenceModule(IN PLDR_DATA_TABLE_ENTRY Module)
 {
-    LDRP_ASSERT_MODULE_ENTRY(Module);
+    LDR_FUNC_VOID(Module)
+        LDRP_ASSERT_MODULE_ENTRY(Module);
 
-    /* If this is not a pinned module */
-    if (LDRP_MODULE_PINNED(Module))
-        return;
+        /* If this is not a pinned module */
+        if (LDRP_MODULE_PINNED(Module))
+            return;
 
-    ASSERT((LONG_PTR)Module->ReferenceCount > 0);
+        ASSERT_TRUE(Module->ReferenceCount);
 
-    const LONG OldReferenceCount = InterlockedExchangeAdd((LONG*)&Module->ReferenceCount, -1);
+        const LONG OldReferenceCount = InterlockedExchangeAdd((LONG*)&Module->ReferenceCount, -1);
 
-    if (OldReferenceCount != 1)
-        return;
+        LDR_WATCH_LOCAL(OldReferenceCount);
 
-    // Erase this module from double-linked list of all modules
-    RtlAcquireSRWLockExclusive(&LdrpModuleDatatableLock);
+        if (OldReferenceCount != 1)
+            return;
 
-    LIST_ENTRY* Previous = Module->NodeModuleLink.Blink;
-    LIST_ENTRY* Next = Module->NodeModuleLink.Flink;
-    LIST_ENTRY* Current = &Module->NodeModuleLink;
+        // Erase this module from double-linked list of all modules
+        RtlAcquireSRWLockExclusive(&LdrpModuleDatatableLock);
 
-    // Verify double-linked list consistency
-    RtlpCheckListEntry(Previous);
-    RtlpCheckListEntry(Current);
-    RtlpCheckListEntry(Next);
-    ASSERT(Previous->Flink == Current && Next->Blink == Current);
+        LIST_ENTRY* Previous = Module->NodeModuleLink.Blink;
+        LIST_ENTRY* Next = Module->NodeModuleLink.Flink;
+        LIST_ENTRY* Current = &Module->NodeModuleLink;
 
-    RemoveEntryList(Current);
+        // Verify double-linked list consistency
+        RtlpCheckListEntry(Previous);
+        RtlpCheckListEntry(Current);
+        RtlpCheckListEntry(Next);
+        ASSERT_EQ(Previous->Flink, Current);
+        ASSERT_EQ(Next->Blink, Current);
 
-    const PLDR_DDAG_NODE Node = Module->DdagNode;
+        RemoveEntryList(Current);
 
-    LDRP_ASSERT_DDAG_NODE(Node);
-    LDRP_ASSERT_NODE_ENTRY(Node, Module);
+        const PLDR_DDAG_NODE Node = Module->DdagNode;
 
-    const BOOLEAN EmptyNode = IsListEmpty(&Node->Modules);
+        LDRP_ASSERT_DDAG_NODE(Node);
+        LDRP_ASSERT_NODE_ENTRY(Node, Module);
 
-    RtlReleaseSRWLockExclusive(&LdrpModuleDatatableLock);
+        const BOOLEAN EmptyNode = IsListEmpty(&Node->Modules);
 
-    if (Module->TlsIndex)
-    {
-        ASSERT(NT_SUCCESS(LdrpReleaseTlsEntry(Module, NULL)));
-    }
+        RtlReleaseSRWLockExclusive(&LdrpModuleDatatableLock);
 
-    ASSERT(NT_SUCCESS(LdrpUnmapModule(Module)));
+        if (Module->TlsIndex)
+        {
+            ASSERT_SUCCESS_OR_IGNORE(LdrpReleaseTlsEntry(Module, NULL));
+        }
 
-    /* Release the activation context if it exists and wasn't already released */
-    if (Module->EntryPointActivationContext && Module->EntryPointActivationContext != INVALID_HANDLE_VALUE)
-    {
-        /* Mark it as invalid */
-        RtlReleaseActivationContext(Module->EntryPointActivationContext);
-        Module->EntryPointActivationContext = INVALID_HANDLE_VALUE;
-    }
+        ASSERT_SUCCESS_OR_IGNORE(LdrpUnmapModule(Module));
 
-    /* Release the full dll name string */
-    if (Module->FullDllName.Buffer)
-        LdrpFreeUnicodeString(&Module->FullDllName);
+        /* Release the activation context if it exists and wasn't already released */
+        if (Module->EntryPointActivationContext && Module->EntryPointActivationContext != INVALID_HANDLE_VALUE)
+        {
+            /* Mark it as invalid */
+            RtlReleaseActivationContext(Module->EntryPointActivationContext);
+            Module->EntryPointActivationContext = INVALID_HANDLE_VALUE;
+        }
 
-    /* If this is the cached entry, invalidate it */
-    if (LdrpLoadedDllHandleCache == Module)
-        LdrpLoadedDllHandleCache = NULL;
+        /* Release the full dll name string */
+        if (Module->FullDllName.Buffer)
+            LdrpFreeUnicodeString(&Module->FullDllName);
 
-    /* Finally free the entry's memory */
-    LdrpFreeHeap(0, Module);
+        /* If this is the cached entry, invalidate it */
+        if (LdrpLoadedDllHandleCache == Module)
+            LdrpLoadedDllHandleCache = NULL;
 
-    if (EmptyNode)
-        LdrpDestroyNode(Node);
+        /* Finally free the entry's memory */
+        LdrpFreeHeap(0, Module);
+
+        if (EmptyNode)
+            LdrpDestroyNode(Node);
+    LDR_FUNC_END_VOID
 }

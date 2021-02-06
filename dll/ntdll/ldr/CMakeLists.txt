@@ -4,7 +4,7 @@ add_definitions(
     -DFMT_STATIC_THOUSANDS_SEPARATOR
 )
 
-add_compile_options(-std:c++latest -Zc:strictStrings- -Zc:preprocessor)
+add_compile_options(-Zc:strictStrings- -Zc:preprocessor)
 
 include_directories(BEFORE ${REACTOS_SOURCE_DIR}/sdk/include/c++/stl)
 include_directories(BEFORE

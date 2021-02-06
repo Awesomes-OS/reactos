@@ -226,6 +226,62 @@ void *xrealloc(void *p, size_t size)
     return res;
 }
 
+char *strmake( const char* fmt, ... )
+{
+    int n;
+    size_t size = 100;
+    va_list ap;
+
+    for (;;)
+    {
+        char *p = xmalloc( size );
+        va_start( ap, fmt );
+        n = vsnprintf( p, size, fmt, ap );
+        va_end( ap );
+        if (n == -1) size *= 2;
+        else if ((size_t)n >= size) size = n + 1;
+        else return p;
+        free( p );
+    }
+}
+
+size_t strappend(char **buf, size_t *len, size_t pos, const char* fmt, ...)
+{
+    size_t size;
+    va_list ap;
+    char *ptr;
+    int n;
+
+    assert( buf && len );
+    assert( (*len == 0 && *buf == NULL) || (*len != 0 && *buf != NULL) );
+
+    if (*buf)
+    {
+        size = *len;
+        ptr = *buf;
+    }
+    else
+    {
+        size = 100;
+        ptr = xmalloc( size );
+    }
+
+    for (;;)
+    {
+        va_start( ap, fmt );
+        n = vsnprintf( ptr + pos, size - pos, fmt, ap );
+        va_end( ap );
+        if (n == -1) size *= 2;
+        else if (pos + (size_t)n >= size) size = pos + n + 1;
+        else break;
+        ptr = xrealloc( ptr, size );
+    }
+
+    *len = size;
+    *buf = ptr;
+    return n;
+}
+
 char *xstrdup(const char *str)
 {
 	char *s;
@@ -309,7 +365,7 @@ void add_output_to_resources( const char *type, const char *name )
     size_t data_size = output_buffer_pos;
     size_t header_size = 5 * sizeof(unsigned int) + 2 * sizeof(unsigned short);
 
-    assert( nb_resources < sizeof(resources)/sizeof(resources[0]) );
+    assert( nb_resources < ARRAY_SIZE( resources ));
 
     if (type[0] != '#') header_size += (strlen( type ) + 1) * sizeof(unsigned short);
     else header_size += 2 * sizeof(unsigned short);

@@ -46,7 +46,7 @@
 // Unicode String Generating Macros
 //
 #define LVER_PRODUCTVERSION_MAJORMINOR2(x,y)\
-    L#x L"." L#y
+    L## #x L"." L## #y
 #define LVER_PRODUCTVERSION_MAJORMINOR1(x,y)\
     LVER_PRODUCTVERSION_MAJORMINOR2(x, y)
 #define LVER_PRODUCTVERSION_STRING          \
@@ -98,7 +98,7 @@
 // Unicode Product Version String
 //
 #define LVER_PRODUCTVERSION_STR2(x,y)       \
-    LVER_PRODUCTVERSION_STRING L"." LVER_BPAD L#x L"." L#y
+    LVER_PRODUCTVERSION_STRING L"." LVER_BPAD L## #x L"." L## #y
 #define LVER_PRODUCTVERSION_STR1(x,y)       \
     LVER_PRODUCTVERSION_STR2(x, y)
 #define LVER_PRODUCTVERSION_STR             \

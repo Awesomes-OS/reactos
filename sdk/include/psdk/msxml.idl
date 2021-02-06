@@ -18,7 +18,6 @@
  */
 
 #include <msxmldid.h>
-#include <msxml2did.h>
 #include <idispids.h>
 
 #ifndef DO_NO_IMPORTS

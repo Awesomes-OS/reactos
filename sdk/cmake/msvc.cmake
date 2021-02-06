@@ -34,7 +34,7 @@ add_definitions(/Dinline=__inline /D__STDC__=1)
 
 # Ignore any "standard" include paths, and do not use any default CRT library.
 if(NOT USE_CLANG_CL)
-    add_compile_options(/X /Zl)
+    # add_compile_options(/X /Zl)
 endif()
 
 # Disable buffer security checks by default.

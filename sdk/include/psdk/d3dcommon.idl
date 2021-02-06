@@ -52,21 +52,18 @@ typedef enum _D3D_INCLUDE_TYPE
     D3D_INCLUDE_FORCE_DWORD = 0x7fffffff
 } D3D_INCLUDE_TYPE;
 
-[
-    object,
-    local,
-]
-interface ID3DInclude
-{
-    HRESULT Open(D3D_INCLUDE_TYPE include_type,
-                 const char *filename,
-                 const void *parent_data,
-                 const void **data,
-                 UINT *bytes);
-    HRESULT Close(const void *data);
-}
+cpp_quote("typedef interface ID3DInclude ID3DInclude;")
 
-typedef ID3DInclude* LPD3DINCLUDE;
+cpp_quote("#undef INTERFACE")
+cpp_quote("#define INTERFACE ID3DInclude")
+
+cpp_quote("DECLARE_INTERFACE(ID3DInclude)")
+cpp_quote("{")
+cpp_quote("    STDMETHOD(Open)(THIS_ D3D_INCLUDE_TYPE IncludeType, LPCSTR pFileName, LPCVOID pParentData, LPCVOID *ppData, UINT *pBytes) PURE;")
+cpp_quote("    STDMETHOD(Close)(THIS_ LPCVOID pData) PURE;")
+cpp_quote("};")
+
+cpp_quote("typedef ID3DInclude* LPD3DINCLUDE;")
 
 typedef enum D3D_DRIVER_TYPE
 {

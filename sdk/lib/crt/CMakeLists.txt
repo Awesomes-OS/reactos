@@ -24,9 +24,9 @@ add_library(chkstk ${CHKSTK_SOURCE} ${chkstk_lib_asm})
 set_target_properties(chkstk PROPERTIES LINKER_LANGUAGE "C")
 add_dependencies(chkstk asm)
 
-include(crt.cmake)
+#include(crt.cmake)
 include(libcntpr.cmake)
-include(msvcrtex.cmake)
+#include(msvcrtex.cmake)
 include(oldnames.cmake)
 
 add_library(user32_wsprintf
