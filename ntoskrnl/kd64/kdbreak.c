@@ -60,7 +60,11 @@ KdpAddBreakpoint(IN PVOID Address)
 
     /* If we are setting the breakpoint in user space, save the active process context */
     if (Address < KD_HIGHEST_USER_BREAKPOINT_ADDRESS)
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+        KdpBreakpointTable[i].DirectoryTableBase = KeGetCurrentThread()->ApcState.Process->DirectoryTableBase;
+#else
         KdpBreakpointTable[i].DirectoryTableBase = KeGetCurrentThread()->ApcState.Process->DirectoryTableBase[0];
+#endif
 
     /* Try to save the old instruction */
     Status = KdpCopyMemoryChunks((ULONG_PTR)Address,
@@ -130,8 +134,13 @@ KdSetOwedBreakpoints(VOID)
              * Set the breakpoint only if it is in kernel space, or if it is
              * in user space and the active process context matches.
              */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+            if (KdpBreakpointTable[i].Address < KD_HIGHEST_USER_BREAKPOINT_ADDRESS &&
+                KdpBreakpointTable[i].DirectoryTableBase != KeGetCurrentThread()->ApcState.Process->DirectoryTableBase)
+#else
             if (KdpBreakpointTable[i].Address < KD_HIGHEST_USER_BREAKPOINT_ADDRESS &&
                 KdpBreakpointTable[i].DirectoryTableBase != KeGetCurrentThread()->ApcState.Process->DirectoryTableBase[0])
+#endif
             {
                 KdpOweBreakpoint = TRUE;
                 continue;

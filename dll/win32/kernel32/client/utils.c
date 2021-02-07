@@ -22,7 +22,6 @@
 /* GLOBALS ********************************************************************/
 
 UNICODE_STRING Restricted = RTL_CONSTANT_STRING(L"Restricted");
-BOOL bIsFileApiAnsi = TRUE; // set the file api to ansi or oem
 PRTL_CONVERT_STRING Basep8BitStringToUnicodeString = RtlAnsiStringToUnicodeString;
 PRTL_CONVERT_STRINGA BasepUnicodeStringTo8BitString = RtlUnicodeStringToAnsiString;
 PRTL_COUNT_STRING BasepUnicodeStringTo8BitSize = BasepUnicodeStringToAnsiSize;
@@ -351,47 +350,35 @@ BaseFormatObjectAttributes(OUT POBJECT_ATTRIBUTES ObjectAttributes,
  */
 NTSTATUS
 WINAPI
-BaseCreateStack(
-    _In_ HANDLE hProcess,
-    _In_opt_ SIZE_T StackCommit,
-    _In_opt_ SIZE_T StackReserve,
-    _Out_ PINITIAL_TEB InitialTeb)
+BaseCreateStack(IN HANDLE ProcessHandle,
+                IN SIZE_T StackCommit OPTIONAL,
+                IN SIZE_T StackReserve OPTIONAL,
+                OUT PINITIAL_TEB InitialTeb)
 {
     NTSTATUS Status;
+    SYSTEM_BASIC_INFORMATION SystemBasicInfo = BaseStaticServerData->SysInfo;
     PIMAGE_NT_HEADERS Headers;
     ULONG_PTR Stack;
     BOOLEAN UseGuard;
-    ULONG PageSize, AllocationGranularity, Dummy;
+    ULONG Dummy;
     SIZE_T MinimumStackCommit, GuardPageSize;
 
-    DPRINT("BaseCreateStack(hProcess: 0x%p, Max: 0x%lx, Current: 0x%lx)\n",
-            hProcess, StackReserve, StackCommit);
-
-    /* Read page size */
-    PageSize = BaseStaticServerData->SysInfo.PageSize;
-    AllocationGranularity = BaseStaticServerData->SysInfo.AllocationGranularity;
+    DPRINT("BaseCreateStack(0x%p, 0x%lX, 0x%lX)\n", ProcessHandle, StackReserve, StackCommit);
 
     /* Get the Image Headers */
     Headers = RtlImageNtHeader(NtCurrentPeb()->ImageBaseAddress);
     if (!Headers) return STATUS_INVALID_IMAGE_FORMAT;
 
+    /* If we didn't get the parameters, find them ourselves */
     if (StackReserve == 0)
         StackReserve = Headers->OptionalHeader.SizeOfStackReserve;
 
     if (StackCommit == 0)
-    {
         StackCommit = Headers->OptionalHeader.SizeOfStackCommit;
-    }
-    /* Check if the commit is higher than the reserve */
-    else if (StackCommit >= StackReserve)
-    {
-        /* Grow the reserve beyond the commit, up to 1MB alignment */
-        StackReserve = ROUND_UP(StackCommit, 1024 * 1024);
-    }
 
     /* Align everything to Page Size */
-    StackCommit = ROUND_UP(StackCommit, PageSize);
-    StackReserve = ROUND_UP(StackReserve, AllocationGranularity);
+    StackCommit = ROUND_UP(StackCommit, SystemBasicInfo.PageSize);
+    StackReserve = ROUND_UP(StackReserve, SystemBasicInfo.AllocationGranularity);
 
     MinimumStackCommit = NtCurrentPeb()->MinimumStackCommit;
     if ((MinimumStackCommit != 0) && (StackCommit < MinimumStackCommit))
@@ -407,12 +394,12 @@ BaseCreateStack(
     }
 
     /* Align everything to Page Size */
-    StackCommit = ROUND_UP(StackCommit, PageSize);
-    StackReserve = ROUND_UP(StackReserve, AllocationGranularity);
+    StackCommit = ROUND_UP(StackCommit, SystemBasicInfo.PageSize);
+    StackReserve = ROUND_UP(StackReserve, SystemBasicInfo.AllocationGranularity);
 
     /* Reserve memory for the stack */
     Stack = 0;
-    Status = NtAllocateVirtualMemory(hProcess,
+    Status = NtAllocateVirtualMemory(ProcessHandle,
                                      (PVOID*)&Stack,
                                      0,
                                      &StackReserve,
@@ -420,7 +407,7 @@ BaseCreateStack(
                                      PAGE_READWRITE);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("Failure to reserve stack: %lx\n", Status);
+        DPRINT1("Failure to reserve stack: 0x%08lX\n", Status);
         return Status;
     }
 
@@ -434,10 +421,10 @@ BaseCreateStack(
     Stack += StackReserve - StackCommit;
 
     /* Check if we can add a guard page */
-    if (StackReserve >= StackCommit + PageSize)
+    if (StackReserve >= StackCommit + SystemBasicInfo.PageSize)
     {
-        Stack -= PageSize;
-        StackCommit += PageSize;
+        Stack -= SystemBasicInfo.PageSize;
+        StackCommit += SystemBasicInfo.PageSize;
         UseGuard = TRUE;
     }
     else
@@ -446,7 +433,7 @@ BaseCreateStack(
     }
 
     /* Allocate memory for the stack */
-    Status = NtAllocateVirtualMemory(hProcess,
+    Status = NtAllocateVirtualMemory(ProcessHandle,
                                      (PVOID*)&Stack,
                                      0,
                                      &StackCommit,
@@ -454,9 +441,9 @@ BaseCreateStack(
                                      PAGE_READWRITE);
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("Failure to allocate stack\n");
+        DPRINT1("Failure to allocate stack: 0x%08lX\n", Status);
         GuardPageSize = 0;
-        NtFreeVirtualMemory(hProcess, (PVOID*)&Stack, &GuardPageSize, MEM_RELEASE);
+        NtFreeVirtualMemory(ProcessHandle, (PVOID *)&Stack, &GuardPageSize, MEM_RELEASE);
         return Status;
     }
 
@@ -466,15 +453,15 @@ BaseCreateStack(
     /* Create a guard page if needed */
     if (UseGuard)
     {
-        GuardPageSize = PageSize;
-        Status = NtProtectVirtualMemory(hProcess,
+        GuardPageSize = SystemBasicInfo.PageSize;
+        Status = NtProtectVirtualMemory(ProcessHandle,
                                         (PVOID*)&Stack,
                                         &GuardPageSize,
                                         PAGE_GUARD | PAGE_READWRITE,
                                         &Dummy);
         if (!NT_SUCCESS(Status))
         {
-            DPRINT1("Failure to set guard page\n");
+            DPRINT1("Failure to set guard page: 0x%08lX\n", Status);
             return Status;
         }
 
@@ -492,17 +479,19 @@ BaseCreateStack(
  */
 VOID
 WINAPI
-BaseFreeThreadStack(
-    _In_ HANDLE hProcess,
-    _In_ PINITIAL_TEB InitialTeb)
+BaseFreeThreadStack(IN HANDLE ProcessHandle,
+                    IN PINITIAL_TEB InitialTeb)
 {
     SIZE_T Dummy = 0;
 
     /* Free the Stack */
-    NtFreeVirtualMemory(hProcess,
+    NtFreeVirtualMemory(ProcessHandle,
                         &InitialTeb->AllocatedStackBase,
                         &Dummy,
                         MEM_RELEASE);
+
+    /* Clear the initial TEB */
+    RtlZeroMemory(InitialTeb, sizeof(*InitialTeb));
 }
 
 /*
@@ -832,9 +821,6 @@ SetFileApisToOEM(VOID)
     BasepUnicodeStringTo8BitString = RtlUnicodeStringToOemString;
     BasepUnicodeStringTo8BitSize = BasepUnicodeStringToOemSize;
     Basep8BitStringToUnicodeSize = BasepOemStringToUnicodeSize;
-
-    /* FIXME: Old, deprecated way */
-    bIsFileApiAnsi = FALSE;
 }
 
 
@@ -850,9 +836,6 @@ SetFileApisToANSI(VOID)
     BasepUnicodeStringTo8BitString = RtlUnicodeStringToAnsiString;
     BasepUnicodeStringTo8BitSize = BasepUnicodeStringToAnsiSize;
     Basep8BitStringToUnicodeSize = BasepAnsiStringToUnicodeSize;
-
-    /* FIXME: Old, deprecated way */
-    bIsFileApiAnsi = TRUE;
 }
 
 /*

@@ -11,6 +11,8 @@
 
 #include <ntdll.h>
 
+#include <stdlib.h>
+
 #define NDEBUG
 #include <debug.h>
 
@@ -19,6 +21,17 @@ PTEB LdrpTopLevelDllBeingLoadedTeb = NULL;
 PVOID MmHighestUserAddress = (PVOID)MI_HIGHEST_USER_ADDRESS;
 
 /* FUNCTIONS ***************************************************************/
+
+/*
+ * @implemented
+ */
+BOOL
+NTAPI
+RtlIsProcessorFeaturePresent(IN DWORD ProcessorFeature)
+{
+    if (ProcessorFeature >= PROCESSOR_FEATURE_MAX) return FALSE;
+    return ((BOOL)SharedUserData->ProcessorFeatures[ProcessorFeature]);
+}
 
 BOOLEAN
 NTAPI
@@ -656,30 +669,30 @@ done:
  * @implemented
  */
 PVOID NTAPI
-RtlPcToFileHeader(IN PVOID PcValue,
-                  PVOID* BaseOfImage)
+RtlPcToFileHeader(IN PVOID PcValue, OUT PVOID* BaseOfImage)
 {
+    const PPEB Peb = NtCurrentPeb();
     PLIST_ENTRY ModuleListHead;
-    PLIST_ENTRY Entry;
-    PLDR_DATA_TABLE_ENTRY Module;
     PVOID ImageBase = NULL;
 
-    RtlEnterCriticalSection (NtCurrentPeb()->LoaderLock);
-    ModuleListHead = &NtCurrentPeb()->Ldr->InLoadOrderModuleList;
-    Entry = ModuleListHead->Flink;
-    while (Entry != ModuleListHead)
-    {
-        Module = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+    RtlEnterCriticalSection(Peb->LoaderLock);
 
-        if ((ULONG_PTR)PcValue >= (ULONG_PTR)Module->DllBase &&
-                (ULONG_PTR)PcValue < (ULONG_PTR)Module->DllBase + Module->SizeOfImage)
-        {
-            ImageBase = Module->DllBase;
-            break;
-        }
-        Entry = Entry->Flink;
+    ModuleListHead = &Peb->Ldr->InLoadOrderModuleList;
+    for (PLIST_ENTRY Entry = ModuleListHead->Flink; Entry != ModuleListHead; Entry = Entry->Flink)
+    {
+        const PLDR_DATA_TABLE_ENTRY Module = CONTAINING_RECORD(Entry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+
+        if ((ULONG_PTR)PcValue < (ULONG_PTR)Module->DllBase)
+            continue;
+
+        if ((ULONG_PTR)PcValue >= (ULONG_PTR)Module->DllBase + Module->SizeOfImage)
+            continue;
+
+        ImageBase = Module->DllBase;
+        break;
     }
-    RtlLeaveCriticalSection (NtCurrentPeb()->LoaderLock);
+
+    RtlLeaveCriticalSection(Peb->LoaderLock);
 
     *BaseOfImage = ImageBase;
     return ImageBase;
@@ -823,10 +836,10 @@ RtlDosApplyFileIsolationRedirection_Ustr(IN ULONG Flags,
                                          IN PUNICODE_STRING Extension,
                                          IN OUT PUNICODE_STRING StaticString,
                                          IN OUT PUNICODE_STRING DynamicString,
-                                         IN OUT PUNICODE_STRING *NewName,
-                                         IN PULONG NewFlags,
-                                         IN PSIZE_T FileNameSize,
-                                         IN PSIZE_T RequiredLength)
+                                         IN OUT PUNICODE_STRING *NewName OPTIONAL,
+                                         IN PULONG NewFlags OPTIONAL,
+                                         IN PSIZE_T FileNameSize OPTIONAL,
+                                         IN PSIZE_T RequiredLength OPTIONAL)
 {
     NTSTATUS Status;
     LPWSTR fullname;
@@ -920,11 +933,13 @@ RtlDosApplyFileIsolationRedirection_Ustr(IN ULONG Flags,
             if (!StaticString || StaticString->Buffer != fullname)
             {
                 RtlInitUnicodeString(DynamicString, fullname);
-                *NewName = DynamicString;
+                if (NewName)
+                    *NewName = DynamicString;
             }
             else
             {
-                *NewName = StaticString;
+                if (NewName)
+                    *NewName = StaticString;
             }
             return Status;
         }
@@ -962,6 +977,7 @@ RtlDosApplyFileIsolationRedirection_Ustr(IN ULONG Flags,
         if (pstrParam->Length + Extension->Length > sizeof(buffer))
         {
             //FIXME!
+            DPRINT1("%s doesn't support reallocation for now (%llu > %llu), failing!", __FUNCTION__, pstrParam->Length + Extension->Length, sizeof(buffer));
             return STATUS_NO_MEMORY;
         }
 
@@ -983,11 +999,13 @@ RtlDosApplyFileIsolationRedirection_Ustr(IN ULONG Flags,
     if (!StaticString || StaticString->Buffer != fullname)
     {
         RtlInitUnicodeString(DynamicString, fullname);
-        *NewName = DynamicString;
+        if (NewName)
+            *NewName = DynamicString;
     }
     else
     {
-        *NewName = StaticString;
+        if (NewName)
+            *NewName = StaticString;
     }
 
     return Status;
@@ -1078,6 +1096,180 @@ RtlGetTickCount(VOID)
                                   SharedUserData->TickCountMultiplier) >> 24) +
                     UInt32x32To64((TickCount.HighPart << 8) & 0xFFFFFFFF,
                                   SharedUserData->TickCountMultiplier));
+}
+
+
+/*
+ * @implemented
+ */
+HANDLE
+WINAPI
+GetCurrentProcess(VOID)
+{
+    return (HANDLE)NtCurrentProcess();
+}
+
+/*
+ * @implemented
+ */
+HANDLE
+WINAPI
+GetCurrentThread(VOID)
+{
+    return (HANDLE)NtCurrentThread();
+}
+
+/*
+ * @implemented
+ */
+DWORD
+WINAPI
+GetCurrentProcessId(VOID)
+{
+    return HandleToUlong(NtCurrentTeb()->ClientId.UniqueProcess);
+}
+
+/*
+ * @implemented
+ */
+DWORD
+WINAPI
+GetCurrentThreadId(VOID)
+{
+    return HandleToUlong(NtCurrentTeb()->ClientId.UniqueThread);
+}
+
+/*
+ * @implemented
+ */
+HANDLE
+WINAPI
+GetProcessHeap(VOID)
+{
+    /* Call the RTL API */
+    return RtlGetProcessHeap();
+}
+
+
+/*
+ * @implemented
+ */
+VOID
+WINAPI
+RaiseException(IN DWORD dwExceptionCode,
+               IN DWORD dwExceptionFlags,
+               IN DWORD nNumberOfArguments,
+               IN CONST ULONG_PTR *lpArguments OPTIONAL)
+{
+    EXCEPTION_RECORD ExceptionRecord;
+
+    /* Setup the exception record */
+    ExceptionRecord.ExceptionCode = dwExceptionCode;
+    ExceptionRecord.ExceptionRecord = NULL;
+    ExceptionRecord.ExceptionAddress = (PVOID)RaiseException;
+    ExceptionRecord.ExceptionFlags = dwExceptionFlags & EXCEPTION_NONCONTINUABLE;
+
+    /* Check if we have arguments */
+    if (!lpArguments)
+    {
+        /* We don't */
+        ExceptionRecord.NumberParameters = 0;
+    }
+    else
+    {
+        /* We do, normalize the count */
+        if (nNumberOfArguments > EXCEPTION_MAXIMUM_PARAMETERS)
+            nNumberOfArguments = EXCEPTION_MAXIMUM_PARAMETERS;
+
+        /* Set the count of parameters and copy them */
+        ExceptionRecord.NumberParameters = nNumberOfArguments;
+        RtlCopyMemory(ExceptionRecord.ExceptionInformation,
+                      lpArguments,
+                      nNumberOfArguments * sizeof(ULONG));
+    }
+
+    /* Better handling of Delphi Exceptions... a ReactOS Hack */
+    if (dwExceptionCode == 0xeedface || dwExceptionCode == 0xeedfade)
+    {
+        DPRINT1("Delphi Exception at address: %p\n", ExceptionRecord.ExceptionInformation[0]);
+        DPRINT1("Exception-Object: %p\n", ExceptionRecord.ExceptionInformation[1]);
+        DPRINT1("Exception text: %lx\n", ExceptionRecord.ExceptionInformation[2]);
+    }
+
+    /* Trace the wine special error and show the modulename and functionname */
+    if (dwExceptionCode == 0x80000100 /* EXCEPTION_WINE_STUB */)
+    {
+        /* Numbers of parameter must be equal to two */
+        if (ExceptionRecord.NumberParameters == 2)
+        {
+            DPRINT1("Missing function in   : %s\n", ExceptionRecord.ExceptionInformation[0]);
+            DPRINT1("with the functionname : %s\n", ExceptionRecord.ExceptionInformation[1]);
+        }
+    }
+
+    /* Raise the exception */
+    RtlRaiseException(&ExceptionRecord);
+}
+
+/*
+ * @implemented
+ */
+VOID
+WINAPI
+OutputDebugStringW(IN LPCWSTR OutputString)
+{
+    DbgPrint("%ws\n", OutputString);
+}
+
+/*
+ * @implemented
+ */
+VOID
+WINAPI
+OutputDebugStringA(IN LPCSTR _OutputString)
+{
+    DbgPrint("%s\n", _OutputString);
+}
+
+DWORD
+WINAPI
+GetTimeZoneInformation(LPTIME_ZONE_INFORMATION lpTimeZoneInformation)
+{
+    return TIME_ZONE_ID_INVALID;
+}
+
+int __cdecl __acrt_WideCharToMultiByte(
+    _In_                           UINT    _CodePage,
+    _In_                           DWORD   _DWFlags,
+    _In_                           LPCWSTR _LpWideCharStr,
+    _In_                           int     _CchWideChar,
+    _Out_writes_opt_(_CbMultiByte) LPSTR   _LpMultiByteStr,
+    _In_                           int     _CbMultiByte,
+    _In_opt_                       LPCSTR  _LpDefaultChar,
+    _Out_opt_                      LPBOOL  _LpUsedDefaultChar
+    )
+{
+    size_t Size = 0;
+
+    return wcstombs_s(&Size, _LpMultiByteStr, _CbMultiByte, _LpWideCharStr, _CchWideChar)
+        ? /* Failure */ 0
+        : /* Success */ Size;
+}
+
+int __cdecl __acrt_MultiByteToWideChar(
+    _In_                           UINT    _CodePage,
+    _In_                           DWORD   _DWFlags,
+    _In_                           LPCSTR  _LpMultiByteStr,
+    _In_                           int     _CbMultiByte,
+    _Out_writes_opt_(_CchWideChar) LPWSTR  _LpWideCharStr,
+    _In_                           int     _CchWideChar
+    )
+{
+    size_t Size = 0;
+
+    return mbstowcs_s(&Size, _LpWideCharStr, _CchWideChar, _LpMultiByteStr, _CbMultiByte)
+        ? /* Failure */ 0
+        : /* Success */ Size;
 }
 
 /* EOF */

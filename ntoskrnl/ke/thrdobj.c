@@ -15,16 +15,6 @@
 extern EX_WORK_QUEUE ExWorkerQueue[MaximumWorkQueue];
 extern LIST_ENTRY PspReaperListHead;
 
-ULONG KiMask32Array[MAXIMUM_PRIORITY] =
-{
-    0x1,        0x2,       0x4,       0x8,       0x10,       0x20,
-    0x40,       0x80,      0x100,     0x200,     0x400,      0x800,
-    0x1000,     0x2000,    0x4000,    0x8000,    0x10000,    0x20000,
-    0x40000,    0x80000,   0x100000,  0x200000,  0x400000,   0x800000,
-    0x1000000,  0x2000000, 0x4000000, 0x8000000, 0x10000000, 0x20000000,
-    0x40000000, 0x80000000
-};
-
 /* FUNCTIONS *****************************************************************/
 
 UCHAR
@@ -61,19 +51,33 @@ NTAPI
 KeQueryBasePriorityThread(IN PKTHREAD Thread)
 {
     LONG BaseIncrement;
+#if 0
+    KLOCK_QUEUE_HANDLE ProcessLock;
+#else
     KIRQL OldIrql;
+#endif
     PKPROCESS Process;
     ASSERT_THREAD(Thread);
     ASSERT_IRQL_LESS_OR_EQUAL(DISPATCH_LEVEL);
 
+#if 0
+    /* Get the Process */
+    Process = Thread->Process;
+
+    /* Lock the process */
+    KiAcquireProcessLockRaiseToSynch(Process, &ProcessLock);
+#else
     /* Raise IRQL to synch level */
     OldIrql = KeRaiseIrqlToSynchLevel();
+#endif
 
     /* Lock the thread */
     KiAcquireThreadLock(Thread);
 
+#if 1
     /* Get the Process */
     Process = Thread->ApcStatePointer[0]->Process;
+#endif
 
     /* Calculate the base increment */
     BaseIncrement = Thread->BasePriority - Process->BasePriority;
@@ -85,8 +89,14 @@ KeQueryBasePriorityThread(IN PKTHREAD Thread)
     /* Release thread lock */
     KiReleaseThreadLock(Thread);
 
+#if 0
+    /* Release process lock */
+    KiReleaseProcessLock(&ProcessLock);
+#else
     /* Lower IRQl and return Increment */
     KeLowerIrql(OldIrql);
+#endif
+
     return BaseIncrement;
 }
 
@@ -224,6 +234,41 @@ KeAlertThread(IN PKTHREAD Thread,
     return PreviousState;
 }
 
+#if 0
+ULONG64
+NTAPI
+KiEndThreadCycleAccumulation(IN PKPRCB Prcb, IN PKTHREAD Thread, OUT ULONG64* CurrentClock OPTIONAL)
+{
+    ASSERT(Prcb == KeGetCurrentPrcb());
+
+    ULONGLONG Counter = KeQueryPerformanceCounter(NULL).QuadPart;
+
+    ULONGLONG NewCycles = Counter - Prcb->StartCycles;
+
+    Prcb->CycleTime += NewCycles;
+    Thread->CycleTime += NewCycles;
+
+    Prcb->StartCycles = Counter;
+
+    if (CurrentClock)
+        *CurrentClock = Counter;
+
+    return Prcb->CycleTime;
+}
+
+ULONG64
+NTAPI
+KiUpdateTotalCyclesCurrentThread(IN PKPRCB Prcb, IN PKTHREAD Thread, OUT ULONG64* CurrentClock OPTIONAL)
+{
+    ASSERT(Prcb);
+    ASSERT(Thread);
+
+    const ULONG64 Result = KiEndThreadCycleAccumulation(Prcb, Thread, CurrentClock);
+
+    return Result;
+}
+#endif
+
 VOID
 NTAPI
 KeBoostPriorityThread(IN PKTHREAD Thread,
@@ -267,8 +312,23 @@ KeBoostPriorityThread(IN PKTHREAD Thread,
         KiReleaseThreadLock(Thread);
     }
 
-    /* Release the dispatcher lokc */
+    /* Release the dispatcher lock */
     KiReleaseDispatcherLock(OldIrql);
+}
+
+VOID
+NTAPI
+KiResumeThread(PKTHREAD Thread)
+{
+    /* Lock the dispatcher */
+    KiAcquireDispatcherLockAtSynchLevel();
+
+    /* Signal and satisfy */
+    Thread->SuspendSemaphore.Header.SignalState++;
+    KiWaitTest(&Thread->SuspendSemaphore.Header, IO_NO_INCREMENT);
+
+    /* Release the dispatcher */
+    KiReleaseDispatcherLockFromSynchLevel();
 }
 
 ULONG
@@ -507,7 +567,7 @@ KeStartThread(IN OUT PKTHREAD Thread)
     PKPROCESS Process = Thread->ApcState.Process;
 
     /* Setup static fields from parent */
-    Thread->DisableBoost = Process->DisableBoost;
+    KiAssignThreadDisableBoostFlag(Thread, KiTestProcessDisableBoostFlag(Process));
 #if defined(_M_IX86)
     Thread->Iopl = Process->Iopl;
 #endif
@@ -555,6 +615,8 @@ KeStartThread(IN OUT PKTHREAD Thread)
     /* Lock the Dispatcher Database */
     KiAcquireDispatcherLockAtSynchLevel();
 
+    KiVBoxPrint("KeStartThread 5\n");
+
     /* Insert the thread into the process list */
     InsertTailList(&Process->ThreadListHead, &Thread->ThreadListEntry);
 
@@ -562,14 +624,24 @@ KeStartThread(IN OUT PKTHREAD Thread)
     ASSERT(Process->StackCount != MAXULONG_PTR);
     Process->StackCount++;
 
+    KiVBoxPrint("KeStartThread 6\n");
+
     /* Release locks and return */
     KiReleaseDispatcherLockFromSynchLevel();
+
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+    if (Process->DeepFreeze)
+        KiFreezeSingleThread(KeGetCurrentPrcb(), Thread);
+#endif
+
     KiReleaseProcessLock(&LockHandle);
+
+    KiVBoxPrint("KeStartThread EXIT\n");
 }
 
 VOID
 NTAPI
-KiSuspendRundown(IN PKAPC Apc)
+KiSchedulerRundown(IN PKAPC Apc)
 {
     /* Does nothing */
     UNREFERENCED_PARAMETER(Apc);
@@ -577,7 +649,7 @@ KiSuspendRundown(IN PKAPC Apc)
 
 VOID
 NTAPI
-KiSuspendNop(IN PKAPC Apc,
+KiSchedulerNop(IN PKAPC Apc,
              IN PKNORMAL_ROUTINE *NormalRoutine,
              IN PVOID *NormalContext,
              IN PVOID *SystemArgument1,
@@ -593,7 +665,7 @@ KiSuspendNop(IN PKAPC Apc,
 
 VOID
 NTAPI
-KiSuspendThread(IN PVOID NormalContext,
+KiSchedulerApc(IN PVOID NormalContext,
                 IN PVOID SystemArgument1,
                 IN PVOID SystemArgument2)
 {
@@ -604,6 +676,43 @@ KiSuspendThread(IN PVOID NormalContext,
                           FALSE,
                           NULL);
 }
+
+#if 0
+BOOLEAN
+FASTCALL
+KiSuspendThread(PKTHREAD Thread, PKPRCB Prcb)
+{
+    /* Should we bother to queue at all? */
+    if (!Thread->ApcQueueable)
+        return FALSE;
+
+    /* Check if we should suspend it */
+    if (TRUE)
+    {
+        /* Is the APC already inserted? */
+        if (!Thread->SchedulerApc.Inserted)
+        {
+            /* Not inserted, insert it */
+            Thread->SchedulerApc.Inserted = TRUE;
+            KiInsertQueueApc(&Thread->SchedulerApc);
+            KiSignalThreadForApc(Prcb, &Thread->SchedulerApc, IO_NO_INCREMENT, DISPATCH_LEVEL);
+        }
+        else
+        {
+            /* Lock the dispatcher */
+            KiAcquireDispatcherLockAtSynchLevel();
+
+            /* Unsignal the semaphore, the APC was already inserted */
+            Thread->SuspendSemaphore.Header.SignalState--;
+
+            /* Release the dispatcher */
+            KiReleaseDispatcherLockFromSynchLevel();
+        }
+
+        return TRUE;
+    }
+}
+#endif
 
 ULONG
 NTAPI
@@ -815,15 +924,23 @@ KeInitThread(IN OUT PKTHREAD Thread,
     Thread->ApcStatePointer[AttachedApcEnvironment] = &Thread->SavedApcState;
     Thread->ApcStateIndex = OriginalApcEnvironment;
     Thread->ApcQueueable = TRUE;
+
+#if 0
+    if (!Context)
+    {
+        KiSetThreadSystemThreadFlagAssert(Thread);
+    }
+#endif
+
     KeInitializeSpinLock(&Thread->ApcQueueLock);
 
     /* Initialize the Suspend APC */
-    KeInitializeApc(&Thread->SuspendApc,
+    KeInitializeApc(&Thread->SchedulerApc,
                     Thread,
                     OriginalApcEnvironment,
-                    KiSuspendNop,
-                    KiSuspendRundown,
-                    KiSuspendThread,
+                    KiSchedulerNop,
+                    KiSchedulerRundown,
+                    KiSchedulerApc,
                     KernelMode,
                     NULL);
 
@@ -893,32 +1010,6 @@ KeInitThread(IN OUT PKTHREAD Thread,
     /* Set the Thread to initialized */
     Thread->State = Initialized;
     return Status;
-}
-
-VOID
-NTAPI
-KeInitializeThread(IN PKPROCESS Process,
-                   IN OUT PKTHREAD Thread,
-                   IN PKSYSTEM_ROUTINE SystemRoutine,
-                   IN PKSTART_ROUTINE StartRoutine,
-                   IN PVOID StartContext,
-                   IN PCONTEXT Context,
-                   IN PVOID Teb,
-                   IN PVOID KernelStack)
-{
-    /* Initialize and start the thread on success */
-    if (NT_SUCCESS(KeInitThread(Thread,
-                                KernelStack,
-                                SystemRoutine,
-                                StartRoutine,
-                                StartContext,
-                                Context,
-                                Teb,
-                                Process)))
-    {
-        /* Start it */
-        KeStartThread(Thread);
-    }
 }
 
 VOID

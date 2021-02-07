@@ -4,6 +4,9 @@
 #include "rxovride.h"
 #include "ntifs.h"
 
+#include <ndk/rtltypes.h>
+#include <ndk/rtlfuncs2.h>
+
 #ifndef BooleanFlagOn
 #define BooleanFlagOn(Flags, SingleFlag) ((BOOLEAN)((((Flags) & (SingleFlag)) != 0)))
 #endif

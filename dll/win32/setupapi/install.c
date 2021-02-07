@@ -2,7 +2,7 @@
  * Setupapi install routines
  *
  * Copyright 2002 Alexandre Julliard for CodeWeavers
- *           2005-2006 Hervé Poussineau (hpoussin@reactos.org)
+ *           2005-2006 Hervï¿½ Poussineau (hpoussin@reactos.org)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -613,6 +613,7 @@ static BOOL do_register_dll( const struct register_dll_info *info, const WCHAR *
 
         if (!func)
         {
+            __debugbreak();
             status.FailureCode = SPREG_GETPROCADDR;
             status.Win32Error = GetLastError();
             goto done;
@@ -636,6 +637,7 @@ static BOOL do_register_dll( const struct register_dll_info *info, const WCHAR *
 
         if (!func)
         {
+            __debugbreak();
             status.FailureCode = SPREG_GETPROCADDR;
             status.Win32Error = GetLastError();
             goto done;

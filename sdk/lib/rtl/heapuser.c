@@ -16,6 +16,7 @@
 
 RTL_CRITICAL_SECTION RtlpProcessHeapsListLock;
 
+PHEAP RtlpGlobalTagHeap = NULL;
 
 /* Usermode only! */
 VOID

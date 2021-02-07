@@ -255,6 +255,9 @@ extern "C" {
 #endif
 #endif
 
+  __declspec(noreturn) void __cdecl quick_exit(_In_ int _Code);
+  int __cdecl at_quick_exit(void (__cdecl*)(void));
+
   _CRTIMP unsigned int __cdecl _set_abort_behavior(_In_ unsigned int _Flags, _In_ unsigned int _Mask);
 
 #ifndef _CRT_ABS_DEFINED

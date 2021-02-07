@@ -145,7 +145,7 @@ KdInitSystem(IN ULONG BootPhase,
     BOOLEAN EnableKd, DisableKdAfterInit = FALSE, BlockEnable;
     LPSTR CommandLine, DebugLine, DebugOptionStart, DebugOptionEnd;
     STRING ImageName;
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PKLDR_DATA_TABLE_ENTRY LdrEntry;
     PLIST_ENTRY NextEntry;
     ULONG i, j, Length;
     SIZE_T DebugOptionLength;
@@ -215,7 +215,7 @@ KdInitSystem(IN ULONG BootPhase,
     {
         /* Get the image entry */
         LdrEntry = CONTAINING_RECORD(LoaderBlock->LoadOrderListHead.Flink,
-                                     LDR_DATA_TABLE_ENTRY,
+                                     KLDR_DATA_TABLE_ENTRY,
                                      InLoadOrderLinks);
 
         /* Save the Kernel Base */
@@ -419,7 +419,7 @@ KdInitSystem(IN ULONG BootPhase,
             {
                 /* Get the image entry */
                 LdrEntry = CONTAINING_RECORD(NextEntry,
-                                             LDR_DATA_TABLE_ENTRY,
+                                             KLDR_DATA_TABLE_ENTRY,
                                              InLoadOrderLinks);
 
                 /* Generate the image name */

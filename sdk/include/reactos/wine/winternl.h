@@ -2627,6 +2627,18 @@ NTSYSAPI NTSTATUS  WINAPI RtlAllocateAndInitializeSid(PSID_IDENTIFIER_AUTHORITY,
 NTSYSAPI RTL_HANDLE * WINAPI RtlAllocateHandle(RTL_HANDLE_TABLE *,ULONG *);
 NTSYSAPI PVOID     WINAPI RtlAllocateHeap(HANDLE,ULONG,SIZE_T) __WINE_ALLOC_SIZE(3);
 NTSYSAPI WCHAR     WINAPI RtlAnsiCharToUnicodeChar(LPSTR *);
+
+#pragma push_macro("RtlUnicodeStringToOemSize")
+#pragma push_macro("RtlOemStringToUnicodeSize")
+#pragma push_macro("RtlAnsiStringToUnicodeSize")
+#pragma push_macro("RtlUnicodeStringToAnsiSize")
+#pragma push_macro("RtlEqualLuid")
+#undef RtlUnicodeStringToOemSize
+#undef RtlOemStringToUnicodeSize
+#undef RtlAnsiStringToUnicodeSize
+#undef RtlUnicodeStringToAnsiSize
+#undef RtlEqualLuid
+
 NTSYSAPI DWORD     WINAPI RtlAnsiStringToUnicodeSize(const STRING *);
 NTSYSAPI NTSTATUS  WINAPI RtlAnsiStringToUnicodeString(PUNICODE_STRING,PCANSI_STRING,BOOLEAN);
 NTSYSAPI NTSTATUS  WINAPI RtlAppendAsciizToString(STRING *,LPCSTR);
@@ -2951,6 +2963,43 @@ NTSYSAPI LONGLONG  WINAPI RtlLargeIntegerSubtract(LONGLONG,LONGLONG);
 NTSYSAPI NTSTATUS  WINAPI RtlLargeIntegerToChar(const ULONGLONG *,ULONG,ULONG,PCHAR);
 #endif
 
+#pragma pop_macro("RtlUnicodeStringToOemSize")
+#pragma pop_macro("RtlOemStringToUnicodeSize")
+#pragma pop_macro("RtlAnsiStringToUnicodeSize")
+#pragma pop_macro("RtlUnicodeStringToAnsiSize")
+#pragma pop_macro("RtlEqualLuid")
+
+/* Threadpool functions */
+
+NTSYSAPI NTSTATUS  WINAPI TpAllocCleanupGroup(TP_CLEANUP_GROUP **);
+NTSYSAPI NTSTATUS  WINAPI TpAllocPool(TP_POOL **,PVOID);
+NTSYSAPI NTSTATUS  WINAPI TpAllocTimer(TP_TIMER **,PTP_TIMER_CALLBACK,PVOID,TP_CALLBACK_ENVIRON *);
+NTSYSAPI NTSTATUS  WINAPI TpAllocWait(TP_WAIT **,PTP_WAIT_CALLBACK,PVOID,TP_CALLBACK_ENVIRON *);
+NTSYSAPI NTSTATUS  WINAPI TpAllocWork(TP_WORK **,PTP_WORK_CALLBACK,PVOID,TP_CALLBACK_ENVIRON *);
+NTSYSAPI void      WINAPI TpCallbackLeaveCriticalSectionOnCompletion(TP_CALLBACK_INSTANCE *,RTL_CRITICAL_SECTION *);
+NTSYSAPI NTSTATUS  WINAPI TpCallbackMayRunLong(TP_CALLBACK_INSTANCE *);
+NTSYSAPI void      WINAPI TpCallbackReleaseMutexOnCompletion(TP_CALLBACK_INSTANCE *,HANDLE);
+NTSYSAPI void      WINAPI TpCallbackReleaseSemaphoreOnCompletion(TP_CALLBACK_INSTANCE *,HANDLE,DWORD);
+NTSYSAPI void      WINAPI TpCallbackSetEventOnCompletion(TP_CALLBACK_INSTANCE *,HANDLE);
+NTSYSAPI void      WINAPI TpCallbackUnloadDllOnCompletion(TP_CALLBACK_INSTANCE *,HMODULE);
+NTSYSAPI void      WINAPI TpDisassociateCallback(TP_CALLBACK_INSTANCE *);
+NTSYSAPI BOOL      WINAPI TpIsTimerSet(TP_TIMER *);
+NTSYSAPI void      WINAPI TpPostWork(TP_WORK *);
+NTSYSAPI void      WINAPI TpReleaseCleanupGroup(TP_CLEANUP_GROUP *);
+NTSYSAPI void      WINAPI TpReleaseCleanupGroupMembers(TP_CLEANUP_GROUP *,BOOL,PVOID);
+NTSYSAPI void      WINAPI TpReleasePool(TP_POOL *);
+NTSYSAPI void      WINAPI TpReleaseTimer(TP_TIMER *);
+NTSYSAPI void      WINAPI TpReleaseWait(TP_WAIT *);
+NTSYSAPI void      WINAPI TpReleaseWork(TP_WORK *);
+NTSYSAPI void      WINAPI TpSetPoolMaxThreads(TP_POOL *,DWORD);
+NTSYSAPI BOOL      WINAPI TpSetPoolMinThreads(TP_POOL *,DWORD);
+NTSYSAPI void      WINAPI TpSetTimer(TP_TIMER *, LARGE_INTEGER *,LONG,LONG);
+NTSYSAPI void      WINAPI TpSetWait(TP_WAIT *,HANDLE,LARGE_INTEGER *);
+NTSYSAPI NTSTATUS  WINAPI TpSimpleTryPost(PTP_SIMPLE_CALLBACK,PVOID,TP_CALLBACK_ENVIRON *);
+NTSYSAPI void      WINAPI TpWaitForTimer(TP_TIMER *,BOOL);
+NTSYSAPI void      WINAPI TpWaitForWait(TP_WAIT *,BOOL);
+NTSYSAPI void      WINAPI TpWaitForWork(TP_WORK *,BOOL);
+
 /* Wine internal functions */
 
 NTSYSAPI NTSTATUS CDECL wine_nt_to_unix_file_name( const UNICODE_STRING *nameW, ANSI_STRING *unix_name_ret,
@@ -2983,14 +3032,23 @@ NTSYSAPI SIZE_T CDECL wine_uninterrupted_write_memory( void *addr, const void *b
 #ifndef RtlMoveMemory // REACTOS
 #define RtlMoveMemory(Destination,Source,Length) memmove((Destination),(Source),(Length))
 #endif // REACTOS
+#ifndef RtlStoreUlong // REACTOS
 #define RtlStoreUlong(p,v)  do { ULONG _v = (v); memcpy((p), &_v, sizeof(_v)); } while (0)
+#endif // REACTOS
+#ifndef RtlStoreUlonglong // REACTOS
 #define RtlStoreUlonglong(p,v) do { ULONGLONG _v = (v); memcpy((p), &_v, sizeof(_v)); } while (0)
+#endif // REACTOS
+#ifndef RtlRetrieveUlong // REACTOS
 #define RtlRetrieveUlong(p,s) memcpy((p), (s), sizeof(ULONG))
+#endif // REACTOS
+#ifndef RtlRetrieveUlonglong // REACTOS
 #define RtlRetrieveUlonglong(p,s) memcpy((p), (s), sizeof(ULONGLONG))
+#endif // REACTOS
 #ifndef RtlZeroMemory // REACTOS
 #define RtlZeroMemory(Destination,Length) memset((Destination),0,(Length))
 #endif // REACTOS
 
+#ifndef RtlCheckBit // REACTOS
 static inline BOOLEAN RtlCheckBit(PCRTL_BITMAP lpBits, ULONG ulBit)
 {
     if (lpBits && ulBit < lpBits->SizeOfBitMap &&
@@ -2998,6 +3056,7 @@ static inline BOOLEAN RtlCheckBit(PCRTL_BITMAP lpBits, ULONG ulBit)
         return TRUE;
     return FALSE;
 }
+#endif // REACTOS
 
 /* These are implemented as __fastcall, so we can't let Winelib apps link with them */
 static inline USHORT RtlUshortByteSwap(USHORT s)
@@ -3016,6 +3075,7 @@ static inline ULONG RtlUlongByteSwap(ULONG i)
 }
 
 /* list manipulation macros */
+#if 0
 #define InitializeListHead(le)  (void)((le)->Flink = (le)->Blink = (le))
 #define InsertHeadList(le,e)    do { PLIST_ENTRY f = (le)->Flink; (e)->Flink = f; (e)->Blink = (le); f->Blink = (e); (le)->Flink = (e); } while (0)
 #define InsertTailList(le,e)    do { PLIST_ENTRY b = (le)->Blink; (e)->Flink = (le); (e)->Blink = b; b->Flink = (e); (le)->Blink = (e); } while (0)
@@ -3047,6 +3107,7 @@ static inline PLIST_ENTRY RemoveTailList(PLIST_ENTRY le)
     if (e != le) e->Flink = e->Blink = NULL;
     return e;
 }
+#endif
 
 
 #ifdef __WINESRC__

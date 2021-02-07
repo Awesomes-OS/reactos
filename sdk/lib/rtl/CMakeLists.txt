@@ -25,6 +25,7 @@ list(APPEND SOURCE
     env.c
     error.c
     exception.c
+    fls.c
     generictable.c
     handle.c
     heap.c
@@ -36,6 +37,8 @@ list(APPEND SOURCE
     memstream.c
     message.c
     largeint.c
+    loader_heap.c
+    loader.c
     luid.c
     network.c
     nls.c
@@ -56,6 +59,7 @@ list(APPEND SOURCE
     slist.c
     sid.c
     splaytree.c
+    srw.c
     sysvol.c
     thread.c
     time.c
@@ -110,17 +114,13 @@ elseif(ARCH STREQUAL "powerpc")
         powerpc/thread.c)
 endif()
 
-add_asm_files(rtl_asm ${ASM_SOURCE})
-add_library(rtl ${SOURCE} ${rtl_asm})
-add_pch(rtl rtl.h SOURCE)
-add_dependencies(rtl psdk asm)
-
 list(APPEND SOURCE_VISTA
     condvar.c
     runonce.c
     srw.c
 )
 
-add_library(rtl_vista ${SOURCE_VISTA})
-add_pch(rtl rtl_vista.h SOURCE_VISTA)
-add_dependencies(rtl_vista psdk)
+add_asm_files(rtl_asm ${ASM_SOURCE})
+add_library(rtl ${SOURCE} ${SOURCE_VISTA} ${rtl_asm})
+add_pch(rtl rtl.h SOURCE)
+add_dependencies(rtl psdk asm)

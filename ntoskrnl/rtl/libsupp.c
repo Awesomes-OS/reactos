@@ -35,7 +35,7 @@ RtlPcToFileHeader(
     IN  PVOID PcValue,
     OUT PVOID *BaseOfImage)
 {
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PKLDR_DATA_TABLE_ENTRY LdrEntry;
     BOOLEAN InSystem;
 
     /* Get the base for this file */
@@ -139,14 +139,6 @@ RtlReleasePebLock(VOID)
 {
 
 }
-
-NTSTATUS
-NTAPI
-LdrShutdownThread(VOID)
-{
-    return STATUS_SUCCESS;
-}
-
 
 PPEB
 NTAPI

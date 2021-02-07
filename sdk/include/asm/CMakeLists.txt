@@ -1,4 +1,4 @@
-
+include_directories(${REACTOS_SOURCE_DIR}/sdk/include/crt)
 add_library(genincdata MODULE genincdata.c)
 
 set_entrypoint(genincdata 0)

@@ -48,7 +48,11 @@ KiSwapProcess(IN PKPROCESS NewProcess,
     }
 
     /* Update CR3 */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+    __writecr3(NewProcess->DirectoryTableBase);
+#else
     __writecr3(NewProcess->DirectoryTableBase[0]);
+#endif
 
     /* Clear GS */
     Ke386SetGs(0);

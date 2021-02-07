@@ -11,6 +11,9 @@
 #include "ntldropts.h"
 #include "registry.h"
 
+#include <ndk/ldrtypes.h>
+#include <reactos/ldrp.h>
+
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(WINDOWS);
 
@@ -38,6 +41,37 @@ BOOLEAN NoexecuteEnabled = FALSE;
 
 // debug stuff
 VOID DumpMemoryAllocMap(VOID);
+
+//#undef TRACE
+//#undef ERR
+//#define TRACE(...) UiMessageBox(__VA_ARGS__);
+//#define ERR(...) UiMessageBox(__VA_ARGS__);
+
+PVOID
+NTAPI
+LdrpWinLdrHeapAlloc(
+    IN ULONG Flags OPTIONAL,
+    IN SIZE_T Size)
+{
+    PVOID ptr = FrLdrHeapAllocateEx(FrLdrDefaultHeap, Size, TAG_WLDR_NAME);
+    if (ptr && (Flags & HEAP_ZERO_MEMORY))
+    {
+        RtlZeroMemory(ptr, Size);
+    }
+
+    return ptr;
+}
+
+BOOLEAN
+NTAPI
+LdrpWinLdrHeapFree(
+    IN ULONG Flags OPTIONAL,
+    IN PVOID BaseAddress)
+{
+    FrLdrHeapFreeEx(FrLdrDefaultHeap, BaseAddress, TAG_WLDR_NAME);
+    return TRUE;
+}
+
 
 // Init "phase 0"
 VOID
@@ -243,7 +277,7 @@ WinLdrLoadDeviceDriver(PLIST_ENTRY LoadOrderListHead,
                        PCSTR BootPath,
                        PUNICODE_STRING FilePath,
                        ULONG Flags,
-                       PLDR_DATA_TABLE_ENTRY *DriverDTE)
+                       PKLDR_DATA_TABLE_ENTRY *DriverDTE)
 {
     CHAR FullPath[1024];
     CHAR DriverPath[1024];
@@ -284,7 +318,10 @@ WinLdrLoadDeviceDriver(PLIST_ENTRY LoadOrderListHead,
     RtlStringCbPrintfA(FullPath, sizeof(FullPath), "%s%wZ", BootPath, FilePath);
     Success = PeLdrLoadImage(FullPath, LoaderBootDriver, &DriverBase);
     if (!Success)
+    {
+        ERR("PeLdrLoadImage() failed\n");
         return FALSE;
+    }
 
     // Allocate a DTE for it
     Success = PeLdrAllocateDataTableEntry(LoadOrderListHead, DllName, DllName, DriverBase, DriverDTE);
@@ -452,7 +489,7 @@ LoadModule(
     IN PCCH File,
     IN PCCH ImportName, // BaseDllName
     IN TYPE_OF_MEMORY MemoryType,
-    OUT PLDR_DATA_TABLE_ENTRY *Dte,
+    OUT PKLDR_DATA_TABLE_ENTRY *Dte,
     IN ULONG Percentage)
 {
     BOOLEAN Success;
@@ -495,12 +532,12 @@ LoadWindowsCore(IN USHORT OperatingSystemVersion,
                 IN OUT PLOADER_PARAMETER_BLOCK LoaderBlock,
                 IN PCSTR BootOptions,
                 IN PCSTR BootPath,
-                IN OUT PLDR_DATA_TABLE_ENTRY* KernelDTE)
+                IN OUT PKLDR_DATA_TABLE_ENTRY* KernelDTE)
 {
     BOOLEAN Success;
     PCSTR Option;
     ULONG OptionLength;
-    PLDR_DATA_TABLE_ENTRY HalDTE, KdComDTE = NULL;
+    PKLDR_DATA_TABLE_ENTRY HalDTE, KdComDTE = NULL;
     CHAR DirPath[MAX_PATH];
     CHAR HalFileName[MAX_PATH];
     CHAR KernelFileName[MAX_PATH];
@@ -950,13 +987,16 @@ LoadAndBootWindowsCommon(
 {
     PLOADER_PARAMETER_BLOCK LoaderBlockVA;
     BOOLEAN Success;
-    PLDR_DATA_TABLE_ENTRY KernelDTE;
+    PKLDR_DATA_TABLE_ENTRY KernelDTE;
     KERNEL_ENTRY_POINT KiSystemStartup;
     PCSTR SystemRoot;
 
     TRACE("LoadAndBootWindowsCommon()\n");
 
     ASSERT(OperatingSystemVersion != 0);
+
+    LdrpHeapAllocProc = &LdrpWinLdrHeapAlloc;
+    LdrpHeapFreeProc = &LdrpWinLdrHeapFree;
 
 #ifdef _M_IX86
     /* Setup redirection support */

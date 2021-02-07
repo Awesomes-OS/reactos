@@ -11,10 +11,6 @@
 
 /* INCLUDES ******************************************************************/
 
-/* We're a core NT DLL, we don't import syscalls */
-#define _NTSYSTEM_
-#define _NTDLLBUILD_
-
 /* C Headers */
 #define _CTYPE_DISABLE_MACROS
 #define _CRT_SECURE_NO_DEPRECATE

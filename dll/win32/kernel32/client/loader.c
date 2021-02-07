@@ -279,6 +279,14 @@ BasepLoadLibraryAsDatafile(PWSTR Path, LPCWSTR Name, HMODULE *hModule)
     return STATUS_SUCCESS;
 }
 
+LONG
+NTAPI
+LdrBaseExceptionFilter(unsigned int code, PEXCEPTION_POINTERS ep)
+{
+    __debugbreak();
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
 /*
  * @implemented
  */
@@ -367,10 +375,11 @@ LoadLibraryExW(LPCWSTR lpLibFileName,
                             &DllName,
                             (PVOID*)&hInst);
     }
-    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    _SEH2_EXCEPT(LdrBaseExceptionFilter(_SEH2_GetExceptionCode(), _SEH2_GetExceptionInformation()))
     {
         Status = _SEH2_GetExceptionCode();
-    } _SEH2_END;
+    }
+    _SEH2_END;
 
 
 done:
@@ -383,7 +392,7 @@ done:
     /* Set last error in failure case */
     if (!NT_SUCCESS(Status))
     {
-        DPRINT1("LoadLibraryExW(%ls) failing with status %lx\n", lpLibFileName, Status);
+        DPRINT1("LoadLibraryExW(%ls) failing with status 0x%08lX\n", lpLibFileName, Status);
         BaseSetLastNTError(Status);
         return NULL;
     }

@@ -189,8 +189,29 @@ Abstract:
 #endif
 
 /* Make Sure NTDDI_VERSION and _WIN32_WINNT Match */
-#if ((NTDDI_VERSION >> 16) != _WIN32_WINNT)
-#error NTDDI_VERSION and _WIN32_WINNT mismatch!
+
+#if (defined(WINVER) && (WINVER < 0x0400) && (_WIN32_WINNT > 0x0400))
+#error WINVER setting conflicts with _WIN32_WINNT setting
+#endif
+
+#if (((OSVERSION_MASK & NTDDI_VERSION) == NTDDI_WIN2K) && (_WIN32_WINNT != _WIN32_WINNT_WIN2K))
+#error NTDDI_VERSION setting conflicts with _WIN32_WINNT setting
+#endif
+
+#if (((OSVERSION_MASK & NTDDI_VERSION) == NTDDI_WINXP) && (_WIN32_WINNT != _WIN32_WINNT_WINXP))
+#error NTDDI_VERSION setting conflicts with _WIN32_WINNT setting
+#endif
+
+#if (((OSVERSION_MASK & NTDDI_VERSION) == NTDDI_WS03) && (_WIN32_WINNT != _WIN32_WINNT_WS03))
+#error NTDDI_VERSION setting conflicts with _WIN32_WINNT setting
+#endif
+
+#if (((OSVERSION_MASK & NTDDI_VERSION) == NTDDI_VISTA) && (_WIN32_WINNT != _WIN32_WINNT_VISTA))
+#error NTDDI_VERSION setting conflicts with _WIN32_WINNT setting
+#endif
+
+#if ((_WIN32_WINNT < _WIN32_WINNT_WIN2K) && (_WIN32_IE > _WIN32_IE_IE60SP1))
+#error _WIN32_WINNT settings conflicts with _WIN32_IE setting
 #endif
 
 #endif

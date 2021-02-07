@@ -299,16 +299,13 @@ static VOID
 
 
 /*
- * @unimplemented
+ * @implemented
  */
 LONG
 NTAPI
 RtlUnhandledExceptionFilter(IN struct _EXCEPTION_POINTERS* ExceptionInfo)
 {
-    /* This is used by the security cookie checks, and also called externally */
-    UNIMPLEMENTED;
-    PrintStackTrace(ExceptionInfo);
-    return ERROR_CALL_NOT_IMPLEMENTED;
+    return RtlUnhandledExceptionFilter2(ExceptionInfo, 0);
 }
 
 /*

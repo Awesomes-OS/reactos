@@ -130,6 +130,7 @@ RtlpQueryRemoteProcessModules(HANDLE ProcessHandle,
     PROCESS_BASIC_INFORMATION pbiInfo;
     PPEB_LDR_DATA ppldLdrData;
     LDR_DATA_TABLE_ENTRY lmModule;
+    //LDR_DDAG_NODE lmDdagNode;
     PLIST_ENTRY pleListHead;
     PLIST_ENTRY pleCurEntry;
 
@@ -237,6 +238,20 @@ RtlpQueryRemoteProcessModules(HANDLE ProcessHandle,
 
         DPRINT("  Module %wZ\n", &Unicode);
 
+#if 0
+        Status = NtReadVirtualMemory(ProcessHandle,
+            lmModule.DdagNode,
+            &lmDdagNode,
+            sizeof(LDR_DDAG_NODE),
+            NULL);
+
+        if (!NT_SUCCESS(Status))
+        {
+            /* failure */
+            DPRINT("NtReadVirtualMemory 3 0x%lx \n", Status);
+            return Status;
+        }
+#endif
         if (UsedSize > Size)
         {
             Status = STATUS_INFO_LENGTH_MISMATCH;
@@ -250,7 +265,8 @@ RtlpQueryRemoteProcessModules(HANDLE ProcessHandle,
             ModulePtr->Flags          = lmModule.Flags;
             ModulePtr->LoadOrderIndex = 0;      // FIXME:  ??
             ModulePtr->InitOrderIndex = 0;      // FIXME: ??
-            ModulePtr->LoadCount      = lmModule.LoadCount;
+            ModulePtr->LoadCount      = min(lmModule.ObsoleteLoadCount, USHORT_MAX - 1);
+            //ModulePtr->LoadCount      = min(lmDdagNode.LoadCount, USHORT_MAX - 1);
 
             AnsiString.Length        = 0;
             AnsiString.MaximumLength = 256;

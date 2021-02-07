@@ -16,10 +16,6 @@
 
 /* GLOBALS ******************************************************************/
 
-NTSTATUS
-NTAPI
-RtlGetVersion(OUT PRTL_OSVERSIONINFOW lpVersionInformation);
-
 /* FUNCTIONS ****************************************************************/
 
 static UCHAR

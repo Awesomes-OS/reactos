@@ -22,37 +22,7 @@ C_ASSERT(FIELD_OFFSET(FIBER, FiberContext) == 0x14);
 C_ASSERT(FIELD_OFFSET(FIBER, GuaranteedStackBytes) == 0x2E0);
 C_ASSERT(FIELD_OFFSET(FIBER, FlsData) == 0x2E4);
 C_ASSERT(FIELD_OFFSET(FIBER, ActivationContextStackPointer) == 0x2E8);
-C_ASSERT(RTL_FLS_MAXIMUM_AVAILABLE == FLS_MAXIMUM_AVAILABLE);
 #endif // _M_IX86
-
-/* PRIVATE FUNCTIONS **********************************************************/
-
-VOID
-WINAPI
-BaseRundownFls(_In_ PVOID FlsData)
-{
-    ULONG n, FlsHighIndex;
-    PRTL_FLS_DATA pFlsData;
-    PFLS_CALLBACK_FUNCTION lpCallback;
-
-    pFlsData = FlsData;
-
-    RtlAcquirePebLock();
-    FlsHighIndex = NtCurrentPeb()->FlsHighIndex;
-    RemoveEntryList(&pFlsData->ListEntry);
-    RtlReleasePebLock();
-
-    for (n = 1; n <= FlsHighIndex; ++n)
-    {
-        lpCallback = NtCurrentPeb()->FlsCallback[n];
-        if (lpCallback && pFlsData->Data[n])
-        {
-            lpCallback(pFlsData->Data[n]);
-        }
-    }
-
-    RtlFreeHeap(RtlGetProcessHeap(), 0, FlsData);
-}
 
 /* PUBLIC FUNCTIONS ***********************************************************/
 
@@ -292,6 +262,7 @@ DeleteFiber(_In_ LPVOID lpFiber)
     SIZE_T Size;
     PFIBER Fiber;
     PTEB Teb;
+    PVOID FlsData;
 
     /* Are we deleting ourselves? */
     Teb = NtCurrentTeb();
@@ -304,14 +275,26 @@ DeleteFiber(_In_ LPVOID lpFiber)
     }
 
     /* Not ourselves, de-allocate the stack */
-    Size = 0 ;
+    Size = 0;
     NtFreeVirtualMemory(NtCurrentProcess(),
                         &Fiber->DeallocationStack,
                         &Size,
                         MEM_RELEASE);
 
-    /* Get rid of FLS */
-    if (Fiber->FlsData) BaseRundownFls(Fiber->FlsData);
+    /* Rundown the FLS */
+    FlsData = Fiber->FlsData;
+    if (FlsData)
+    {
+        _SEH2_TRY
+        {
+            RtlProcessFlsData(FlsData, RTLP_FLS_DATA_CLEANUP_RUN_CALLBACKS);
+        }
+        _SEH2_FINALLY
+        {
+            RtlProcessFlsData(FlsData, RTLP_FLS_DATA_CLEANUP_DEALLOCATE);
+        }
+        _SEH2_END;
+    }
 
     /* Get rid of the activation context stack */
     RtlFreeActivationContextStack(Fiber->ActivationContextStackPointer);
@@ -331,182 +314,6 @@ IsThreadAFiber(VOID)
 {
     /* Return flag in the TEB */
     return NtCurrentTeb()->HasFiberData;
-}
-
-/*
- * @implemented
- */
-DWORD
-WINAPI
-FlsAlloc(PFLS_CALLBACK_FUNCTION lpCallback)
-{
-    DWORD dwFlsIndex;
-    PPEB Peb = NtCurrentPeb();
-    PRTL_FLS_DATA pFlsData;
-
-    RtlAcquirePebLock();
-
-    pFlsData = NtCurrentTeb()->FlsData;
-
-    if (!Peb->FlsCallback &&
-        !(Peb->FlsCallback = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY,
-                                             FLS_MAXIMUM_AVAILABLE * sizeof(PVOID))))
-    {
-        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-        dwFlsIndex = FLS_OUT_OF_INDEXES;
-    }
-    else
-    {
-        dwFlsIndex = RtlFindClearBitsAndSet(Peb->FlsBitmap, 1, 1);
-        if (dwFlsIndex != FLS_OUT_OF_INDEXES)
-        {
-            if (!pFlsData &&
-                !(pFlsData = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(RTL_FLS_DATA))))
-            {
-                RtlClearBits(Peb->FlsBitmap, dwFlsIndex, 1);
-                dwFlsIndex = FLS_OUT_OF_INDEXES;
-                SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-            }
-            else
-            {
-                if (!NtCurrentTeb()->FlsData)
-                {
-                    NtCurrentTeb()->FlsData = pFlsData;
-                    InsertTailList(&Peb->FlsListHead, &pFlsData->ListEntry);
-                }
-
-                pFlsData->Data[dwFlsIndex] = NULL; /* clear the value */
-                Peb->FlsCallback[dwFlsIndex] = lpCallback;
-
-                if (dwFlsIndex > Peb->FlsHighIndex)
-                    Peb->FlsHighIndex = dwFlsIndex;
-            }
-        }
-        else
-        {
-            SetLastError(ERROR_NO_MORE_ITEMS);
-        }
-    }
-    RtlReleasePebLock();
-    return dwFlsIndex;
-}
-
-
-/*
- * @implemented
- */
-BOOL
-WINAPI
-FlsFree(DWORD dwFlsIndex)
-{
-    BOOL ret;
-    PPEB Peb = NtCurrentPeb();
-
-    if (dwFlsIndex >= FLS_MAXIMUM_AVAILABLE)
-    {
-        SetLastError(ERROR_INVALID_PARAMETER);
-        return FALSE;
-    }
-
-    RtlAcquirePebLock();
-
-    _SEH2_TRY
-    {
-        ret = RtlAreBitsSet(Peb->FlsBitmap, dwFlsIndex, 1);
-        if (ret)
-        {
-            PLIST_ENTRY Entry;
-            PFLS_CALLBACK_FUNCTION lpCallback;
-
-            RtlClearBits(Peb->FlsBitmap, dwFlsIndex, 1);
-            lpCallback = Peb->FlsCallback[dwFlsIndex];
-
-            for (Entry = Peb->FlsListHead.Flink; Entry != &Peb->FlsListHead; Entry = Entry->Flink)
-            {
-                PRTL_FLS_DATA pFlsData;
-
-                pFlsData = CONTAINING_RECORD(Entry, RTL_FLS_DATA, ListEntry);
-                if (pFlsData->Data[dwFlsIndex])
-                {
-                    if (lpCallback)
-                    {
-                        lpCallback(pFlsData->Data[dwFlsIndex]);
-                    }
-                    pFlsData->Data[dwFlsIndex] = NULL;
-                }
-            }
-            Peb->FlsCallback[dwFlsIndex] = NULL;
-        }
-        else
-        {
-            SetLastError(ERROR_INVALID_PARAMETER);
-        }
-    }
-    _SEH2_FINALLY
-    {
-        RtlReleasePebLock();
-    }
-    _SEH2_END;
-
-    return ret;
-}
-
-
-/*
- * @implemented
- */
-PVOID
-WINAPI
-FlsGetValue(DWORD dwFlsIndex)
-{
-    PRTL_FLS_DATA pFlsData;
-
-    pFlsData = NtCurrentTeb()->FlsData;
-    if (!dwFlsIndex || dwFlsIndex >= FLS_MAXIMUM_AVAILABLE || !pFlsData)
-    {
-        SetLastError(ERROR_INVALID_PARAMETER);
-        return NULL;
-    }
-
-    SetLastError(ERROR_SUCCESS);
-    return pFlsData->Data[dwFlsIndex];
-}
-
-
-/*
- * @implemented
- */
-BOOL
-WINAPI
-FlsSetValue(DWORD dwFlsIndex,
-            PVOID lpFlsData)
-{
-    PRTL_FLS_DATA pFlsData;
-
-    if (!dwFlsIndex || dwFlsIndex >= FLS_MAXIMUM_AVAILABLE)
-    {
-        SetLastError(ERROR_INVALID_PARAMETER);
-        return FALSE;
-    }
-
-    pFlsData = NtCurrentTeb()->FlsData;
-
-    if (!NtCurrentTeb()->FlsData &&
-        !(NtCurrentTeb()->FlsData = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY,
-                                                    sizeof(RTL_FLS_DATA))))
-    {
-        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-        return FALSE;
-    }
-    if (!pFlsData)
-    {
-        pFlsData = NtCurrentTeb()->FlsData;
-        RtlAcquirePebLock();
-        InsertTailList(&NtCurrentPeb()->FlsListHead, &pFlsData->ListEntry);
-        RtlReleasePebLock();
-    }
-    pFlsData->Data[dwFlsIndex] = lpFlsData;
-    return TRUE;
 }
 
 /* EOF */

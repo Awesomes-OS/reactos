@@ -40,7 +40,8 @@ KiIpiSend(IN KAFFINITY TargetProcessors,
 
 VOID
 NTAPI
-KiIpiSendPacket(IN KAFFINITY TargetProcessors,
+KiIpiSendPacket(IN IPI_TYPE IpiType,
+                IN KAFFINITY TargetProcessors,
                 IN PKIPI_WORKER WorkerFunction,
                 IN PKIPI_BROADCAST_WORKER BroadcastFunction,
                 IN ULONG_PTR Context,
@@ -222,10 +223,11 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
 
 #ifdef CONFIG_SMP
     /* Make sure this is MP */
-    if (Affinity)
+    if (Count > 1)
     {
         /* Send an IPI */
-        KiIpiSendPacket(Affinity,
+        KiIpiSendPacket(IpiAllButSelf,
+                        Affinity,
                         KiIpiGenericCallTarget,
                         Function,
                         Argument,
@@ -253,7 +255,7 @@ KeIpiGenericCall(IN PKIPI_BROADCAST_WORKER Function,
 
 #ifdef CONFIG_SMP
     /* If this is MP, wait for the other processors to finish */
-    if (Affinity)
+    if (Count > 1)
     {
         /* Sanity check */
         ASSERT(Prcb == KeGetCurrentPrcb());

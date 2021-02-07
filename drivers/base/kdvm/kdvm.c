@@ -7,6 +7,7 @@
  */
 
 #include "kdvm.h"
+#include <ndk/ketypes.h>
 
 static CHAR KdVmCmdMagic[] = "~kdVMvA ";
 static CHAR KdVmReplyMagic[] = "++kdVMvA ";

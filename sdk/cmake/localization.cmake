@@ -1,6 +1,6 @@
 
 if(NOT DEFINED I18N_LANG)
-    set(I18N_LANG all)
+    set(I18N_LANG en-US)
 endif()
 
 function(set_i18n_language I18N_LANG)

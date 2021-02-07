@@ -675,7 +675,7 @@ FindFirstFileExW(IN LPCWSTR lpFileName,
         UNICODE_STRING NtPath, FilePattern, FileName;
         PWSTR NtPathBuffer;
         RTL_RELATIVE_NAME_U RelativePath;
-        ULONG DeviceNameInfo = 0;
+        ULONG DeviceNameInfo;
 
         NTSTATUS Status;
         OBJECT_ATTRIBUTES ObjectAttributes;
@@ -691,20 +691,13 @@ FindFirstFileExW(IN LPCWSTR lpFileName,
         BYTE DirectoryInfo[FIND_DATA_SIZE];
         DIR_INFORMATION DirInfo = {&DirectoryInfo};
 
-        /* The search filter is always unused */
-        if (lpSearchFilter)
-        {
-            SetLastError(ERROR_INVALID_PARAMETER);
-            return INVALID_HANDLE_VALUE;
-        }
-
         RtlInitUnicodeString(&FileName, lpFileName);
         if (FileName.Length != 0 && FileName.Buffer[FileName.Length / sizeof(WCHAR) - 1] == L'.')
         {
             HadADot = TRUE;
         }
 
-        if (!RtlDosPathNameToNtPathName_U(lpFileName,
+        if (!RtlDosPathNameToRelativeNtPathName_U(lpFileName,
                                           &NtPath,
                                           (PCWSTR*)&FilePattern.Buffer,
                                           &RelativePath))
@@ -722,24 +715,15 @@ FindFirstFileExW(IN LPCWSTR lpFileName,
         /* Save the buffer pointer for later, we need to free it! */
         NtPathBuffer = NtPath.Buffer;
 
-        /*
-         * Contrary to what Windows does, check NOW whether or not
-         * lpFileName is a DOS driver. Therefore we don't have to
-         * write broken code to check that.
-         */
-        if (!FilePattern.Buffer || !*FilePattern.Buffer)
+        DeviceNameInfo = RtlIsDosDeviceName_U(lpFileName);
+        if (DeviceNameInfo != 0)
         {
-            /* No file pattern specified, or DOS device */
+            RtlReleaseRelativeName(&RelativePath);
+            RtlFreeHeap(RtlGetProcessHeap(), 0, NtPathBuffer);
 
-            DeviceNameInfo = RtlIsDosDeviceName_U(lpFileName);
-            if (DeviceNameInfo != 0)
-            {
-                RtlFreeHeap(RtlGetProcessHeap(), 0, NtPathBuffer);
-
-                /* OK, it's really a DOS device */
-                CopyDeviceFindData(Win32FindData, lpFileName, DeviceNameInfo);
-                return FIND_DEVICE_HANDLE;
-            }
+            /* OK, it's really a DOS device */
+            CopyDeviceFindData(Win32FindData, lpFileName, DeviceNameInfo);
+            return FIND_DEVICE_HANDLE;
         }
 
         /* A file pattern was specified, or it was not a DOS device */
@@ -797,12 +781,11 @@ FindFirstFileExW(IN LPCWSTR lpFileName,
 
         if (!NT_SUCCESS(Status))
         {
+            RtlReleaseRelativeName(&RelativePath);
             RtlFreeHeap(RtlGetProcessHeap(), 0, NtPathBuffer);
 
             /* Adjust the last error codes */
-            if (Status == STATUS_OBJECT_NAME_NOT_FOUND)
-                Status = STATUS_OBJECT_PATH_NOT_FOUND;
-            else if (Status == STATUS_OBJECT_TYPE_MISMATCH)
+            if (Status == STATUS_OBJECT_NAME_NOT_FOUND || Status == STATUS_OBJECT_TYPE_MISMATCH)
                 Status = STATUS_OBJECT_PATH_NOT_FOUND;
 
             BaseSetLastNTError(Status);
@@ -816,6 +799,7 @@ FindFirstFileExW(IN LPCWSTR lpFileName,
         if (FilePattern.Length == 0)
         {
             NtClose(hDirectory);
+            RtlReleaseRelativeName(&RelativePath);
             RtlFreeHeap(RtlGetProcessHeap(), 0, NtPathBuffer);
 
             SetLastError(ERROR_FILE_NOT_FOUND);
@@ -890,6 +874,7 @@ FindFirstFileExW(IN LPCWSTR lpFileName,
                                       &FilePattern,
                                       TRUE);
 
+        RtlReleaseRelativeName(&RelativePath);
         RtlFreeHeap(RtlGetProcessHeap(), 0, NtPathBuffer);
 
         if (!NT_SUCCESS(Status))

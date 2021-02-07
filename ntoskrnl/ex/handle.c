@@ -248,7 +248,7 @@ ExpFreeHandleTable(IN PHANDLE_TABLE HandleTable)
     ExFreePoolWithTag(HandleTable, TAG_OBJECT_TABLE);
     if (Process)
     {
-        /* FIXME: TODO */
+        PsReturnProcessPagedPoolQuota(Process, sizeof(HANDLE_TABLE));
     }
 }
 
@@ -320,10 +320,15 @@ ExpAllocateHandleTable(IN PEPROCESS Process OPTIONAL,
                                         TAG_OBJECT_TABLE);
     if (!HandleTable) return NULL;
 
-    /* Check if we have a process */
+    /* Check if we have a process, charge pool Quota if we do */
     if (Process)
     {
-        /* FIXME: Charge quota */
+        if (!NT_SUCCESS(PsChargeProcessPagedPoolQuota(Process, sizeof(HANDLE_TABLE))))
+        {
+            /* Failed, free the table */
+            ExFreePoolWithTag(HandleTable, TAG_OBJECT_TABLE);
+            return NULL;
+        }
     }
 
     /* Clear the table */
@@ -335,6 +340,8 @@ ExpAllocateHandleTable(IN PEPROCESS Process OPTIONAL,
     {
         /* Failed, free the table */
         ExFreePoolWithTag(HandleTable, TAG_OBJECT_TABLE);
+        if (Process)
+            PsReturnProcessPagedPoolQuota(Process, sizeof(HANDLE_TABLE));
         return NULL;
     }
 

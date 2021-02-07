@@ -1,0 +1,4 @@
+_GetLastError@0
+__imp__RtlGetLastWin32Error@0
+_SetLastError@4
+__imp__RtlSetLastWin32Error@4

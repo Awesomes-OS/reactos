@@ -29,6 +29,8 @@ Author:
 #include <ifssupp.h>
 #endif
 
+#define MAX_PROC_GROUPS 1
+
 //
 // A system call ID is formatted as such:
 // .________________________________________________________________.
@@ -196,6 +198,11 @@ typedef struct _FIBER                                    /* Field offsets:    */
     struct _ACTIVATION_CONTEXT_STACK *ActivationContextStackPointer;
 #endif
 } FIBER, *PFIBER;
+
+#define NX_SUPPORT_POLICY_ALWAYSOFF 0
+#define NX_SUPPORT_POLICY_ALWAYSON  1
+#define NX_SUPPORT_POLICY_OPTIN     2
+#define NX_SUPPORT_POLICY_OPTOUT    3
 
 #ifndef NTOS_MODE_USER
 //
@@ -416,7 +423,9 @@ typedef enum _KTHREAD_STATE
     Waiting,
     Transition,
     DeferredReady,
-#if (NTDDI_VERSION >= NTDDI_WS03)
+#if 1 || (NTDDI_VERSION >= NTDDI_WIN7)
+    GateWaitObsolete
+#elif (NTDDI_VERSION >= NTDDI_WS03)
     GateWait
 #endif
 } KTHREAD_STATE, *PKTHREAD_STATE;
@@ -541,6 +550,33 @@ typedef struct _KSYSTEM_TIME
     LONG High2Time;
 } KSYSTEM_TIME, *PKSYSTEM_TIME;
 
+#endif
+
+#define XSTATE_LEGACY_FLOATING_POINT        0
+#define XSTATE_LEGACY_SSE                   1
+#define XSTATE_GSSE                         2
+
+#define XSTATE_MASK_LEGACY_FLOATING_POINT   (1LL << (XSTATE_LEGACY_FLOATING_POINT))
+#define XSTATE_MASK_LEGACY_SSE              (1LL << (XSTATE_LEGACY_SSE))
+#define XSTATE_MASK_LEGACY                  (XSTATE_MASK_LEGACY_FLOATING_POINT | XSTATE_MASK_LEGACY_SSE)
+#define XSTATE_MASK_GSSE                    (1LL << (XSTATE_GSSE))
+
+#define MAXIMUM_XSTATE_FEATURES             64
+
+typedef struct _XSTATE_FEATURE
+{
+  ULONG Offset;
+  ULONG Size;
+} XSTATE_FEATURE, *PXSTATE_FEATURE;
+
+typedef struct _XSTATE_CONFIGURATION
+{
+  ULONG64 EnabledFeatures;
+  ULONG Size;
+  ULONG OptimizedSave:1;
+  XSTATE_FEATURE Features[MAXIMUM_XSTATE_FEATURES];
+} XSTATE_CONFIGURATION, *PXSTATE_CONFIGURATION;
+
 //
 // Shared Kernel User Data
 //
@@ -568,6 +604,7 @@ typedef struct _KUSER_SHARED_DATA
     ULONG Reserved3;
     volatile ULONG TimeSlip;
     ALTERNATIVE_ARCHITECTURE_TYPE AlternativeArchitecture;
+    ULONG AltArchitecturePad[1];
     LARGE_INTEGER SystemExpirationDate;
     ULONG SuiteMask;
     BOOLEAN KdDebuggerEnabled;
@@ -580,41 +617,113 @@ typedef struct _KUSER_SHARED_DATA
     ULONG LastSystemRITEventTickCount;
     ULONG NumberOfPhysicalPages;
     BOOLEAN SafeBootMode;
-    ULONG TraceLogging;
-    ULONG Fill0;
-    ULONGLONG TestRetInstruction;
-    ULONG SystemCall;
-    ULONG SystemCallReturn;
-    ULONGLONG SystemCallPad[3];
-    union {
-        volatile KSYSTEM_TIME TickCount;
-        volatile ULONG64 TickCountQuad;
-    };
-    ULONG Cookie;
-#if (NTDDI_VERSION >= NTDDI_WS03)
-    LONGLONG ConsoleSessionForegroundProcessId;
-    ULONG Wow64SharedInformation[MAX_WOW64_SHARED_ENTRIES];
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+    _ANONYMOUS_UNION union {
+        UCHAR TscQpcData;
+        _ANONYMOUS_STRUCT struct {
+            UCHAR TscQpcEnabled:1;
+            UCHAR TscQpcSpareFlag:1;
+            UCHAR TscQpcShift:6;
+        } DUMMYSTRUCTNAME;
+    } DUMMYUNIONNAME;
+    UCHAR TscQpcPad[2];
 #endif
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
-    USHORT UserModeGlobalLogger[8];
-    ULONG HeapTracingPid[2];
-    ULONG CritSecTracingPid[2];
-    union
-    {
+#if (NTDDI_VERSION >= NTDDI_VISTA)
+    _ANONYMOUS_UNION union {
         ULONG SharedDataFlags;
-        struct
-        {
+        _ANONYMOUS_STRUCT struct {
             ULONG DbgErrorPortPresent:1;
             ULONG DbgElevationEnabled:1;
             ULONG DbgVirtEnabled:1;
             ULONG DbgInstallerDetectEnabled:1;
-            ULONG SpareBits:28;
-        };
-    };
+            ULONG DbgSystemDllRelocated:1;
+            ULONG DbgDynProcessorEnabled:1;
+            ULONG DbgSEHValidationEnabled:1;
+            ULONG SpareBits:25;
+        } DUMMYSTRUCTNAME2;
+    } DUMMYUNIONNAME2;
+#else
+    ULONG TraceLogging;
+#endif
+    ULONG DataFlagsPad[1];
+    ULONGLONG TestRetInstruction;
+#if 0
+    ULONG SystemCall;
+    ULONG SystemCallReturn;
+    ULONGLONG SystemCallPad[3];
+#elif 1
+    ULONG SystemCall;
+    ULONG SystemCallPad[7];
+#else
+    ULONGLONG SystemCallPad[4];
+#endif
+    _ANONYMOUS_UNION union {
+        volatile KSYSTEM_TIME TickCount;
+        volatile ULONG64 TickCountQuad;
+        _ANONYMOUS_STRUCT struct {
+            ULONG ReservedTickCountOverlay[3];
+            ULONG TickCountPad[1];
+        } DUMMYSTRUCTNAME;
+    } DUMMYUNIONNAME3;
+    ULONG Cookie;
+    ULONG CookiePad[1];
+#if (NTDDI_VERSION >= NTDDI_WS03)
+    LONGLONG ConsoleSessionForegroundProcessId;
+    ULONG Wow64SharedInformation[MAX_WOW64_SHARED_ENTRIES];
+#endif
+#if (NTDDI_VERSION >= NTDDI_VISTA)
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+    USHORT UserModeGlobalLogger[16];
+#else
+    USHORT UserModeGlobalLogger[8];
+    ULONG HeapTracingPid[2];
+    ULONG CritSecTracingPid[2];
+#endif
     ULONG ImageFileExecutionOptions;
-    KAFFINITY ActiveProcessorAffinity;
+#if (NTDDI_VERSION >= NTDDI_VISTASP1)
+    ULONG LangGenerationCount;
+#else
+    /* 4 bytes padding */
+#endif
+    ULONGLONG Reserved5;
+    volatile ULONG64 InterruptTimeBias;
+#endif
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+    volatile ULONG64 TscQpcBias;
+    volatile ULONG ActiveProcessorCount;
+    volatile USHORT ActiveGroupCount;
+    USHORT Reserved4;
+    volatile ULONG AitSamplingValue;
+    volatile ULONG AppCompatFlag;
+    ULONGLONG SystemDllNativeRelocation;
+    ULONG SystemDllWowRelocation;
+    ULONG XStatePad[1];
+    XSTATE_CONFIGURATION XState;
 #endif
 } KUSER_SHARED_DATA, *PKUSER_SHARED_DATA;
+
+//
+// Kernel No Execute Options
+//
+typedef union _KEXECUTE_OPTIONS
+{
+    struct
+    {
+        UCHAR ExecuteDisable : 1;
+        UCHAR ExecuteEnable : 1;
+        UCHAR DisableThunkEmulation : 1;
+        UCHAR Permanent : 1;
+        UCHAR ExecuteDispatchEnable : 1;
+        UCHAR ImageDispatchEnable : 1;
+        UCHAR DisableExceptionChainValidation : 1;
+        UCHAR Spare : 1;
+    };
+
+    volatile UCHAR ExecuteOptions;
+    UCHAR ExecuteOptionsNV;
+} KEXECUTE_OPTIONS, *PKEXECUTE_OPTIONS;
+
+#ifdef NTOS_MODE_USER
 
 //
 // VDM Structures
@@ -776,7 +885,7 @@ typedef struct _SYNCH_COUNTERS
 //
 typedef struct _KDPC_DATA
 {
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+#if 0 && (NTDDI_VERSION >= NTDDI_LONGHORN)
     KDPC_LIST DpcList;
 #else
     LIST_ENTRY DpcListHead;
@@ -911,21 +1020,6 @@ typedef struct _KEVENT_PAIR
     KEVENT HighEvent;
 } KEVENT_PAIR, *PKEVENT_PAIR;
 
-//
-// Kernel No Execute Options
-//
-typedef struct _KEXECUTE_OPTIONS
-{
-    UCHAR ExecuteDisable:1;
-    UCHAR ExecuteEnable:1;
-    UCHAR DisableThunkEmulation:1;
-    UCHAR Permanent:1;
-    UCHAR ExecuteDispatchEnable:1;
-    UCHAR ImageDispatchEnable:1;
-    UCHAR Spare:2;
-} KEXECUTE_OPTIONS, *PKEXECUTE_OPTIONS;
-
-#if (NTDDI_VERSION >= NTDDI_WIN7)
 typedef union _KWAIT_STATUS_REGISTER
 {
     UCHAR Flags;
@@ -941,6 +1035,7 @@ typedef union _KWAIT_STATUS_REGISTER
     };
 } KWAIT_STATUS_REGISTER, *PKWAIT_STATUS_REGISTER;
 
+#if (NTDDI_VERSION >= NTDDI_WIN7)
 typedef struct _COUNTER_READING
 {
     enum _HARDWARE_COUNTER_TYPE Type;
@@ -1281,27 +1376,7 @@ typedef struct _KTHREAD
     };
 #endif // ]
 #endif // ]
-            union
-            {
-                struct
-                {
-                    ULONG AutoAlignment:1;
-                    ULONG DisableBoost:1;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN) // [
-                    ULONG EtwStackTraceApc1Inserted:1;
-                    ULONG EtwStackTraceApc2Inserted:1;
-                    ULONG CycleChargePending:1;
-                    ULONG CalloutActive:1;
-                    ULONG ApcQueueable:1;
-                    ULONG EnableStackSwap:1;
-                    ULONG GuiThread:1;
-                    ULONG ReservedFlags:23;
-#else // ][
-                    LONG ReservedFlags:30;
-#endif // ]
-                };
-                LONG ThreadFlags;
-            };
+            volatile LONG ThreadFlags;
 #if defined(_WIN64) && (NTDDI_VERSION < NTDDI_WIN7) // [
         };
     };
@@ -1494,6 +1569,7 @@ typedef struct _KTHREAD
     union
     {
         KAPC SuspendApc;
+        KAPC SchedulerApc;
         struct
         {
             UCHAR SuspendApcFill0[1];
@@ -2039,17 +2115,7 @@ typedef struct _KPROCESS
     LIST_ENTRY ThreadListHead;
     KSPIN_LOCK ProcessLock;
     KAFFINITY Affinity;
-    union
-    {
-        struct
-        {
-            LONG AutoAlignment:1;
-            LONG DisableBoost:1;
-            LONG DisableQuantum:1;
-            LONG ReservedFlags:29;
-        };
-        LONG ProcessFlags;
-    };
+    volatile LONG ProcessFlags;
     SCHAR BasePriority;
     SCHAR QuantumReset;
     UCHAR State;
@@ -2057,11 +2123,7 @@ typedef struct _KPROCESS
     UCHAR PowerState;
     UCHAR IdealNode;
     UCHAR Visited;
-    union
-    {
-        KEXECUTE_OPTIONS Flags;
-        UCHAR ExecuteOptions;
-    };
+    KEXECUTE_OPTIONS Flags;
     ULONG StackCount;
     LIST_ENTRY ProcessListEntry;
 #if (NTDDI_VERSION >= NTDDI_LONGHORN) // [
@@ -2123,6 +2185,10 @@ extern ULONG NTSYSAPI KeDcacheFlushCount;
 extern ULONG NTSYSAPI KeIcacheFlushCount;
 extern ULONG_PTR NTSYSAPI KiBugCheckData[];
 extern BOOLEAN NTSYSAPI KiEnableTimerWatchdog;
+extern ULONG NTSYSAPI KiCyclesPerClockQuantum;
+extern ULONG NTSYSAPI KiShortExecutionCycles;
+extern ULONG NTSYSAPI KiDirectQuantumTarget;
+extern ULONG NTSYSAPI KiLockQuantumTarget;
 
 //
 // Exported System Service Descriptor Tables

@@ -50,7 +50,7 @@ PspDeleteThreadSecurity(IN PETHREAD Thread)
     PSTRACE(PS_SECURITY_DEBUG, "Thread: %p\n", Thread);
 
     /* Check if we have active impersonation info */
-    if (Thread->ActiveImpersonationInfo)
+    if (PspTestThreadActiveImpersonationInfoFlag(Thread))
     {
         /* Dereference its token */
         ObDereferenceObject(ImpersonationInfo->Token);
@@ -61,7 +61,7 @@ PspDeleteThreadSecurity(IN PETHREAD Thread)
     {
         /* Free it */
         ExFreePool(ImpersonationInfo);
-        PspClearCrossThreadFlag(Thread, CT_ACTIVE_IMPERSONATION_INFO_BIT);
+        PspClearThreadActiveImpersonationInfoFlagAssert(Thread);
         Thread->ImpersonationInfo = NULL;
     }
 }
@@ -143,7 +143,7 @@ PspWriteTebImpersonationInfo(IN PETHREAD Thread,
             (ExAcquireRundownProtection(&Thread->RundownProtect)))
         {
             /* Check if the thread is impersonating */
-            IsImpersonating = (BOOLEAN)Thread->ActiveImpersonationInfo;
+            IsImpersonating = PspTestThreadActiveImpersonationInfoFlag(Thread);
             if (IsImpersonating)
             {
                 /* Set TEB data */
@@ -572,16 +572,16 @@ PsRevertThreadToSelf(IN PETHREAD Thread)
     PSTRACE(PS_SECURITY_DEBUG, "Thread: %p\n", Thread);
 
     /* Make sure we had impersonation information */
-    if (Thread->ActiveImpersonationInfo)
+    if (PspTestThreadActiveImpersonationInfoFlag(Thread))
     {
         /* Lock the thread security */
         PspLockThreadSecurityExclusive(Thread);
 
         /* Make sure it's still active */
-        if (Thread->ActiveImpersonationInfo)
+        if (PspTestThreadActiveImpersonationInfoFlag(Thread))
         {
             /* Disable impersonation */
-            PspClearCrossThreadFlag(Thread, CT_ACTIVE_IMPERSONATION_INFO_BIT);
+            PspClearThreadActiveImpersonationInfoFlagAssert(Thread);
 
             /* Get the token */
             Token = Thread->ImpersonationInfo->Token;
@@ -624,17 +624,16 @@ PsImpersonateClient(IN PETHREAD Thread,
     if (!Token)
     {
         /* Make sure we're impersonating */
-        if (Thread->ActiveImpersonationInfo)
+        if (PspTestThreadActiveImpersonationInfoFlag(Thread))
         {
             /* We seem to be, lock the thread */
             PspLockThreadSecurityExclusive(Thread);
 
             /* Make sure we're still impersonating */
-            if (Thread->ActiveImpersonationInfo)
+            if (PspTestThreadActiveImpersonationInfoFlag(Thread))
             {
                 /* Disable impersonation */
-                PspClearCrossThreadFlag(Thread,
-                                        CT_ACTIVE_IMPERSONATION_INFO_BIT);
+                PspClearThreadActiveImpersonationInfoFlagAssert(Thread);
 
                 /* Get the token */
                 OldToken = Thread->ImpersonationInfo->Token;
@@ -701,7 +700,7 @@ PsImpersonateClient(IN PETHREAD Thread,
         PspLockThreadSecurityExclusive(Thread);
 
         /* Check if we're impersonating */
-        if (Thread->ActiveImpersonationInfo)
+        if (PspTestThreadActiveImpersonationInfoFlag(Thread))
         {
             /* Get the token */
             OldToken = Impersonation->Token;
@@ -709,7 +708,7 @@ PsImpersonateClient(IN PETHREAD Thread,
         else
         {
             /* Otherwise, enable impersonation */
-            PspSetCrossThreadFlag(Thread, CT_ACTIVE_IMPERSONATION_INFO_BIT);
+            PspSetThreadActiveImpersonationInfoFlagAssert(Thread);
         }
 
         /* Now fill it out */
@@ -751,13 +750,13 @@ PsReferenceEffectiveToken(IN PETHREAD Thread,
 
     /* Check if we don't have impersonation info */
     Process = Thread->ThreadsProcess;
-    if (Thread->ActiveImpersonationInfo)
+    if (PspTestThreadActiveImpersonationInfoFlag(Thread))
     {
         /* Lock the Process */
         PspLockProcessSecurityShared(Process);
 
         /* Make sure impersonation is still active */
-        if (Thread->ActiveImpersonationInfo)
+        if (PspTestThreadActiveImpersonationInfoFlag(Thread))
         {
             /* Get the token */
             Token = Thread->ImpersonationInfo->Token;
@@ -815,13 +814,13 @@ PsReferenceImpersonationToken(IN PETHREAD Thread,
     PSTRACE(PS_SECURITY_DEBUG, "Thread: %p\n", Thread);
 
     /* If we don't have impersonation info, just quit */
-    if (!Thread->ActiveImpersonationInfo) return NULL;
+    if (!PspTestThreadActiveImpersonationInfoFlag(Thread)) return NULL;
 
     /* Lock the thread */
     PspLockThreadSecurityShared(Thread);
 
     /* Make sure we still have active impersonation */
-    if (Thread->ActiveImpersonationInfo)
+    if (PspTestThreadActiveImpersonationInfoFlag(Thread))
     {
         /* Return data from caller */
         ObReferenceObject(Thread->ImpersonationInfo->Token);
@@ -875,23 +874,22 @@ PsDisableImpersonation(IN PETHREAD Thread,
                        OUT PSE_IMPERSONATION_STATE ImpersonationState)
 {
     PPS_IMPERSONATION_INFORMATION Impersonation = NULL;
-    LONG OldFlags;
+    BOOLEAN OldFlags;
     PAGED_CODE();
     PSTRACE(PS_SECURITY_DEBUG,
             "Thread: %p State: %p\n", Thread, ImpersonationState);
 
     /* Check if we don't have impersonation */
-    if (Thread->ActiveImpersonationInfo)
+    if (PspTestThreadActiveImpersonationInfoFlag(Thread))
     {
         /* Lock thread security */
         PspLockThreadSecurityExclusive(Thread);
 
         /* Disable impersonation */
-        OldFlags = PspClearCrossThreadFlag(Thread,
-                                           CT_ACTIVE_IMPERSONATION_INFO_BIT);
+        OldFlags = PspClearThreadActiveImpersonationInfoFlag(Thread);
 
         /* Make sure nobody disabled it behind our back */
-        if (OldFlags & CT_ACTIVE_IMPERSONATION_INFO_BIT)
+        if (OldFlags)
         {
             /* Copy the old state */
             Impersonation = Thread->ImpersonationInfo;
@@ -937,7 +935,7 @@ PsRestoreImpersonation(IN PETHREAD Thread,
     Impersonation = Thread->ImpersonationInfo;
 
     /* Check if we're impersonating */
-    if (Thread->ActiveImpersonationInfo)
+    if (PspTestThreadActiveImpersonationInfoFlag(Thread))
     {
         /* Get the token */
         Token = Impersonation->Token;
@@ -953,12 +951,12 @@ PsRestoreImpersonation(IN PETHREAD Thread,
         Impersonation->Token = ImpersonationState->Token;
 
         /* Enable impersonation */
-        PspSetCrossThreadFlag(Thread, CT_ACTIVE_IMPERSONATION_INFO_BIT);
+        PspSetThreadActiveImpersonationInfoFlagAssert(Thread);
     }
     else
     {
         /* Disable impersonation */
-        PspClearCrossThreadFlag(Thread, CT_ACTIVE_IMPERSONATION_INFO_BIT);
+        PspClearThreadActiveImpersonationInfoFlagAssert(Thread);
     }
 
     /* Unlock the thread */

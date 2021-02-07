@@ -17,6 +17,7 @@ Author:
 --*/
 
 #include <rtltypes.h>
+#include <ldrtypes.h>
 
 #define PASTE2(x,y)       x##y
 #define PASTE(x,y)         PASTE2(x,y)
@@ -57,15 +58,39 @@ typedef struct STRUCT(_PEB)
         BOOLEAN BitField;
         struct
         {
-            BOOLEAN ImageUsesLargePages:1;
-#if (NTDDI_VERSION >= NTDDI_LONGHORN)
-            BOOLEAN IsProtectedProcess:1;
-            BOOLEAN IsLegacyProcess:1;
-            BOOLEAN IsImageDynamicallyRelocated:1;
-            BOOLEAN SkipPatchingUser32Forwarders:1;
-            BOOLEAN SpareBits:3;
+            BOOLEAN ImageUsesLargePages : 1;
+#if (NTDDI_VERSION >= NTDDI_WIN10_RS1)
+            BOOLEAN IsProtectedProcess : 1;
+            BOOLEAN IsImageDynamicallyRelocated : 1;
+            BOOLEAN SkipPatchingUser32Forwarders : 1;
+            BOOLEAN IsPackagedProcess : 1;
+            BOOLEAN IsAppContainer : 1;
+            BOOLEAN IsProtectedProcessLight : 1;
+            BOOLEAN IsLongPathAwareProcess : 1;
+#elif (NTDDI_VERSION >= NTDDI_WINBLUE)
+            BOOLEAN IsProtectedProcess : 1;
+            BOOLEAN IsImageDynamicallyRelocated : 1;
+            BOOLEAN SkipPatchingUser32Forwarders : 1;
+            BOOLEAN IsPackagedProcess : 1;
+            BOOLEAN IsAppContainer : 1;
+            BOOLEAN IsProtectedProcessLight : 1;
+            BOOLEAN SpareBits : 1;
+#elif (NTDDI_VERSION >= NTDDI_WIN8)
+            BOOLEAN IsProtectedProcess : 1;
+            BOOLEAN IsLegacyProcess : 1;
+            BOOLEAN IsImageDynamicallyRelocated : 1;
+            BOOLEAN SkipPatchingUser32Forwarders : 1;
+            BOOLEAN IsPackagedProcess : 1;
+            BOOLEAN IsAppContainer : 1;
+            BOOLEAN SpareBits : 1;
+#elif (NTDDI_VERSION >= NTDDI_LONGHORN)
+            BOOLEAN IsProtectedProcess : 1;
+            BOOLEAN IsLegacyProcess : 1;
+            BOOLEAN IsImageDynamicallyRelocated : 1;
+            BOOLEAN SkipPatchingUser32Forwarders : 1;
+            BOOLEAN SpareBits : 3;
 #else
-            BOOLEAN SpareBits:7;
+            BOOLEAN SpareBits : 7;
 #endif
         };
     };
@@ -99,6 +124,11 @@ typedef struct STRUCT(_PEB)
         PTR(PVOID) KernelCallbackTable;
         PTR(PVOID) UserSharedInfoPtr;
     };
+#elif 1
+    PTR(PVOID) AltThunkSListPtr;
+    ULONG CrossProcessFlags; // mandatory interlocked write
+    ULONG EnvironmentUpdateCount;
+    PTR(PVOID) KernelCallbackTable;
 #elif (NTDDI_VERSION >= NTDDI_WS03)
     PTR(PVOID) AltThunkSListPtr;
     PTR(PVOID) SparePtr2;
@@ -167,11 +197,8 @@ typedef struct STRUCT(_PEB)
     PTR(ULONG_PTR) MinimumStackCommit;
 #endif
 #if (NTDDI_VERSION >= NTDDI_WS03)
-    PTR(PVOID*) FlsCallback;
-    STRUCT(LIST_ENTRY) FlsListHead;
-    PTR(PVOID) FlsBitmap;
-    ULONG FlsBitmapBits[4]; // [FLS_MAXIMUM_AVAILABLE/(sizeof(ULONG)*8)];
-    ULONG FlsHighIndex;
+    PTR(PVOID) SparePointers[4];
+    ULONG SpareUlongs[5];
 #endif
 #if (NTDDI_VERSION >= NTDDI_LONGHORN)
     PTR(PVOID) WerRegistrationData;
@@ -194,7 +221,7 @@ C_ASSERT(FIELD_OFFSET(STRUCT(PEB), ImageProcessAffinityMask) == 0x138);
 C_ASSERT(FIELD_OFFSET(STRUCT(PEB), PostProcessInitRoutine) == 0x230);
 C_ASSERT(FIELD_OFFSET(STRUCT(PEB), SessionId) == 0x2C0);
 #if (NTDDI_VERSION >= NTDDI_WS03)
-C_ASSERT(FIELD_OFFSET(STRUCT(PEB), FlsHighIndex) == 0x350);
+C_ASSERT(FIELD_OFFSET(STRUCT(PEB), SpareUlongs) == 0x340);
 #endif
 #else
 C_ASSERT(FIELD_OFFSET(STRUCT(PEB), Mutant) == 0x04);
@@ -209,7 +236,7 @@ C_ASSERT(FIELD_OFFSET(STRUCT(PEB), ImageProcessAffinityMask) == 0x0C0);
 C_ASSERT(FIELD_OFFSET(STRUCT(PEB), PostProcessInitRoutine) == 0x14C);
 C_ASSERT(FIELD_OFFSET(STRUCT(PEB), SessionId) == 0x1D4);
 #if (NTDDI_VERSION >= NTDDI_WS03)
-C_ASSERT(FIELD_OFFSET(STRUCT(PEB), FlsHighIndex) == 0x22C);
+C_ASSERT(FIELD_OFFSET(STRUCT(PEB), SpareUlongs) == 0x21C);
 #endif
 #endif
 
@@ -457,6 +484,21 @@ typedef struct STRUCT(_TEB)
     PTR(PVOID) TxnScopeExitCallback;
     PTR(PVOID) TxnScopeContext;
     ULONG LockCount;
+#elif 1
+    BOOLEAN SafeThunkCall;
+    BOOLEAN BooleanSpare;
+    union
+    {
+        USHORT SameTebFlags;
+        struct
+        {
+            USHORT RanProcessInit : 1;
+            USHORT InitialThread : 1;
+            USHORT LoadOwner : 1;
+            USHORT LoaderWorker : 1;
+            USHORT SkipLoaderInit : 1;
+        };
+    };
 #else
     BOOLEAN SafeThunkCall;
     BOOLEAN BooleanSpare[3];

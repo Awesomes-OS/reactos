@@ -124,8 +124,6 @@ Author:
 #define KPROCESS_INT21_DESCRIPTOR0              0x28
 #define KPROCESS_INT21_DESCRIPTOR1              0x2C
 #define KPROCESS_IOPM_OFFSET                    0x30
-#define KPROCESS_ACTIVE_PROCESSORS              0x34
-#define EPROCESS_VDM_OBJECTS                    0x144
 
 //
 // KTIMER_TABLE Offsets
@@ -136,18 +134,6 @@ Author:
 #define TIMER_ENTRY_SIZE                        0x10
 #define TIMER_TABLE_SIZE                        0x200
 #endif
-
-//
-// KPRCB Offsets
-//
-#define KPRCB_DR0                               0x2F8
-#define KPRCB_DR1                               0x2FC
-#define KPRCB_DR2                               0x300
-#define KPRCB_DR3                               0x304
-#define KPRCB_DR6                               0x308
-#define KPRCB_DR7                               0x30C
-#define KPRCB_TIMER_HAND                        0x964
-#define KPRCB_TIMER_REQUEST                     0x968
 
 //
 // KPCR Offsets
@@ -174,53 +160,6 @@ Author:
 #define KPCR_NUMBER                             0x51
 #define KPCR_VDM_ALERT                          0x54
 #define KPCR_PRCB_DATA                          0x120
-#define KPCR_CURRENT_THREAD                     0x124
-#define KPCR_PRCB_NEXT_THREAD                   0x128
-#define KPCR_PRCB_IDLE_THREAD                   0x12C
-#define KPCR_PROCESSOR_NUMBER                   0x130
-#define KPCR_PRCB_SET_MEMBER                    0x134
-#define KPCR_PRCB_CPU_TYPE                      0x138
-#define KPCR_PRCB_PRCB_LOCK                     0xA7C
-#define KPCR_NPX_THREAD                         0x640
-#define KPCR_DR6                                0x428
-#define KPCR_DR7                                0x42C
-#define KPCR_PRCB_INTERRUPT_COUNT               0x644
-#define KPCR_PRCB_KERNEL_TIME                   0x648
-#define KPCR_PRCB_USER_TIME                     0x64C
-#define KPCR_PRCB_DPC_TIME                      0x650
-#define KPCR_PRCB_DEBUG_DPC_TIME                0x654
-#define KPCR_PRCB_INTERRUPT_TIME                0x658
-#define KPCR_PRCB_ADJUST_DPC_THRESHOLD          0x65C
-#define KPCR_PRCB_SKIP_TICK                     0x664
-#define KPCR_SYSTEM_CALLS                       0x6B8
-#define KPCR_PRCB_DPC_QUEUE_DEPTH               0xA4C
-#define KPCR_PRCB_DPC_COUNT                     0xA50
-#define KPCR_PRCB_DPC_STACK                     0xA68
-#define KPCR_PRCB_MAXIMUM_DPC_QUEUE_DEPTH       0xA6C
-#define KPCR_PRCB_DPC_REQUEST_RATE              0xA70
-#define KPCR_PRCB_DPC_INTERRUPT_REQUESTED       0xA78
-#define KPCR_PRCB_DPC_ROUTINE_ACTIVE            0xA7A
-#define KPCR_PRCB_DPC_LAST_COUNT                0xA80
-#define KPCR_PRCB_TIMER_REQUEST                 0xA88
-#define KPCR_PRCB_QUANTUM_END                   0xAA1
-#define KPCR_PRCB_IDLE_SCHEDULE                 0xAA3
-#define KPCR_PRCB_DEFERRED_READY_LIST_HEAD      0xC10
-#define KPCR_PRCB_POWER_STATE_IDLE_FUNCTION     0xEC0
-
-//
-// KINTERRUPT Offsets
-//
-#define KINTERRUPT_INTERRUPT_LIST_HEAD          0x04
-#define KINTERRUPT_SERVICE_ROUTINE              0x0C
-#define KINTERRUPT_SERVICE_CONTEXT              0x10
-#define KINTERRUPT_TICK_COUNT                   0x18
-#define KINTERRUPT_ACTUAL_LOCK                  0x1C
-#define KINTERRUPT_DISPATCH_ADDRESS             0x20
-#define KINTERRUPT_VECTOR                       0x24
-#define KINTERRUPT_IRQL                         0x28
-#define KINTERRUPT_SYNCHRONIZE_IRQL             0x29
-#define KINTERRUPT_DISPATCH_COUNT               0x38
-#define KINTERRUPT_DISPATCH_CODE                0x3C
 
 //
 // KGDTENTRY Offsets
@@ -333,7 +272,6 @@ Author:
 #define KERNEL_USER_SHARED_DATA                 0x7FFE0000
 #define KUSER_SHARED_PROCESSOR_FEATURES         KERNEL_USER_SHARED_DATA + 0x274
 #define KUSER_SHARED_SYSCALL                    KERNEL_USER_SHARED_DATA + 0x300
-#define KUSER_SHARED_SYSCALL_RET                KERNEL_USER_SHARED_DATA + 0x304
 #define PROCESSOR_FEATURE_FXSR                  KUSER_SHARED_PROCESSOR_FEATURES + 0x4
 
 //

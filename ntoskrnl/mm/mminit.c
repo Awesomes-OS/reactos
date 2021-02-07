@@ -1,4 +1,4 @@
-﻿/*
+/*
  * PROJECT:         ReactOS Kernel
  * LICENSE:         GPL - See COPYING in the top level directory
  * FILE:            ntoskrnl/mm/mminit.c
@@ -207,7 +207,7 @@ MmInitSystem(IN ULONG Phase,
     MMPTE TempPte = ValidKernelPte;
     PFN_NUMBER PageFrameNumber;
     PLIST_ENTRY ListEntry;
-    PLDR_DATA_TABLE_ENTRY DataTableEntry;
+    PKLDR_DATA_TABLE_ENTRY DataTableEntry;
 
     /* Initialize the kernel address space */
     ASSERT(Phase == 1);
@@ -287,7 +287,7 @@ MmInitSystem(IN ULONG Phase,
          ListEntry = ListEntry->Flink)
     {
         /* Get the data table entry */
-        DataTableEntry = CONTAINING_RECORD(ListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+        DataTableEntry = CONTAINING_RECORD(ListEntry, KLDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
 
         /* Set up the image protection */
         MiWriteProtectSystemImage(DataTableEntry->DllBase);

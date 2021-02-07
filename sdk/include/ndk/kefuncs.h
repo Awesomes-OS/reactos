@@ -161,20 +161,8 @@ KeInitializeInterrupt(
     _In_ KIRQL SynchronizeIrql,
     _In_ KINTERRUPT_MODE InterruptMode,
     _In_ BOOLEAN ShareVector,
-    _In_ CHAR ProcessorNumber,
+    _In_ ULONG32 ProcessorNumber,
     _In_ BOOLEAN FloatingSave
-);
-
-BOOLEAN
-NTAPI
-KeConnectInterrupt(
-    _Inout_ PKINTERRUPT InterruptObject
-);
-
-BOOLEAN
-NTAPI
-KeDisconnectInterrupt(
-    _Inout_ PKINTERRUPT InterruptObject
 );
 
 VOID
@@ -407,6 +395,13 @@ ULONG
 NTAPI
 NtGetCurrentProcessorNumber(
     VOID
+);
+
+NTSYSCALLAPI
+NTSTATUS
+NTAPI
+NtGetCurrentProcessorNumberEx(
+    PPROCESSOR_NUMBER ProcNumber
 );
 
 NTSYSCALLAPI

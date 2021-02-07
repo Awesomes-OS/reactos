@@ -53,6 +53,8 @@ UCHAR KiTrapIoTable[] =
     0x6F,                      /* OUTS                                 */
 };
 
+ULONG_PTR KeI386FastSystemCallReturn = 0;
+
 PFAST_SYSTEM_CALL_EXIT KiFastCallExitHandler;
 #if DBG && defined(_M_IX86) && !defined(_WINKD_)
 PKDBG_PRESERVICEHOOK KeWin32PreServiceHook = NULL;
@@ -62,6 +64,11 @@ PKDBG_POSTSERVICEHOOK KeWin32PostServiceHook = NULL;
 BOOLEAN StopChecking = FALSE;
 #endif
 
+#define OP_I386_POP_DS 0x1F
+#define OP_I386_POP_ES 0x07
+#define OP_I386_POP_FS 0xA10F
+#define OP_I386_POP_GS 0xA90F
+#define OP_I386_IRET 0xCF
 
 /* TRAP EXIT CODE *************************************************************/
 
@@ -482,7 +489,11 @@ KiTrap02Handler(VOID)
     Process = Thread->ApcState.Process;
 
     /* Save data usually not present in the TSS */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+    Tss->CR3 = Process->DirectoryTableBase;
+#else
     Tss->CR3 = Process->DirectoryTableBase[0];
+#endif
     Tss->IoMapBase = Process->IopmOffset;
     Tss->LDT = Process->LdtDescriptor.LimitLow ? KGDT_LDT : 0;
 
@@ -844,7 +855,11 @@ KiTrap08Handler(VOID)
     Process = Thread->ApcState.Process;
 
     /* Save data usually not present in the TSS */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+    Tss->CR3 = Process->DirectoryTableBase;
+#else
     Tss->CR3 = Process->DirectoryTableBase[0];
+#endif
     Tss->IoMapBase = Process->IopmOffset;
     Tss->LDT = Process->LdtDescriptor.LimitLow ? KGDT_LDT : 0;
 
@@ -911,6 +926,38 @@ KiTrap0BHandler(IN PKTRAP_FRAME TrapFrame)
 {
     /* Save trap frame */
     KiEnterTrap(TrapFrame);
+
+    /* Check for V86 GPF */
+    if (__builtin_expect(KiV86Trap(TrapFrame), 1))
+    {
+        KIRQL OldIrql;
+
+        /* Enter V86 trap */
+        KiEnterV86Trap(TrapFrame);
+
+        /* Must be a VDM process */
+        if (__builtin_expect(!PsGetCurrentProcess()->VdmObjects, 0))
+        {
+            /* Enable interrupts */
+            _enable();
+
+            /* Setup access violation fault */
+            KiDispatchException0Args(STATUS_ACCESS_VIOLATION, TrapFrame->Eip, TrapFrame);
+        }
+
+        /* Go to APC level */
+        KeRaiseIrql(APC_LEVEL, &OldIrql);
+        _enable();
+
+        UNIMPLEMENTED_FATAL();
+
+        /* Bring IRQL back */
+        KeLowerIrql(OldIrql);
+        _disable();
+
+        /* Do a quick V86 exit if possible */
+        KiExitV86Trap(TrapFrame);
+    }
 
     /* FIXME: Kill the system */
     UNIMPLEMENTED;
@@ -1146,7 +1193,7 @@ KiTrap0DHandler(IN PKTRAP_FRAME TrapFrame)
      * trap frame before restarting the instruction -- but we would need to
      * know the extract instruction that was used first.
      *
-     * We could force a special instrinsic to use stack instructions, or write
+     * We could force a special intrinsic to use stack instructions, or write
      * a simple instruction length checker.
      *
      * Nevertheless, this is a lot of work for the purpose of avoiding a crash
@@ -1163,7 +1210,7 @@ KiTrap0DHandler(IN PKTRAP_FRAME TrapFrame)
      * and then manually issue a jump to the V8086 return EIP.
      */
     Instructions = (PUCHAR)TrapFrame->Eip;
-    if (Instructions[0] == 0xCF)
+    if (Instructions[0] == OP_I386_IRET)
     {
         /*
          * Some evil shit is going on here -- this is not the SS:ESP you're
@@ -1320,24 +1367,174 @@ VOID
 FASTCALL
 KiTrap0EHandler(IN PKTRAP_FRAME TrapFrame)
 {
-    PKTHREAD Thread;
     BOOLEAN StoreInstruction;
     ULONG_PTR Cr2;
     NTSTATUS Status;
+    PKTRAP_FRAME BaseTrapFrame;
+    KTRAP_FRAME CurrentMovedTrapFrame = {0};
 
     /* Save trap frame */
     KiEnterTrap(TrapFrame);
 
     /* Check if this is the base frame */
-    Thread = KeGetCurrentThread();
-    if (KeGetTrapFrame(Thread) != TrapFrame)
+    BaseTrapFrame = KeGetTrapFrame(KeGetCurrentThread());
+    if (TrapFrame != BaseTrapFrame)
     {
-        /* It isn't, check if this is a second nested frame */
-        if (((ULONG_PTR)KeGetTrapFrame(Thread) - (ULONG_PTR)TrapFrame) <=
-            FIELD_OFFSET(KTRAP_FRAME, EFlags))
+        /*
+         *  Stack: 0 is at the bottom.
+         *  [Thread->InitialStack]_______________________
+         *  |                    |                       |
+         *  |                    |                       | sizeof(KTRAP_FRAME)+sizeof(FX_SAVE_AREA)
+         *  |                    |                       |
+         *  [    BaseTrapFrame   ]_______________________|
+         *  |                    |
+         *  [      TrapFrame     ]
+         *  |                    | < Uninitialized
+         *  |                    | < Uninitialized
+         *  |                    | < Uninitialized
+         *  |                    | < Uninitialized
+         *  |____________________| < Uninitialized
+         */
+        ASSERT((ULONG_PTR)BaseTrapFrame > (ULONG_PTR)TrapFrame);
+
+        /* Minimal trap frame is KTRAP_FRAME through the EFlags field */
+
+        /* It isn't, check if this is a second+ nested frame */
+        if ((ULONG_PTR)&TrapFrame->EFlags >= (ULONG_PTR)BaseTrapFrame)
         {
-            /* The stack is somewhere in between frames, we need to fix it */
-            UNIMPLEMENTED_FATAL();
+            /* No, it isn't. The stack is somewhere in between frames: */
+            /*
+             *  Stack: 0 is at the bottom.
+             *  [Thread->InitialStack]_______________________
+             *  |                    |                       |
+             *  |                    |                       | sizeof(KTRAP_FRAME)+sizeof(FX_SAVE_AREA)
+             *  |                    | <- &TrapFrame->EFlags |
+             *  [    BaseTrapFrame   ]-----------------------|
+             *  |                    |                       |
+             *  [      TrapFrame     ]_______________________|
+             *  |                    | < Uninitialized         <- 2nd frame (if it were present)
+             *  |                    | < Uninitialized
+             *  |                    | < Uninitialized
+             *  |                    | < Uninitialized
+             *  |____________________| < Uninitialized
+             *
+             */
+
+            /* Check if this is a kernel thread */
+            if ((LONG_PTR) NtCurrentTeb() > 0)
+            {
+                /* No, it's not. Then we need to fix base trap frame. */
+
+                /* Save the old trap frame location */
+                const ULONG_PTR PartialTrapFrame = (ULONG_PTR)TrapFrame;
+
+#if DBG
+                /*
+                 * This code should only be hit:
+                 * - on Segment-Not-Present fault (0B)
+                 * - on General Protection fault (0D)
+                 *
+                 * In all these cases, the instruction should only be:
+                 * - pop <segment register> (in trap exit)
+                 * - iret (user mode trap exit)
+                 *
+                 */
+
+                {
+                    const WORD InstructionWord = *(WORD *)TrapFrame->Eip;
+                    const BYTE InstructionByte = *(BYTE *)TrapFrame->Eip;
+
+                    if (InstructionWord != OP_I386_POP_GS && InstructionWord != OP_I386_POP_FS &&
+                        InstructionByte != OP_I386_POP_ES && InstructionByte != OP_I386_POP_DS &&
+                        InstructionByte != OP_I386_IRET)
+                    {
+                        __debugbreak();
+
+                        KeBugCheckEx(UNEXPECTED_KERNEL_MODE_TRAP, 0xF, TrapFrame->Eip, 0, 0);
+                    }
+                }
+
+#endif
+
+                /*
+                 *  Stack: 0 is at the bottom.
+                 *  [Thread->InitialStack]_______________________
+                 *  |                    |                       |
+                 *  |  ________________  |                       | sizeof(KTRAP_FRAME)+sizeof(FX_SAVE_AREA)
+                 *  | |                | | <- &TrapFrame->EFlags |
+                 *  [ |  BaseTrapFrame | ]-----------------------|
+                 *  | |                | |                       |
+                 *  [ |___ TrapFrame __| ]_______________________| <- PartialTrapFrame
+                 *  |                    | < Uninitialized         <- 2nd frame (if it were present)
+                 *  |                    | < Uninitialized
+                 *  |                    | < Uninitialized
+                 *  |                    | < Uninitialized
+                 *  |____________________| < Uninitialized
+                 *
+                 */
+
+                /* current trap frame -> CurrentMovedTrapFrame */
+                RtlCopyMemory(&CurrentMovedTrapFrame, TrapFrame, RTL_SIZEOF_THROUGH_FIELD(KTRAP_FRAME, EFlags));
+
+                /* Use CurrentMovedTrapFrame from this point on as the current frame */
+                TrapFrame = &CurrentMovedTrapFrame;
+
+                /*
+                 *  Stack: 0 is at the bottom.
+                 *  [Thread->InitialStack]_______________________
+                 *  |                    |                       |
+                 *  |                    |                       | sizeof(KTRAP_FRAME)+sizeof(FX_SAVE_AREA)
+                 *  | ****************** | <- overwritten data   |
+                 *  [ ** BaseTrapFrame * ]_______________________|
+                 *  |                    | < stuff
+                 *  |                    | < stuff                 <- PartialTrapFrame (old TrapFrame location)
+                 *  |  ________________  |_______________________
+                 *  | |                | |                       |
+                 *  | |                | |                       | RTL_SIZEOF_THROUGH_FIELD(KTRAP_FRAME, EFlags)
+                 *  [ |___ TrapFrame __| ]_______________________|
+                 *  |____________________| < Uninitialized
+                 *
+                 */
+
+                ASSERT(PartialTrapFrame < (ULONG_PTR)BaseTrapFrame);
+
+                /*
+                 * Theoretically, one would take the old TrapFrame location and compute the overwritten block size.
+                 * That's complicated. Let's copy the essentials.
+                 */
+                const ULONG_PTR OverwrittenSize = RTL_SIZEOF_THROUGH_FIELD(KTRAP_FRAME, EFlags);
+
+#if DBG
+                /* Check alignment */
+                ASSERT(!(OverwrittenSize & 0x3));
+#endif
+
+                /* Restore the base trap frame */
+                /* current trap frame -> base trap frame */
+                RtlCopyMemory(BaseTrapFrame, TrapFrame, OverwrittenSize);
+
+                /* Set the newly created TrapFrame to exit using KiServiceExit2 */
+
+                /* KiServiceExit2 will restore volatiles, such as EAX, save the correct ones into the base frame */
+                BaseTrapFrame->Eax = TrapFrame->Eax;
+                BaseTrapFrame->Ecx = TrapFrame->Ecx;
+
+                /* Ensure the correct PreviousPreviousMode for the KiServiceExit2 */
+                BaseTrapFrame->PreviousPreviousMode = UserMode;
+
+                /* Chain the trap frame */
+                TrapFrame->Ebp = (ULONG_PTR) BaseTrapFrame;
+                TrapFrame->Ecx = (ULONG_PTR) BaseTrapFrame;
+                TrapFrame->Eip = (ULONG_PTR) KiServiceExit2;
+
+                /* Reset the segment selectors */
+                TrapFrame->SegFs = KGDT_R0_PCR;
+                TrapFrame->SegEs = KGDT_R3_DATA | RPL_MASK;
+                TrapFrame->SegDs = KGDT_R3_DATA | RPL_MASK;
+
+                /* We came in with interrupts disabled, but now we will enable them, so set the flag. */
+                TrapFrame->EFlags |= EFLAGS_INTERRUPT_MASK;
+            }
         }
     }
 

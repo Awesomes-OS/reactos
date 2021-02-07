@@ -10,6 +10,7 @@
 #include <winioctl.h>
 #include <ntddvdeo.h>
 #include <ioaccess.h>
+#include <ndk/rtlfuncs2.h>
 
 #include "vgavideo/vgavideo.h"
 
@@ -24,6 +25,8 @@
 
 #define DDKFASTAPI __fastcall
 #define FASTCALL __fastcall
+
+#if 0
 
 ULONG DbgPrint(PCCH Format,...);
 
@@ -60,6 +63,8 @@ InitializeListHead(
 {
   ListHead->Flink = ListHead->Blink = ListHead;
 }
+
+#endif
 
 /***********************************************************/
 

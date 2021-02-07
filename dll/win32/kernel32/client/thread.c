@@ -363,35 +363,7 @@ VOID
 WINAPI
 ExitThread(IN DWORD uExitCode)
 {
-    NTSTATUS Status;
-    ULONG LastThread;
-    PRTL_CRITICAL_SECTION LoaderLock;
-
-    /* Make sure loader lock isn't held */
-    LoaderLock = NtCurrentPeb()->LoaderLock;
-    if (LoaderLock) ASSERT(NtCurrentTeb()->ClientId.UniqueThread != LoaderLock->OwningThread);
-
-    /*
-     * Terminate process if this is the last thread
-     * of the current process
-     */
-    Status = NtQueryInformationThread(NtCurrentThread(),
-                                      ThreadAmILastThread,
-                                      &LastThread,
-                                      sizeof(LastThread),
-                                      NULL);
-    if ((NT_SUCCESS(Status)) && (LastThread)) ExitProcess(uExitCode);
-
-    /* Notify DLLs and TLS Callbacks of termination */
-    LdrShutdownThread();
-
-    /* Tell the Kernel to free the Stack */
-    NtCurrentTeb()->FreeStackOnTermination = TRUE;
-    NtTerminateThread(NULL, uExitCode);
-
-    /* We should never reach this place */
-    ERROR_FATAL("It should not happen\n");
-    while (TRUE); /* 'noreturn' function */
+    RtlExitUserThread(uExitCode);
 }
 
 /*
@@ -1313,6 +1285,129 @@ TlsSetValue(IN DWORD Index,
     Teb->TlsExpansionSlots[TlsIndex] = Value;
 
     /* Success */
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+SetThreadIdealProcessorEx(
+    IN HANDLE hThread,
+    IN PPROCESSOR_NUMBER lpIdealProcessor,
+    OUT PPROCESSOR_NUMBER lpPreviousIdealProcessor OPTIONAL)
+{
+    PROCESSOR_NUMBER idealProcessor = *lpIdealProcessor;
+
+    const NTSTATUS status = NtSetInformationThread(hThread,
+                                                   ThreadIdealProcessorEx,
+                                                   &idealProcessor,
+                                                   sizeof(PROCESSOR_NUMBER));
+    if (!NT_SUCCESS(status))
+    {
+        BaseSetLastNTError(status);
+        return FALSE;
+    }
+
+    if (lpPreviousIdealProcessor)
+        *lpPreviousIdealProcessor = idealProcessor;
+
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+GetThreadIdealProcessorEx(
+    HANDLE hThread,
+    PPROCESSOR_NUMBER lpIdealProcessor
+)
+{
+    NTSTATUS status;
+
+    // possible optimization for when kernel is compiled in VISTA+ mode
+    // when we specify thread's ideal processor as PROCESSOR_NUMBER,
+    // not UCHAR
+#if 0
+    if (hThread == NtCurrentThread())
+    {
+        *lpIdealProcessor = NtCurrentTeb()->IdealProcessor;
+        return TRUE;
+    }
+#endif
+
+    status = NtQueryInformationThread(hThread,
+                                      ThreadIdealProcessorEx,
+                                      lpIdealProcessor,
+                                      sizeof(PROCESSOR_NUMBER),
+                                      NULL);
+    if (!NT_SUCCESS(status))
+    {
+        BaseSetLastNTError(status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+GetThreadGroupAffinity(
+    HANDLE hThread,
+    PGROUP_AFFINITY GroupAffinity)
+{
+    const NTSTATUS status = NtQueryInformationThread(hThread,
+                                                     ThreadGroupInformation,
+                                                     GroupAffinity,
+                                                     sizeof(GROUP_AFFINITY),
+                                                     NULL);
+    if (!NT_SUCCESS(status))
+    {
+        BaseSetLastNTError(status);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+SetThreadGroupAffinity(
+    IN HANDLE hThread,
+    IN const GROUP_AFFINITY* GroupAffinity,
+    OUT PGROUP_AFFINITY PreviousGroupAffinity OPTIONAL)
+{
+    GROUP_AFFINITY previousGroupAffinity;
+    NTSTATUS status;
+
+    if (PreviousGroupAffinity && !GetThreadGroupAffinity(hThread,
+                                                         &previousGroupAffinity))
+    {
+        return FALSE;
+    }
+
+    status = NtSetInformationThread(hThread,
+                                    ThreadGroupInformation,
+                                    &GroupAffinity,
+                                    sizeof(GROUP_AFFINITY));
+    if (!NT_SUCCESS(status))
+    {
+        BaseSetLastNTError(status);
+        return FALSE;
+    }
+
+    if (PreviousGroupAffinity)
+        *PreviousGroupAffinity = previousGroupAffinity;
+
     return TRUE;
 }
 

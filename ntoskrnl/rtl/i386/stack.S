@@ -20,7 +20,7 @@ PUBLIC _RtlpGetStackLimits@8
 _RtlpGetStackLimits@8:
 
     /* Get the current thread */
-    mov eax, [fs:KPCR_CURRENT_THREAD]
+    mov eax, fs:[KPCR_PRCB_DATA+PbCurrentThread]
 
     /* Get the stack limits */
     mov ecx, [eax+KTHREAD_STACK_LIMIT]

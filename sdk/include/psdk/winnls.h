@@ -14,7 +14,13 @@ extern "C" {
 #define MAX_LEADBYTES 	12
 #define MAX_DEFAULTCHAR	2
 
-#define LOCALE_ALL 0x00
+#define LOCALE_ALL                  0x00
+#define LOCALE_WINDOWS              0x01
+#define LOCALE_SUPPLEMENTAL         0x02
+#define LOCALE_ALTERNATE_SORTS      0x04
+#define LOCALE_REPLACEMENT          0x08
+#define LOCALE_NEUTRALDATA          0x10
+#define LOCALE_SPECIFICDATA         0x20
 
 #define LOCALE_NOUSEROVERRIDE	0x80000000
 #define LOCALE_USE_CP_ACP	0x40000000
@@ -127,8 +133,6 @@ extern "C" {
 #define LOCALE_SISO639LANGNAME  89
 #define LOCALE_SISO3166CTRYNAME 90
 #define LOCALE_SNAME            92 // FIXME
-
-#if (WINVER >= 0x0600)
 #define LOCALE_SNAME            92
 #define LOCALE_SDURATION        93
 #define LOCALE_SKEYBOARDSTOINSTALL 94
@@ -147,7 +151,6 @@ extern "C" {
 #define LOCALE_SSCRIPTS 108
 #define LOCALE_SPARENT  109
 #define LOCALE_SCONSOLEFALLBACKNAME 110
-#endif /* (WINVER >= 0x0600) */
 
 //#if (WINVER >= _WIN32_WINNT_WIN7)
 #define LOCALE_IREADINGLAYOUT       0x0070
@@ -924,6 +927,7 @@ IsNLSDefinedString(
 
 BOOL WINAPI IsValidCodePage(_In_ UINT);
 BOOL WINAPI IsValidLocale(_In_ LCID, _In_ DWORD);
+INT WINAPI LCIDToLocaleName(LCID, LPWSTR, INT, DWORD);
 
 int
 WINAPI
@@ -945,6 +949,8 @@ LCMapStringW(
   _Out_writes_opt_(_Inexpressible_(cchDest)) LPWSTR lpDestStr,
   _In_ int cchDest);
 
+INT WINAPI LCMapStringEx(LPCWSTR, DWORD, LPCWSTR, INT, LPWSTR, INT, LPNLSVERSIONINFO, LPVOID, LPARAM);
+LCID WINAPI LocaleNameToLCID(LPCWSTR, DWORD);
 int WINAPI MultiByteToWideChar(UINT,DWORD,LPCSTR,int,LPWSTR,int);
 int WINAPI SetCalendarInfoA(_In_ LCID, _In_ CALID, _In_ CALTYPE, _In_ LPCSTR);
 int WINAPI SetCalendarInfoW(_In_ LCID, _In_ CALID, _In_ CALTYPE, _In_ LPCWSTR);

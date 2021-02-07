@@ -419,22 +419,23 @@ NtUserGetGUIThreadInfo(
           RETURN( FALSE);
       }
 
-      if ( W32Thread->MessageQueue )
-        MsgQueue = W32Thread->MessageQueue;
+      if (W32Thread->MessageQueue)
+         MsgQueue = W32Thread->MessageQueue;
       else
-      {
-        if ( Desktop ) MsgQueue = Desktop->ActiveMessageQueue;
-      }
+         MsgQueue = Desktop->ActiveMessageQueue;
+
+      /* FIXME: Dereference W32Thread on success? */
    }
    else
    {  /* Get the foreground thread */
       /* FIXME: Handle NULL queue properly? */
       MsgQueue = IntGetFocusMessageQueue();
-      if(!MsgQueue)
-      {
-        EngSetLastError(ERROR_ACCESS_DENIED);
-        RETURN( FALSE);
-      }
+   }
+
+   if (!MsgQueue)
+   {
+      EngSetLastError(ERROR_ACCESS_DENIED);
+      RETURN(FALSE);
    }
 
    CaretInfo = &MsgQueue->CaretInfo;

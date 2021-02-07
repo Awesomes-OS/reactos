@@ -1730,42 +1730,45 @@ RtlHashUnicodeString(
     IN ULONG HashAlgorithm,
     OUT PULONG HashValue)
 {
-    if (String != NULL && HashValue != NULL)
+    if (String == NULL || HashValue == NULL)
+        return STATUS_INVALID_PARAMETER;
+
+    // UNICODE_STRING Length is in bytes, not in characters.
+    ASSERT(String->Length % 2 == 0);
+
+    switch (HashAlgorithm)
     {
-        switch (HashAlgorithm)
+        case HASH_STRING_ALGORITHM_DEFAULT:
+        case HASH_STRING_ALGORITHM_X65599:
         {
-            case HASH_STRING_ALGORITHM_DEFAULT:
-            case HASH_STRING_ALGORITHM_X65599:
+            WCHAR *c, *end;
+
+            *HashValue = 0;
+            end = String->Buffer + (String->Length / sizeof(WCHAR));
+
+            if (CaseInSensitive)
             {
-                WCHAR *c, *end;
-
-                *HashValue = 0;
-                end = String->Buffer + (String->Length / sizeof(WCHAR));
-
-                if (CaseInSensitive)
+                for (c = String->Buffer; c != end; c++)
                 {
-                    for (c = String->Buffer; c != end; c++)
-                    {
-                        /* only uppercase characters if they are 'a' ... 'z'! */
-                        *HashValue = ((65599 * (*HashValue)) +
-                                      (ULONG)(((*c) >= L'a' && (*c) <= L'z') ?
-                                              (*c) - L'a' + L'A' : (*c)));
-                    }
+                    /* only uppercase characters if they are 'a' ... 'z'! */
+                    *HashValue = (65599 * (*HashValue)) +
+                        (ULONG)(((*c) >= L'a' && (*c) <= L'z') ? (*c) - L'a' + L'A' : (*c));
                 }
-                else
-                {
-                    for (c = String->Buffer; c != end; c++)
-                    {
-                        *HashValue = ((65599 * (*HashValue)) + (ULONG)(*c));
-                    }
-                }
-
-                return STATUS_SUCCESS;
             }
-        }
-    }
+            else
+            {
+                for (c = String->Buffer; c != end; c++)
+                {
+                    *HashValue = (65599 * (*HashValue)) + (ULONG)(*c);
+                }
+            }
 
-    return STATUS_INVALID_PARAMETER;
+            return STATUS_SUCCESS;
+        }
+
+        default:
+            return STATUS_INVALID_PARAMETER;
+    }
 }
 
 /*
@@ -1911,7 +1914,7 @@ RtlUpcaseUnicodeString(
 
     if (AllocateDestinationString)
     {
-        UniDest->MaximumLength = UniSource->Length;
+        UniDest->MaximumLength = max(UniSource->Length, 1u);
         UniDest->Buffer = RtlpAllocateStringMemory(UniDest->MaximumLength, TAG_USTR);
         if (UniDest->Buffer == NULL) return STATUS_NO_MEMORY;
     }
@@ -2181,31 +2184,44 @@ RtlxUnicodeStringToAnsiSize(IN PCUNICODE_STRING UnicodeString)
  */
 LONG
 NTAPI
-RtlCompareUnicodeString(
-    IN PCUNICODE_STRING s1,
-    IN PCUNICODE_STRING s2,
-    IN BOOLEAN  CaseInsensitive)
+RtlCompareUnicodeStrings(
+    IN const WCHAR* s1,
+    IN SIZE_T len1,
+    IN const WCHAR* s2,
+    IN SIZE_T len2,
+    IN BOOLEAN CaseInsensitive)
 {
-    unsigned int len;
+    SIZE_T len = min(len1, len2);
     LONG ret = 0;
-    LPCWSTR p1, p2;
-
-    len = min(s1->Length, s2->Length) / sizeof(WCHAR);
-    p1 = s1->Buffer;
-    p2 = s2->Buffer;
 
     if (CaseInsensitive)
     {
-        while (!ret && len--) ret = RtlpUpcaseUnicodeChar(*p1++) - RtlpUpcaseUnicodeChar(*p2++);
+        while (!ret && len--)
+            ret = RtlpUpcaseUnicodeChar(*s1++) - RtlpUpcaseUnicodeChar(*s2++);
     }
     else
     {
-        while (!ret && len--) ret = *p1++ - *p2++;
+        while (!ret && len--)
+            ret = *s1++ - *s2++;
     }
 
-    if (!ret) ret = s1->Length - s2->Length;
+    if (!ret) ret = len1 - len2;
 
     return ret;
+}
+
+/*
+ * @implemented
+ */
+LONG
+NTAPI
+RtlCompareUnicodeString(
+    IN PCUNICODE_STRING s1,
+    IN PCUNICODE_STRING s2,
+    IN BOOLEAN CaseInsensitive)
+{
+    return RtlCompareUnicodeStrings(s1->Buffer, s1->Length / sizeof(WCHAR),
+                                    s2->Buffer, s2->Length / sizeof(WCHAR), CaseInsensitive);
 }
 
 /*

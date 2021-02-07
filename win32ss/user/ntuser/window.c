@@ -739,7 +739,7 @@ IntGetWindowProc(PWND pWnd,
    PCLS Class;
    WNDPROC gcpd, Ret = 0;
 
-   ASSERT(UserIsEnteredExclusive() == TRUE);
+   ASSERT(UserIsEnteredExclusive() != FALSE);
 
    Class = pWnd->pcls;
 
@@ -2801,7 +2801,6 @@ IntFindWindow(PWND Parent,
    BOOL CheckWindowName;
    HWND *List, *phWnd;
    HWND Ret = NULL;
-   UNICODE_STRING CurrentWindowName;
 
    ASSERT(Parent);
 
@@ -2831,13 +2830,9 @@ IntFindWindow(PWND Parent,
             send WM_GETTEXT messages to windows belonging to its processes */
          if (!ClassAtom || Child->pcls->atomNVClassName == ClassAtom)
          {
-             // FIXME: LARGE_STRING truncated
-             CurrentWindowName.Buffer = Child->strName.Buffer;
-             CurrentWindowName.Length = (USHORT)min(Child->strName.Length, MAXUSHORT);
-             CurrentWindowName.MaximumLength = (USHORT)min(Child->strName.MaximumLength, MAXUSHORT);
              if(!CheckWindowName ||
-                (Child->strName.Length < 0xFFFF &&
-                 !RtlCompareUnicodeString(WindowName, &CurrentWindowName, TRUE)))
+                (WindowName->Length == Child->strName.Length &&
+                 !_wcsnicmp(WindowName->Buffer, Child->strName.Buffer, Child->strName.Length)))
              {
                 Ret = Child->head.h;
                 break;
@@ -3004,8 +2999,6 @@ NtUserFindWindowEx(HWND hwndParent,
              /* search children */
              while(*phWnd)
              {
-                 UNICODE_STRING ustr;
-
                 if(!(TopLevelWindow = UserGetWindowObject(*(phWnd++))))
                 {
                    continue;
@@ -3014,12 +3007,9 @@ NtUserFindWindowEx(HWND hwndParent,
                 /* Do not send WM_GETTEXT messages in the kernel mode version!
                    The user mode version however calls GetWindowText() which will
                    send WM_GETTEXT messages to windows belonging to its processes */
-                ustr.Buffer = TopLevelWindow->strName.Buffer;
-                ustr.Length = (USHORT)min(TopLevelWindow->strName.Length, MAXUSHORT); // FIXME:LARGE_STRING truncated
-                ustr.MaximumLength = (USHORT)min(TopLevelWindow->strName.MaximumLength, MAXUSHORT);
                 WindowMatches = !CheckWindowName ||
-                                (TopLevelWindow->strName.Length < 0xFFFF &&
-                                 !RtlCompareUnicodeString(&WindowName, &ustr, TRUE));
+                                (WindowName.Length == TopLevelWindow->strName.Length &&
+                                !_wcsnicmp(WindowName.Buffer, TopLevelWindow->strName.Buffer, TopLevelWindow->strName.Length));
                 ClassMatches = (ClassAtom == (RTL_ATOM)0) ||
                                ClassAtom == TopLevelWindow->pcls->atomNVClassName;
 
@@ -4107,76 +4097,171 @@ CLEANUP:
    END_CLEANUP;
 }
 
+/*
+ * Copy of RtlAnsiStringToUnicodeString with much more convenient API
+ *
+ * NOTES
+ *  This function always writes a terminating '\0'.
+ *  If the dest buffer is too small a partial copy is NOT performed!
+ */
+NTSTATUS
+NTAPI
+RtlpAnsiStringToUnicodeString(
+    IN OUT PLARGE_UNICODE_STRING UniDest,
+    IN PLARGE_ANSI_STRING AnsiSource,
+    IN PWND Wnd)
+{
+    ULONG Length;
+    ULONG Index;
+    NTSTATUS Status;
+
+    PAGED_CODE();
+
+    if (NlsMbCodePageTag == FALSE)
+    {
+        Length = AnsiSource->Length * 2 + sizeof(WCHAR);
+    }
+    else
+    {
+        /* Convert from Mb String to Unicode Size */
+        RtlMultiByteToUnicodeSize(&Length,
+                                  AnsiSource->Buffer,
+                                  AnsiSource->Length);
+
+        Length += sizeof(WCHAR);
+    }
+    UniDest->Length = Length - sizeof(WCHAR);
+
+    UniDest->Buffer = DesktopHeapAlloc(Wnd->head.rpdesk, Length);
+    UniDest->MaximumLength = Length;
+    if (!UniDest->Buffer) return STATUS_NO_MEMORY;
+
+    /* UniDest->MaximumLength must be even due to sizeof(WCHAR) being 2 */
+    ASSERT(!(UniDest->MaximumLength & 1) && UniDest->Length <= UniDest->MaximumLength);
+
+    Status = RtlMultiByteToUnicodeN(UniDest->Buffer,
+                                    UniDest->Length,
+                                    &Index,
+                                    AnsiSource->Buffer,
+                                    AnsiSource->Length);
+
+    if (!NT_SUCCESS(Status))
+    {
+        DesktopHeapFree(Wnd->head.rpdesk, UniDest->Buffer);
+        UniDest->Buffer = NULL;
+
+        return Status;
+    }
+
+    UniDest->Buffer[Index / sizeof(WCHAR)] = UNICODE_NULL;
+    return Status;
+}
+
+BOOL NTAPI
+IntDefSetText(PWND Wnd, PLARGE_STRING SafeText)
+{
+    if (SafeText->Buffer)
+    {
+        LARGE_UNICODE_STRING UnicodeString;
+        BOOL allocated = FALSE;
+
+        if (SafeText->bAnsi)
+        {
+            // ReactOS uses Unicode and not mixed. Up/Down converting will take time.
+            // Brought to you by: The Wine Project! Dysfunctional Thought Processes!
+
+            RtlInitLargeUnicodeString(&UnicodeString, NULL, 0);
+            if (!NT_SUCCESS(RtlpAnsiStringToUnicodeString(&UnicodeString, (PLARGE_ANSI_STRING)&SafeText, Wnd)))
+            {
+                // RtlpAnsiStringToUnicodeString cleans up itself if failed
+                return FALSE;
+            }
+            allocated = TRUE;
+        }
+        else
+        {
+            // Use given string as is
+            UnicodeString.Buffer = SafeText->Buffer;
+            UnicodeString.Length = SafeText->Length;
+            UnicodeString.MaximumLength = SafeText->MaximumLength;
+            UnicodeString.bAnsi = FALSE;
+        }
+
+        if (UnicodeString.Length != 0)
+        {
+            if (Wnd->strName.MaximumLength > 0 &&
+                UnicodeString.Length <= Wnd->strName.MaximumLength - sizeof(UNICODE_NULL))
+            {
+                ASSERT(Wnd->strName.Buffer != NULL);
+
+                Wnd->strName.Length = UnicodeString.Length;
+                Wnd->strName.Buffer[UnicodeString.Length / sizeof(WCHAR)] = L'\0';
+                RtlCopyMemory(Wnd->strName.Buffer,
+                    UnicodeString.Buffer,
+                    UnicodeString.Length);
+            }
+            else
+            {
+                const PWCHAR buf = Wnd->strName.Buffer;
+                Wnd->strName.Buffer = DesktopHeapAlloc(Wnd->head.rpdesk,
+                                                       UnicodeString.Length + sizeof(UNICODE_NULL));
+                if (Wnd->strName.Buffer != NULL)
+                {
+                    Wnd->strName.MaximumLength = Wnd->strName.Length = 0;
+                    Wnd->strName.Buffer[UnicodeString.Length / sizeof(WCHAR)] = L'\0';
+                    RtlCopyMemory(Wnd->strName.Buffer,
+                        UnicodeString.Buffer,
+                        UnicodeString.Length);
+                    Wnd->strName.MaximumLength = UnicodeString.Length + sizeof(UNICODE_NULL);
+                    Wnd->strName.Length = UnicodeString.Length;
+                }
+                else
+                {
+                    Wnd->strName.Buffer = buf;
+                    EngSetLastError(ERROR_NOT_ENOUGH_MEMORY);
+
+                    if (allocated && UnicodeString.Buffer)
+                        DesktopHeapFree(Wnd->head.rpdesk, UnicodeString.Buffer);
+                    return FALSE;
+                }
+                if (buf != NULL)
+                {
+                    DesktopHeapFree(Wnd->head.rpdesk, buf);
+                }
+            }
+        }
+        else
+        {
+            Wnd->strName.Length = 0;
+            if (Wnd->strName.Buffer != NULL)
+                Wnd->strName.Buffer[0] = L'\0';
+        }
+
+        if (allocated && UnicodeString.Buffer)
+            DesktopHeapFree(Wnd->head.rpdesk, UnicodeString.Buffer);
+    }
+
+
+    // FIXME: HAX! Windows does not do this in here!
+    // In User32, these are called after: NotifyWinEvent EVENT_OBJECT_NAMECHANGE than
+    // RepaintButton, StaticRepaint, NtUserCallHwndLock HWNDLOCK_ROUTINE_REDRAWFRAMEANDHOOK, etc.
+    /* Send shell notifications */
+    if (!Wnd->spwndOwner && !IntGetParent(Wnd))
+    {
+        co_IntShellHookNotify(HSHELL_REDRAW, (WPARAM)UserHMGetHandle(Wnd), FALSE); // FIXME Flashing?
+    }
+
+    return TRUE;
+}
+
 BOOL APIENTRY
 DefSetText(PWND Wnd, PCWSTR WindowText)
 {
-   UNICODE_STRING UnicodeString;
-   BOOL Ret = FALSE;
+    LARGE_UNICODE_STRING UnicodeString;
 
-   RtlInitUnicodeString(&UnicodeString, WindowText);
+    RtlInitLargeUnicodeString(&UnicodeString, WindowText, 0);
 
-   if (UnicodeString.Length != 0)
-   {
-      if (Wnd->strName.MaximumLength > 0 &&
-          UnicodeString.Length <= Wnd->strName.MaximumLength - sizeof(UNICODE_NULL))
-      {
-         ASSERT(Wnd->strName.Buffer != NULL);
-
-         Wnd->strName.Length = UnicodeString.Length;
-         Wnd->strName.Buffer[UnicodeString.Length / sizeof(WCHAR)] = L'\0';
-         RtlCopyMemory(Wnd->strName.Buffer,
-                              UnicodeString.Buffer,
-                              UnicodeString.Length);
-      }
-      else
-      {
-         PWCHAR buf;
-         Wnd->strName.MaximumLength = Wnd->strName.Length = 0;
-         buf = Wnd->strName.Buffer;
-         Wnd->strName.Buffer = NULL;
-         if (buf != NULL)
-         {
-            DesktopHeapFree(Wnd->head.rpdesk, buf);
-         }
-
-         Wnd->strName.Buffer = DesktopHeapAlloc(Wnd->head.rpdesk,
-                                                   UnicodeString.Length + sizeof(UNICODE_NULL));
-         if (Wnd->strName.Buffer != NULL)
-         {
-            Wnd->strName.Buffer[UnicodeString.Length / sizeof(WCHAR)] = L'\0';
-            RtlCopyMemory(Wnd->strName.Buffer,
-                                 UnicodeString.Buffer,
-                                 UnicodeString.Length);
-            Wnd->strName.MaximumLength = UnicodeString.Length + sizeof(UNICODE_NULL);
-            Wnd->strName.Length = UnicodeString.Length;
-         }
-         else
-         {
-            EngSetLastError(ERROR_NOT_ENOUGH_MEMORY);
-            goto Exit;
-         }
-      }
-   }
-   else
-   {
-      Wnd->strName.Length = 0;
-      if (Wnd->strName.Buffer != NULL)
-          Wnd->strName.Buffer[0] = L'\0';
-   }
-
-   // FIXME: HAX! Windows does not do this in here!
-   // In User32, these are called after: NotifyWinEvent EVENT_OBJECT_NAMECHANGE than
-   // RepaintButton, StaticRepaint, NtUserCallHwndLock HWNDLOCK_ROUTINE_REDRAWFRAMEANDHOOK, etc.
-   /* Send shell notifications */
-   if (!Wnd->spwndOwner && !IntGetParent(Wnd))
-   {
-      co_IntShellHookNotify(HSHELL_REDRAW, (WPARAM) UserHMGetHandle(Wnd), FALSE); // FIXME Flashing?
-   }
-
-   Ret = TRUE;
-Exit:
-   if (UnicodeString.Buffer) RtlFreeUnicodeString(&UnicodeString);
-   return Ret;
+    return IntDefSetText(Wnd, (PLARGE_STRING)&UnicodeString);
 }
 
 /*
@@ -4191,128 +4276,62 @@ Exit:
 BOOL APIENTRY
 NtUserDefSetText(HWND hWnd, PLARGE_STRING WindowText)
 {
-   PWND Wnd;
-   LARGE_STRING SafeText;
-   UNICODE_STRING UnicodeString;
-   BOOL Ret = TRUE;
+    PWND Wnd;
+    LARGE_STRING SafeText;
+    BOOL Ret = TRUE;
 
-   TRACE("Enter NtUserDefSetText\n");
+    TRACE("Enter NtUserDefSetText\n");
 
-   if (WindowText != NULL)
-   {
-      _SEH2_TRY
-      {
-         SafeText = ProbeForReadLargeString(WindowText);
-      }
-      _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
-      {
-         Ret = FALSE;
-         SetLastNtError(_SEH2_GetExceptionCode());
-      }
-      _SEH2_END;
-
-      if (!Ret)
-         return FALSE;
-   }
-   else
-      return TRUE;
-
-   UserEnterExclusive();
-
-   if(!(Wnd = UserGetWindowObject(hWnd)))
-   {
-      UserLeave();
-      return FALSE;
-   }
-
-   // ReactOS uses Unicode and not mixed. Up/Down converting will take time.
-   // Brought to you by: The Wine Project! Dysfunctional Thought Processes!
-   // Now we know what the bAnsi is for.
-   RtlInitUnicodeString(&UnicodeString, NULL);
-   if (SafeText.Buffer)
-   {
-      _SEH2_TRY
-      {
-         if (SafeText.bAnsi)
-            ProbeForRead(SafeText.Buffer, SafeText.Length, sizeof(CHAR));
-         else
-            ProbeForRead(SafeText.Buffer, SafeText.Length, sizeof(WCHAR));
-         Ret = RtlLargeStringToUnicodeString(&UnicodeString, &SafeText);
-      }
-      _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
-      {
-         Ret = FALSE;
-         SetLastNtError(_SEH2_GetExceptionCode());
-      }
-      _SEH2_END;
-      if (!Ret) goto Exit;
-   }
-
-   if (UnicodeString.Length != 0)
-   {
-      if (Wnd->strName.MaximumLength > 0 &&
-          UnicodeString.Length <= Wnd->strName.MaximumLength - sizeof(UNICODE_NULL))
-      {
-         ASSERT(Wnd->strName.Buffer != NULL);
-
-         Wnd->strName.Length = UnicodeString.Length;
-         Wnd->strName.Buffer[UnicodeString.Length / sizeof(WCHAR)] = L'\0';
-         RtlCopyMemory(Wnd->strName.Buffer,
-                              UnicodeString.Buffer,
-                              UnicodeString.Length);
-      }
-      else
-      {
-         PWCHAR buf;
-         Wnd->strName.MaximumLength = Wnd->strName.Length = 0;
-         buf = Wnd->strName.Buffer;
-         Wnd->strName.Buffer = NULL;
-         if (buf != NULL)
-         {
-            DesktopHeapFree(Wnd->head.rpdesk, buf);
-         }
-
-         Wnd->strName.Buffer = DesktopHeapAlloc(Wnd->head.rpdesk,
-                                                   UnicodeString.Length + sizeof(UNICODE_NULL));
-         if (Wnd->strName.Buffer != NULL)
-         {
-            Wnd->strName.Buffer[UnicodeString.Length / sizeof(WCHAR)] = L'\0';
-            RtlCopyMemory(Wnd->strName.Buffer,
-                                 UnicodeString.Buffer,
-                                 UnicodeString.Length);
-            Wnd->strName.MaximumLength = UnicodeString.Length + sizeof(UNICODE_NULL);
-            Wnd->strName.Length = UnicodeString.Length;
-         }
-         else
-         {
-            EngSetLastError(ERROR_NOT_ENOUGH_MEMORY);
+    if (WindowText != NULL)
+    {
+        _SEH2_TRY
+        {
+            SafeText = ProbeForReadLargeString(WindowText);
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
             Ret = FALSE;
-            goto Exit;
-         }
-      }
-   }
-   else
-   {
-      Wnd->strName.Length = 0;
-      if (Wnd->strName.Buffer != NULL)
-          Wnd->strName.Buffer[0] = L'\0';
-   }
+            SetLastNtError(_SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
 
-   // FIXME: HAX! Windows does not do this in here!
-   // In User32, these are called after: NotifyWinEvent EVENT_OBJECT_NAMECHANGE than
-   // RepaintButton, StaticRepaint, NtUserCallHwndLock HWNDLOCK_ROUTINE_REDRAWFRAMEANDHOOK, etc.
-   /* Send shell notifications */
-   if (!Wnd->spwndOwner && !IntGetParent(Wnd))
-   {
-      co_IntShellHookNotify(HSHELL_REDRAW, (WPARAM) hWnd, FALSE); // FIXME Flashing?
-   }
+        if (!Ret)
+            return FALSE;
+    }
+    else
+        return TRUE;
 
-   Ret = TRUE;
+    UserEnterExclusive();
+
+    if (!(Wnd = UserGetWindowObject(hWnd)))
+    {
+        Ret = FALSE;
+        goto Exit;
+    }
+
+    if (SafeText.Buffer)
+    {
+        _SEH2_TRY
+        {
+            if (SafeText.bAnsi)
+                ProbeForRead(SafeText.Buffer, SafeText.Length, sizeof(CHAR));
+            else
+                ProbeForRead(SafeText.Buffer, SafeText.Length, sizeof(WCHAR));
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            Ret = FALSE;
+            SetLastNtError(_SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+        if (!Ret) goto Exit;
+    }
+
+    Ret = IntDefSetText(Wnd, &SafeText);
 Exit:
-   if (UnicodeString.Buffer) RtlFreeUnicodeString(&UnicodeString);
-   TRACE("Leave NtUserDefSetText, ret=%i\n", Ret);
-   UserLeave();
-   return Ret;
+    TRACE("Leave NtUserDefSetText, ret=%i\n", Ret);
+    UserLeave();
+    return Ret;
 }
 
 /*

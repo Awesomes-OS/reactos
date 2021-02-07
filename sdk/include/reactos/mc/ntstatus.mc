@@ -11,6 +11,7 @@ RpcRuntime=0x2:FACILITY_RPC_RUNTIME
 RpcStubs=0x3:FACILITY_RPC_STUBS
 Io=0x4:FACILITY_IO_ERROR_CODE
 CTX=0xa:FACILITY_TERMINAL_SERVER
+MUI=0xB:FACILTIY_MUI_ERROR_CODE
 USB=0x10:FACILITY_USB_ERROR_CODE
 HID=0x11:FACILITY_HID_ERROR_CODE
 FIREWIRE=0x12:FACILITY_FIREWIRE_ERROR_CODE
@@ -5314,6 +5315,14 @@ Facility=Io
 SymbolicName=STATUS_PNP_IRQ_TRANSLATION_FAILED
 Language=English
 A IRQ translator failed to translate resources.
+.
+
+MessageId=0x1
+Severity=Error
+Facility=MUI
+SymbolicName=STATUS_MUI_FILE_NOT_FOUND
+Language=English
+The resource loader failed to find MUI file.
 .
 
 MessageId=0x1

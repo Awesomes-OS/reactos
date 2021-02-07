@@ -72,7 +72,7 @@ char *pszSourceFileName = NULL;
 char *pszDllName = NULL;
 char *gpszUnderscore = "";
 int gbDebug;
-unsigned guOsVersion = 0x502;
+//unsigned guOsVersion = 0x502;
 #define DbgPrint(...) (!gbDebug || fprintf(stderr, __VA_ARGS__))
 
 enum
@@ -1073,8 +1073,10 @@ ParseFile(char* pcStart, FILE *fileDest, unsigned *cExports)
                     exp.nEndVersion = endversion;
 
                     /* Now compare the range with our version */
+#if 0
                     if ((guOsVersion >= version) &&
                         (guOsVersion <= endversion))
+#endif
                     {
                         exp.bVersionIncluded = 1;
                     }
@@ -1448,7 +1450,9 @@ int main(int argc, char *argv[])
         }
         else if (strncasecmp(argv[i], pszVersionOption, strlen(pszVersionOption)) == 0)
         {
+#if 0
             guOsVersion = strtoul(argv[i] + strlen(pszVersionOption), NULL, 16);
+#endif
         }
         else if (strcasecmp(argv[i], "--implib") == 0)
         {

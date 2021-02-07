@@ -669,7 +669,7 @@ IoRaiseHardError(IN PIRP Irp,
     PKAPC ErrorApc;
 
     /* Don't do anything if hard errors are disabled on the thread */
-    if (Thread->HardErrorsAreDisabled)
+    if (PspTestThreadHardErrorsAreDisabledFlag(Thread))
     {
         /* Complete the request */
         Irp->IoStatus.Information = 0;
@@ -723,12 +723,7 @@ NTAPI
 IoSetThreadHardErrorMode(IN BOOLEAN HardErrorEnabled)
 {
     PETHREAD Thread = PsGetCurrentThread();
-    BOOLEAN OldMode;
-
-    /* Get the current value */
-    OldMode = !Thread->HardErrorsAreDisabled;
 
     /* Set the new one and return the old */
-    Thread->HardErrorsAreDisabled = !HardErrorEnabled;
-    return OldMode;
+    return !PspAssignThreadHardErrorsAreDisabledFlag(Thread, !HardErrorEnabled);
 }

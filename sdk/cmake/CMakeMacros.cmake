@@ -242,6 +242,8 @@ function(add_cd_file)
         message(FATAL_ERROR "You must provide a cd name (or \"all\" for all of them) to install the file on!")
     endif()
 
+    if (NOT NTDLL_WORK)
+
     # get file if we need to
     if(NOT _CD_FILE)
         set(_CD_FILE "$<TARGET_FILE:${_CD_TARGET}>")
@@ -366,6 +368,8 @@ function(add_cd_file)
             #endif()
         endif()
     endif() #end bootcd
+
+    endif()
 endfunction()
 
 function(create_iso_lists)
@@ -468,32 +472,51 @@ elseif(USE_FOLDER_STRUCTURE)
 
     function(add_custom_target name)
         _add_custom_target(${name} ${ARGN})
-        string(SUBSTRING ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR_LENGTH} -1 CMAKE_CURRENT_SOURCE_DIR_RELATIVE)
-        set_property(TARGET "${name}" PROPERTY FOLDER "${CMAKE_CURRENT_SOURCE_DIR_RELATIVE}")
+        get_target_property(_aliased ${name} ALIASED_TARGET)
+
+        if (NOT _aliased)
+
+            string(SUBSTRING ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR_LENGTH} -1 CMAKE_CURRENT_SOURCE_DIR_RELATIVE)
+            set_property(TARGET "${name}" PROPERTY FOLDER "${CMAKE_CURRENT_SOURCE_DIR_RELATIVE}")
+
+        endif()
     endfunction()
 
     function(add_library name)
         _add_library(${name} ${ARGN})
+        get_target_property(_aliased ${name} ALIASED_TARGET)
         get_target_property(_type ${name} TYPE)
-        if (NOT _type STREQUAL "INTERFACE_LIBRARY")
-            get_target_property(_target_excluded ${name} EXCLUDE_FROM_ALL)
-            if(_target_excluded AND ${name} MATCHES "^lib.*")
-                set_property(TARGET "${name}" PROPERTY FOLDER "Importlibs")
-            else()
-                string(SUBSTRING ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR_LENGTH} -1 CMAKE_CURRENT_SOURCE_DIR_RELATIVE)
-                set_property(TARGET "${name}" PROPERTY FOLDER "${CMAKE_CURRENT_SOURCE_DIR_RELATIVE}")
+
+        if (NOT _aliased)
+
+            if (NOT _type STREQUAL "INTERFACE_LIBRARY")
+                get_target_property(_target_excluded ${name} EXCLUDE_FROM_ALL)
+                if(_target_excluded AND ${name} MATCHES "^lib.*")
+                    set_property(TARGET "${name}" PROPERTY FOLDER "Importlibs")
+                else()
+                    string(SUBSTRING ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR_LENGTH} -1 CMAKE_CURRENT_SOURCE_DIR_RELATIVE)
+                    set_property(TARGET "${name}" PROPERTY FOLDER "${CMAKE_CURRENT_SOURCE_DIR_RELATIVE}")
+                endif()
             endif()
-        endif()
-        # cmake adds a module_EXPORTS define when compiling a module or a shared library. We don't use that.
-        if(_type MATCHES SHARED_LIBRARY|MODULE_LIBRARY)
-            set_target_properties(${name} PROPERTIES DEFINE_SYMBOL "")
+            # cmake adds a module_EXPORTS define when compiling a module or a shared library. We don't use that.
+            if(_type MATCHES SHARED_LIBRARY|MODULE_LIBRARY)
+                set_target_properties(${name} PROPERTIES DEFINE_SYMBOL "")
+            endif()
+
         endif()
     endfunction()
 
     function(add_executable name)
         _add_executable(${name} ${ARGN})
-        string(SUBSTRING ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR_LENGTH} -1 CMAKE_CURRENT_SOURCE_DIR_RELATIVE)
-        set_property(TARGET "${name}" PROPERTY FOLDER "${CMAKE_CURRENT_SOURCE_DIR_RELATIVE}")
+
+        get_target_property(_aliased ${name} ALIASED_TARGET)
+
+        if (NOT _aliased)
+
+            string(SUBSTRING ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR_LENGTH} -1 CMAKE_CURRENT_SOURCE_DIR_RELATIVE)
+            set_property(TARGET "${name}" PROPERTY FOLDER "${CMAKE_CURRENT_SOURCE_DIR_RELATIVE}")
+
+        endif()
     endfunction()
 else()
     function(add_library name)
@@ -911,7 +934,12 @@ else()
 endif()
 
 function(set_target_cpp_properties _target)
-    cmake_parse_arguments(_CPP "WITH_EXCEPTIONS;WITH_RTTI" "" "" ${ARGN})
+    cmake_parse_arguments(_CPP "WITH_EXCEPTIONS;WITH_RTTI;WITH_STRUCTURED_EXCEPTIONS" "" "" ${ARGN})
+
+    if (_CPP_WITH_STRUCTURED_EXCEPTIONS)
+        set_target_properties(${_target} PROPERTIES WITH_CXX_EXCEPTIONS TRUE)
+        set_target_properties(${_target} PROPERTIES WITH_CXX_STRUCTURED_EXCEPTIONS TRUE)
+    endif()
 
     if (_CPP_WITH_EXCEPTIONS)
         set_target_properties(${_target} PROPERTIES WITH_CXX_EXCEPTIONS TRUE)

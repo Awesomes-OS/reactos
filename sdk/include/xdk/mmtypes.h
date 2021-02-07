@@ -77,17 +77,25 @@ typedef ULONG NODE_REQUIREMENT;
 #define PAGE_NOCACHE          0x200
 #define PAGE_WRITECOMBINE     0x400
 
-#define MEM_COMMIT           0x1000
-#define MEM_RESERVE          0x2000
-#define MEM_DECOMMIT         0x4000
-#define MEM_RELEASE          0x8000
-#define MEM_FREE            0x10000
-#define MEM_PRIVATE         0x20000
-#define MEM_MAPPED          0x40000
-#define MEM_RESET           0x80000
-#define MEM_TOP_DOWN       0x100000
-#define MEM_LARGE_PAGES  0x20000000
-#define MEM_4MB_PAGES    0x80000000
+#define MEM_COMMIT                  0x00001000
+#define MEM_RESERVE                 0x00002000
+#define MEM_REPLACE_PLACEHOLDER     0x00004000
+#define MEM_DECOMMIT                0x00004000
+#define MEM_RELEASE                 0x00008000
+#define MEM_FREE                    0x00010000
+#define MEM_PRIVATE                 0x00020000
+#define MEM_RESERVE_PLACEHOLDER     0x00040000
+#define MEM_MAPPED                  0x00040000
+#define MEM_RESET                   0x00080000
+#define MEM_TOP_DOWN                0x00100000
+#define MEM_WRITE_WATCH             0x00200000
+#define MEM_PHYSICAL                0x00400000
+#define MEM_ROTATE                  0x00800000
+#define MEM_DIFFERENT_IMAGE_BASE_OK 0x00800000
+#define MEM_RESET_UNDO              0x01000000
+#define MEM_IMAGE                   0x01000000
+#define MEM_LARGE_PAGES             0x20000000
+#define MEM_4MB_PAGES               0x80000000
 
 #define SEC_RESERVE       0x4000000
 #define SEC_COMMIT        0x8000000

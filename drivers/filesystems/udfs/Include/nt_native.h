@@ -1322,7 +1322,7 @@ typedef enum _SECTION_INHERIT {
 #define MEM_LARGE_PAGES  0x20000000     
 #define SEC_RESERVE       0x4000000     
 #define PROCESS_ALL_ACCESS        (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | \
-                                   0xFFF)
+                                   0xFFFF)
 
 
 #define MAXIMUM_PROCESSORS 32
@@ -1337,7 +1337,7 @@ typedef enum _SECTION_INHERIT {
 #define THREAD_SET_INFORMATION         (0x0020)  // winnt
 
 #define THREAD_ALL_ACCESS         (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | \
-                                   0x3FF)
+                                   0xFFFF)
 
 //
 // ClientId

@@ -11,20 +11,20 @@
 
 #include <rtl.h>
 
-#define NDEBUG
+//#define NDEBUG
 #include <debug.h>
+#include <dpfilter.h>
 
 #define MAX_STATIC_CS_DEBUG_OBJECTS 64
 
 static RTL_CRITICAL_SECTION RtlCriticalSectionLock;
-static LIST_ENTRY RtlCriticalSectionList;
-static BOOLEAN RtlpCritSectInitialized = FALSE;
+LIST_ENTRY RtlCriticalSectionList;
+BOOLEAN RtlpCritSectInitialized = FALSE;
 static RTL_CRITICAL_SECTION_DEBUG RtlpStaticDebugInfo[MAX_STATIC_CS_DEBUG_OBJECTS];
 static BOOLEAN RtlpDebugInfoFreeList[MAX_STATIC_CS_DEBUG_OBJECTS];
 LARGE_INTEGER RtlpTimeout;
 
-extern BOOLEAN LdrpShutdownInProgress;
-extern HANDLE LdrpShutdownThreadId;
+#define RTL_CRITICAL_SECTION_FLAGS_ERROR (RTL_CRITICAL_SECTION_FLAG_NO_DEBUG_INFO | RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO)
 
 /* FUNCTIONS *****************************************************************/
 
@@ -110,85 +110,119 @@ NTSTATUS
 NTAPI
 RtlpWaitForCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
 {
+    PTEB Teb = NtCurrentTeb();
+    PPEB Peb = Teb->ProcessEnvironmentBlock;
+    PPEB_LDR_DATA Ldr = Peb->Ldr;
     NTSTATUS Status;
-    EXCEPTION_RECORD ExceptionRecord;
-    BOOLEAN LastChance = FALSE;
+    BOOLEAN WaitingOnLoaderLock;
+    ULONG TimeoutCount = 0;
 
-    /* Increase the Debug Entry count */
-    DPRINT("Waiting on Critical Section Event: %p %p\n",
-            CriticalSection,
-            CriticalSection->LockSemaphore);
+    WaitingOnLoaderLock = CriticalSection == Peb->LoaderLock;
 
-    if (CriticalSection->DebugInfo)
-        CriticalSection->DebugInfo->EntryCount++;
+    if (WaitingOnLoaderLock)
+    {
+        Teb->WaitingOnLoaderLock = TRUE;
+    }
 
     /*
      * If we're shutting down the process, we're allowed to acquire any
      * critical sections by force (the loader lock in particular)
      */
-    if (LdrpShutdownInProgress &&
-        LdrpShutdownThreadId == NtCurrentTeb()->RealClientId.UniqueThread)
+    if (Ldr->ShutdownInProgress && (!WaitingOnLoaderLock || Ldr->ShutdownThreadId == Teb->ClientId.UniqueThread))
     {
         DPRINT("Forcing ownership of critical section %p\n", CriticalSection);
-        return STATUS_SUCCESS;
+        CriticalSection->LockCount = 0;
+        CriticalSection->RecursionCount = 0;
+        CriticalSection->OwningThread = 0;
+        CriticalSection->LockSemaphore = 0;
+        Status = STATUS_SUCCESS;
     }
-
-    /* Do we have an Event yet? */
-    if (!CriticalSection->LockSemaphore)
+    else
     {
-        RtlpCreateCriticalSectionSem(CriticalSection);
-    }
+        /* Do we have an Event yet? */
+        if (!CriticalSection->LockSemaphore)
+        {
+            RtlpCreateCriticalSectionSem(CriticalSection);
+        }
 
-    for (;;)
-    {
-        /* Increase the number of times we've had contention */
+        /* Increase the Debug Entry count */
+        DPRINT("Waiting on Critical Section Event: %p %p\n",
+               CriticalSection, CriticalSection->LockSemaphore);
+
         if (CriticalSection->DebugInfo)
-            CriticalSection->DebugInfo->ContentionCount++;
+            CriticalSection->DebugInfo->EntryCount++;
 
-        /* Check if allocating the event failed */
-        if (CriticalSection->LockSemaphore == INVALID_HANDLE_VALUE)
+        while (TRUE)
         {
-            /* Use the global keyed event (NULL as keyed event handle) */
-            Status = NtWaitForKeyedEvent(NULL,
-                                         CriticalSection,
-                                         FALSE,
-                                         &RtlpTimeout);
-        }
-        else
-        {
-            /* Wait on the Event */
-            Status = NtWaitForSingleObject(CriticalSection->LockSemaphore,
-                                           FALSE,
-                                           &RtlpTimeout);
-        }
+            /* Increase the number of times we've had contention */
+            if (CriticalSection->DebugInfo)
+                CriticalSection->DebugInfo->ContentionCount++;
 
-        /* We have Timed out */
-        if (Status == STATUS_TIMEOUT)
-        {
-            /* Is this the 2nd time we've timed out? */
-            if (LastChance)
+            /* Check if allocating the event failed */
+            if (CriticalSection->LockSemaphore == INVALID_HANDLE_VALUE)
             {
-                ERROR_DBGBREAK("Deadlock: 0x%p\n", CriticalSection);
+                /* Use the global keyed event (NULL as keyed event handle) */
+                Status = NtWaitForKeyedEvent(NULL,
+                    CriticalSection,
+                    FALSE,
+                    &RtlpTimeout);
+            }
+            else
+            {
+                /* Wait on the Event */
+                Status = NtWaitForSingleObject(CriticalSection->LockSemaphore,
+                    FALSE,
+                    &RtlpTimeout);
+            }
+
+            /* We have Timed out */
+            if (Status != STATUS_TIMEOUT)
+                break;
+
+            WARN_(DEFAULT, "RTL: Timeout: PID.TID %p.%p, owner TID %p, critical section %p, contention count %u\n",
+                  Teb->ClientId.UniqueProcess, Teb->ClientId.UniqueThread, CriticalSection->OwningThread,
+                  CriticalSection, CriticalSection->DebugInfo ? CriticalSection->DebugInfo->ContentionCount : 0);
+
+            ++TimeoutCount;
+
+            /* Is this the 3rd time we've timed out? */
+            if (TimeoutCount >= 3u && !WaitingOnLoaderLock)
+            {
+                EXCEPTION_RECORD ExceptionRecord;
+
+                ERR_(DEFAULT, "RTL: Possible deadlock\n");
+                DbgBreakPoint();
 
                 /* Yes it is, we are raising an exception */
-                ExceptionRecord.ExceptionCode    = STATUS_POSSIBLE_DEADLOCK;
-                ExceptionRecord.ExceptionFlags   = 0;
-                ExceptionRecord.ExceptionRecord  = NULL;
+                ExceptionRecord.ExceptionCode = STATUS_POSSIBLE_DEADLOCK;
+                ExceptionRecord.ExceptionFlags = 0;
+                ExceptionRecord.ExceptionRecord = NULL;
                 ExceptionRecord.ExceptionAddress = RtlRaiseException;
                 ExceptionRecord.NumberParameters = 1;
                 ExceptionRecord.ExceptionInformation[0] = (ULONG_PTR)CriticalSection;
                 RtlRaiseException(&ExceptionRecord);
             }
-
-            /* One more try */
-            LastChance = TRUE;
-        }
-        else
-        {
-            /* If we are here, everything went fine */
-            return STATUS_SUCCESS;
+            else
+            {
+                ERR_(DEFAULT, "RTL: re-waiting\n");
+            }
         }
     }
+
+    if (!NT_SUCCESS(Status))
+    {
+        DbgBreakPoint();
+        RtlRaiseStatus(Status);
+        return Status;
+    }
+
+    if (WaitingOnLoaderLock)
+    {
+        Teb->WaitingOnLoaderLock = FALSE;
+    }
+
+    /* If we are here, everything went fine */
+    return STATUS_SUCCESS;
 }
 
 /*++
@@ -247,7 +281,7 @@ RtlpUnWaitCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
 }
 
 /*++
- * RtlpInitDeferedCriticalSection
+ * RtlpInitDeferredCriticalSection
  *
  *     Initializes the Critical Section implementation.
  *
@@ -261,9 +295,9 @@ RtlpUnWaitCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
  *     After this call, the Process Critical Section list is protected.
  *
  *--*/
-VOID
+void
 NTAPI
-RtlpInitDeferedCriticalSection(VOID)
+RtlpInitDeferredCriticalSection(void)
 {
     /* Initialize the Process Critical Section List */
     InitializeListHead(&RtlCriticalSectionList);
@@ -542,7 +576,7 @@ NTAPI
 RtlInitializeCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
 {
     /* Call the Main Function */
-    return RtlInitializeCriticalSectionAndSpinCount(CriticalSection, 0);
+    return RtlInitializeCriticalSectionEx(CriticalSection, 0, 0);
 }
 
 /*++
@@ -568,7 +602,49 @@ NTAPI
 RtlInitializeCriticalSectionAndSpinCount(PRTL_CRITICAL_SECTION CriticalSection,
                                          ULONG SpinCount)
 {
+    /* Call the Main Function */
+    return RtlInitializeCriticalSectionEx(CriticalSection, SpinCount & ~RTL_CRITICAL_SECTION_ALL_FLAG_BITS, 0);
+}
+
+/*++
+ * RtlInitializeCriticalSectionEx
+ * @implemented NT6.0
+ *
+ *     Initialises a new critical section.
+ *
+ * Params:
+ *     CriticalSection - Critical section to initialise
+ *
+ *     SpinCount - Spin count for the critical section.
+ * 
+ *     Flags - Critical section flags (RTL_CRITICAL_SECTION_FLAG_*)
+ *
+ * Returns:
+ *     STATUS_SUCCESS.
+ *
+ * Remarks:
+ *     SpinCount is ignored on single-processor systems.
+ *
+ *--*/
+NTSTATUS
+NTAPI
+RtlInitializeCriticalSectionEx(PRTL_CRITICAL_SECTION CriticalSection,
+                               ULONG SpinCount,
+                               ULONG Flags)
+{
     PRTL_CRITICAL_SECTION_DEBUG CritcalSectionDebugData;
+
+    if (SpinCount & RTL_CRITICAL_SECTION_ALL_FLAG_BITS)
+        return STATUS_INVALID_PARAMETER_2;
+
+    if (Flags & RTL_CRITICAL_SECTION_FLAG_RESERVED)
+        DPRINT1("Unexpected Flags bits [0x%08lX], ignoring...\n", Flags & RTL_CRITICAL_SECTION_FLAG_RESERVED);
+
+    if ((Flags & RTL_CRITICAL_SECTION_FLAGS_ERROR) == RTL_CRITICAL_SECTION_FLAGS_ERROR)
+        return STATUS_INVALID_PARAMETER_3;
+
+    if (Flags)
+        DPRINT("Unimplemented Flags bits [0x%08lX], ignoring...\n", Flags);
 
     /* First things first, set up the Object */
     DPRINT("Initializing Critical Section: %p\n", CriticalSection);
@@ -808,6 +884,26 @@ VOID
 NTAPI
 RtlpNotOwnerCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
 {
+    const PTEB Teb = NtCurrentTeb();
+    const PPEB Peb = Teb->ProcessEnvironmentBlock;
+    const PPEB_LDR_DATA Ldr = Peb->Ldr;
+
+    if (Ldr->ShutdownInProgress)
+    {
+        /* Ignore all critical sections during process shutdown, except LDR one. */
+
+        if (CriticalSection != Peb->LoaderLock || Ldr->ShutdownThreadId == Teb->ClientId.UniqueThread)
+            return;
+    }
+
+    if (Peb->BeingDebugged)
+    {
+        DPRINT1("RTL: Calling thread (TID %p) not owner of CritSect %p, owner TID: %p\n",
+                Teb->ClientId.UniqueThread, CriticalSection, CriticalSection->OwningThread);
+
+        DbgBreakPoint();
+    }
+
     RtlRaiseStatus(STATUS_RESOURCE_NOT_OWNED);
 }
 

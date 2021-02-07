@@ -854,6 +854,7 @@
 @ stdcall NtFindAtom(wstr long ptr)
 @ stdcall NtFreeVirtualMemory(ptr ptr ptr long)
 @ stdcall NtFsControlFile(ptr ptr ptr ptr ptr long ptr long ptr long)
+@ stdcall NtGetCurrentProcessorNumberEx(ptr)
 @ extern NtGlobalFlag
 @ stdcall NtLockFile(ptr ptr ptr ptr ptr ptr ptr long long long)
 @ stdcall NtMakePermanentObject(ptr)

@@ -294,3 +294,7 @@
     SVC_(QueryPortInformationProcess, 0)
     SVC_(GetCurrentProcessorNumber, 0)
     SVC_(WaitForMultipleObjects32, 5)
+    SVC_(QueueApcThreadEx, 6)
+    SVC_(GetNextProcess, 5)
+    SVC_(GetNextThread, 6)
+    SVC_(GetCurrentProcessorNumberEx, 1)

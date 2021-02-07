@@ -47,7 +47,6 @@ LdrVerifyMappedImageMatchesChecksum(
     IN SIZE_T ImageSize,
     IN ULONG FileLength)
 {
-#if 0
     PIMAGE_NT_HEADERS Header;
     PUSHORT Ptr;
     ULONG Sum;
@@ -119,6 +118,7 @@ LdrVerifyMappedImageMatchesChecksum(
     if (CalcSum != HeaderSum)
         DPRINT1("Image %p checksum mismatches! 0x%x != 0x%x, ImageSize %x, FileLen %x\n", BaseAddress, CalcSum, HeaderSum, ImageSize, FileLength);
 
+#if 0
     return (BOOLEAN)(CalcSum == HeaderSum);
 #else
     /*
@@ -267,6 +267,122 @@ RtlImageNtHeader(IN PVOID Base)
 /*
  * @implemented
  */
+NTSTATUS
+NTAPI
+RtlpImageDirectoryEntryToData32(
+    PVOID BaseAddress,
+    BOOLEAN MappedAsImage,
+    USHORT Directory,
+    PULONG Size,
+    PVOID* Section,
+    PIMAGE_NT_HEADERS32 NtHeader)
+{
+    ULONG Va;
+    PVOID result;
+
+    if (Directory >= SWAPD(NtHeader->OptionalHeader.NumberOfRvaAndSizes))
+        return STATUS_INVALID_PARAMETER;
+
+    Va = SWAPD(NtHeader->OptionalHeader.DataDirectory[Directory].VirtualAddress);
+    if (Va == 0)
+        return STATUS_NOT_IMPLEMENTED;
+
+    *Size = SWAPD(NtHeader->OptionalHeader.DataDirectory[Directory].Size);
+
+    if (MappedAsImage || Va < SWAPD(NtHeader->OptionalHeader.SizeOfHeaders))
+    {
+        *Section = (PVOID)((ULONG_PTR)BaseAddress + Va);
+        return STATUS_SUCCESS;
+    }
+
+    /* Image mapped as ordinary file, we must find raw pointer */
+    result = RtlImageRvaToVa((PIMAGE_NT_HEADERS)NtHeader, BaseAddress, Va, NULL);
+    *Section = result;
+    return result ? STATUS_SUCCESS : STATUS_INVALID_PARAMETER;
+}
+
+/*
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+RtlpImageDirectoryEntryToData64(
+    PVOID BaseAddress,
+    BOOLEAN MappedAsImage,
+    USHORT Directory,
+    PULONG Size,
+    PVOID* Section,
+    PIMAGE_NT_HEADERS64 NtHeader)
+{
+    ULONG Va;
+    PVOID result;
+
+    if (Directory >= SWAPD(NtHeader->OptionalHeader.NumberOfRvaAndSizes))
+        return STATUS_INVALID_PARAMETER;
+
+    Va = SWAPD(NtHeader->OptionalHeader.DataDirectory[Directory].VirtualAddress);
+    if (Va == 0)
+        return STATUS_NOT_IMPLEMENTED;
+
+    *Size = SWAPD(NtHeader->OptionalHeader.DataDirectory[Directory].Size);
+
+    if (MappedAsImage || Va < SWAPD(NtHeader->OptionalHeader.SizeOfHeaders))
+    {
+        *Section = (PVOID)((ULONG_PTR)BaseAddress + Va);
+        return STATUS_SUCCESS;
+    }
+
+    /* Image mapped as ordinary file, we must find raw pointer */
+    result = RtlImageRvaToVa((PIMAGE_NT_HEADERS)NtHeader, BaseAddress, Va, NULL);
+    *Section = result;
+    return result ? STATUS_SUCCESS : STATUS_INVALID_PARAMETER;
+}
+
+/*
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+RtlImageDirectoryEntryToDataEx(
+    PVOID BaseAddress,
+    BOOLEAN MappedAsImage,
+    USHORT Directory,
+    PULONG Size,
+    OUT PVOID* Section)
+{
+    PIMAGE_NT_HEADERS NtHeader;
+    NTSTATUS Status;
+
+    if ((ULONG_PTR)BaseAddress & 3)
+    {
+        /* Magic flag for non-mapped images. */
+        if ((ULONG_PTR)BaseAddress & 1)
+            MappedAsImage = FALSE;
+        BaseAddress = (PVOID)((ULONG_PTR)BaseAddress & ~3);
+    }
+
+    Status = RtlImageNtHeaderEx(
+        RTL_IMAGE_NT_HEADER_EX_FLAG_NO_RANGE_CHECK,
+        BaseAddress,
+        0,
+        &NtHeader);
+
+    if (NtHeader)
+    {
+        if (NtHeader->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC)
+            Status = RtlpImageDirectoryEntryToData32(BaseAddress, MappedAsImage, Directory, Size, Section, (PIMAGE_NT_HEADERS32)NtHeader);
+        else if (NtHeader->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC)
+            Status = RtlpImageDirectoryEntryToData64(BaseAddress, MappedAsImage, Directory, Size, Section, (PIMAGE_NT_HEADERS64)NtHeader);
+        else
+            Status = STATUS_INVALID_PARAMETER;
+    }
+
+    return Status;
+}
+
+/*
+ * @implemented
+ */
 PVOID
 NTAPI
 RtlImageDirectoryEntryToData(
@@ -275,55 +391,12 @@ RtlImageDirectoryEntryToData(
     USHORT Directory,
     PULONG Size)
 {
-    PIMAGE_NT_HEADERS NtHeader;
-    ULONG Va;
+    PVOID result = NULL;
 
-    /* Magic flag for non-mapped images. */
-    if ((ULONG_PTR)BaseAddress & 1)
-    {
-        BaseAddress = (PVOID)((ULONG_PTR)BaseAddress & ~1);
-        MappedAsImage = FALSE;
-    }
+    if (!NT_SUCCESS(RtlImageDirectoryEntryToDataEx(BaseAddress, MappedAsImage, Directory, Size, &result)))
+        result = NULL;
 
-    NtHeader = RtlImageNtHeader(BaseAddress);
-    if (NtHeader == NULL)
-        return NULL;
-
-    if (NtHeader->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC)
-    {
-        PIMAGE_OPTIONAL_HEADER64 OptionalHeader = (PIMAGE_OPTIONAL_HEADER64)&NtHeader->OptionalHeader;
-
-        if (Directory >= SWAPD(OptionalHeader->NumberOfRvaAndSizes))
-            return NULL;
-
-        Va = SWAPD(OptionalHeader->DataDirectory[Directory].VirtualAddress);
-        if (Va == 0)
-            return NULL;
-
-        *Size = SWAPD(OptionalHeader->DataDirectory[Directory].Size);
-
-        if (MappedAsImage || Va < SWAPD(OptionalHeader->SizeOfHeaders))
-            return (PVOID)((ULONG_PTR)BaseAddress + Va);
-    }
-    else
-    {
-        PIMAGE_OPTIONAL_HEADER32 OptionalHeader = (PIMAGE_OPTIONAL_HEADER32)&NtHeader->OptionalHeader;
-
-        if (Directory >= SWAPD(OptionalHeader->NumberOfRvaAndSizes))
-            return NULL;
-
-        Va = SWAPD(OptionalHeader->DataDirectory[Directory].VirtualAddress);
-        if (Va == 0)
-            return NULL;
-
-        *Size = SWAPD(OptionalHeader->DataDirectory[Directory].Size);
-
-        if (MappedAsImage || Va < SWAPD(OptionalHeader->SizeOfHeaders))
-            return (PVOID)((ULONG_PTR)BaseAddress + Va);
-    }
-
-    /* Image mapped as ordinary file, we must find raw pointer */
-    return RtlImageRvaToVa(NtHeader, BaseAddress, Va, NULL);
+    return result;
 }
 
 /*
@@ -459,66 +532,64 @@ LdrProcessRelocationBlockLongLong(
 
 ULONG
 NTAPI
-LdrRelocateImage(
-    IN PVOID BaseAddress,
-    IN PCCH  LoaderName,
-    IN ULONG Success,
-    IN ULONG Conflict,
-    IN ULONG Invalid)
-{
-    return LdrRelocateImageWithBias(BaseAddress, 0, LoaderName, Success, Conflict, Invalid);
-}
-
-ULONG
-NTAPI
 LdrRelocateImageWithBias(
     IN PVOID BaseAddress,
     IN LONGLONG AdditionalBias,
-    IN PCCH  LoaderName,
+    IN PCCH LoaderName,
     IN ULONG Success,
     IN ULONG Conflict,
     IN ULONG Invalid)
 {
     PIMAGE_NT_HEADERS NtHeaders;
-    PIMAGE_DATA_DIRECTORY RelocationDDir;
-    PIMAGE_BASE_RELOCATION RelocationDir, RelocationEnd;
-    ULONG Count;
-    ULONG_PTR Address;
-    PUSHORT TypeOffset;
+    PIMAGE_BASE_RELOCATION RelocationDir;
     LONGLONG Delta;
+    ULONG DirectorySize;
+    ULONGLONG ImageBase;
+    BOOL RelocsStripped;
+    NTSTATUS Status;
 
     NtHeaders = RtlImageNtHeader(BaseAddress);
 
     if (NtHeaders == NULL)
         return Invalid;
 
-    if (SWAPW(NtHeaders->FileHeader.Characteristics) & IMAGE_FILE_RELOCS_STRIPPED)
+    if (NtHeaders->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC)
+        ImageBase = SWAPD(((PIMAGE_NT_HEADERS32)NtHeaders)->OptionalHeader.ImageBase);
+    else if (NtHeaders->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC)
+        ImageBase = SWAPQ(((PIMAGE_NT_HEADERS64)NtHeaders)->OptionalHeader.ImageBase);
+    else
+        return Invalid;
+
+    RelocsStripped = SWAPW(NtHeaders->FileHeader.Characteristics) & IMAGE_FILE_RELOCS_STRIPPED;
+
+    Status = RtlImageDirectoryEntryToDataEx(BaseAddress,
+                                            TRUE,
+                                            IMAGE_DIRECTORY_ENTRY_BASERELOC,
+                                            &DirectorySize,
+                                            (PVOID*)&RelocationDir);
+
+    if (!NT_SUCCESS(Status) || !DirectorySize)
+        return RelocsStripped ? Conflict : Success;
+
+    Delta = (ULONG_PTR)BaseAddress - ImageBase + AdditionalBias;
+
+    while (TRUE)
     {
-        return Conflict;
-    }
+        const DWORD SizeOfBlock = SWAPD(RelocationDir->SizeOfBlock);
+        if (!SizeOfBlock)
+            break;
+        if (DirectorySize < SizeOfBlock)
+            break;
+        DirectorySize -= SizeOfBlock;
 
-    RelocationDDir = &NtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
-
-    if (SWAPD(RelocationDDir->VirtualAddress) == 0 || SWAPD(RelocationDDir->Size) == 0)
-    {
-        return Success;
-    }
-
-    Delta = (ULONG_PTR)BaseAddress - SWAPD(NtHeaders->OptionalHeader.ImageBase) + AdditionalBias;
-    RelocationDir = (PIMAGE_BASE_RELOCATION)((ULONG_PTR)BaseAddress + SWAPD(RelocationDDir->VirtualAddress));
-    RelocationEnd = (PIMAGE_BASE_RELOCATION)((ULONG_PTR)RelocationDir + SWAPD(RelocationDDir->Size));
-
-    while (RelocationDir < RelocationEnd &&
-            SWAPW(RelocationDir->SizeOfBlock) > 0)
-    {
-        Count = (SWAPW(RelocationDir->SizeOfBlock) - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(USHORT);
-        Address = (ULONG_PTR)RVA(BaseAddress, SWAPD(RelocationDir->VirtualAddress));
-        TypeOffset = (PUSHORT)(RelocationDir + 1);
+        const ULONG Count = (SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(USHORT);
+        const ULONG_PTR Address = (ULONG_PTR)RVA(BaseAddress, SWAPD(RelocationDir->VirtualAddress));
+        const PUSHORT TypeOffset = (PUSHORT)(RelocationDir + 1);
 
         RelocationDir = LdrProcessRelocationBlockLongLong(Address,
-                        Count,
-                        TypeOffset,
-                        Delta);
+                                                          Count,
+                                                          TypeOffset,
+                                                          Delta);
 
         if (RelocationDir == NULL)
         {

@@ -39,7 +39,7 @@ PspUserThreadStartup(IN PKSTART_ROUTINE StartRoutine,
     Thread = PsGetCurrentThread();
 
     /* Check if the thread is dead */
-    if (Thread->DeadThread)
+    if (PspTestThreadDeadThreadFlag(Thread))
     {
         /* Remember that we're dead */
         DeadThread = TRUE;
@@ -53,7 +53,7 @@ PspUserThreadStartup(IN PKSTART_ROUTINE StartRoutine,
     }
 
     /* Check if this is a dead thread, or if we're hiding */
-    if (!(Thread->DeadThread) && !(Thread->HideFromDebugger))
+    if (!PspTestThreadDeadThreadFlag(Thread) && !PspTestThreadHideFromDebuggerFlag(Thread))
     {
         /* We're not, so notify the debugger */
         DbgkCreateThread(Thread, StartContext);
@@ -150,7 +150,7 @@ PspSystemThreadStartup(IN PKSTART_ROUTINE StartRoutine,
     /* Make sure the thread isn't gone */
     _SEH2_TRY
     {
-        if (!(Thread->Terminated) && !(Thread->DeadThread))
+        if (!PspTestThreadTerminatedFlag(Thread) && !PspTestThreadDeadThreadFlag(Thread))
         {
             /* Call the Start Routine */
             StartRoutine(StartContext);
@@ -199,6 +199,8 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
             "ThreadContext: %p TargetProcess: %p ProcessHandle: %p\n",
             ThreadContext, TargetProcess, ProcessHandle);
 
+    KiVBoxPrint("PspCreateThread 1\n");
+
     /* If we were called from PsCreateSystemThread, then we're kernel mode */
     if (StartRoutine) PreviousMode = KernelMode;
 
@@ -242,6 +244,8 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
         return STATUS_INVALID_HANDLE;
     }
 
+    KiVBoxPrint("PspCreateThread 2\n");
+
     /* Create Thread Object */
     Status = ObCreateObject(PreviousMode,
                             PsThreadType,
@@ -258,6 +262,8 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
         ObDereferenceObject(Process);
         return Status;
     }
+
+    KiVBoxPrint("PspCreateThread 3\n");
 
     /* Zero the Object entirely */
     RtlZeroMemory(Thread, sizeof(ETHREAD));
@@ -295,6 +301,8 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
     InitializeListHead(&Thread->PostBlockList);
     InitializeListHead(&Thread->ActiveTimerListHead);
     KeInitializeSpinLock(&Thread->ActiveTimerListLock);
+
+    KiVBoxPrint("PspCreateThread 4\n");
 
     /* Acquire rundown protection */
     if (!ExAcquireRundownProtection (&Process->RundownProtect))
@@ -346,7 +354,7 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
     {
         /* System Thread */
         Thread->StartAddress = StartRoutine;
-        PspSetCrossThreadFlag(Thread, CT_SYSTEM_THREAD_BIT);
+        KiSetThreadSystemThreadFlagAssert(&Thread->Tcb);
 
         /* Let the kernel intialize the Thread */
         Status = KeInitThread(&Thread->Tcb,
@@ -358,6 +366,8 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
                               NULL,
                               &Process->Pcb);
     }
+
+    KiVBoxPrint("PspCreateThread 5\n");
 
     /* Check if we failed */
     if (!NT_SUCCESS(Status))
@@ -376,10 +386,12 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
     ExAcquirePushLockExclusive(&Process->ProcessLock);
 
     /* Make sure the proces didn't just die on us */
-    if (Process->ProcessDelete) goto Quickie;
+    if (PspTestProcessDeleteFlag(Process)) goto Quickie;
+
+    KiVBoxPrint("PspCreateThread 6\n");
 
     /* Check if the thread was ours, terminated and it was user mode */
-    if ((Thread->Terminated) &&
+    if (PspTestThreadTerminatedFlag(Thread) &&
         (ThreadContext) &&
         (Thread->ThreadsProcess == Process))
     {
@@ -395,12 +407,16 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
     InsertTailList(&Process->ThreadListHead, &Thread->ThreadListEntry);
     Process->ActiveThreads++;
 
+    KiVBoxPrint("PspCreateThread 7\n");
+
     /* Start the thread */
     KeStartThread(&Thread->Tcb);
 
     /* Release the process lock */
     ExReleasePushLockExclusive(&Process->ProcessLock);
     KeLeaveCriticalRegion();
+
+    KiVBoxPrint("PspCreateThread 8\n");
 
     /* Release rundown */
     ExReleaseRundownProtection(&Process->RundownProtect);
@@ -415,11 +431,15 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
     /* Reference ourselves as a keep-alive */
     ObReferenceObjectEx(Thread, 2);
 
+    KiVBoxPrint("PspCreateThread 9\n");
+
     /* Suspend the Thread if we have to */
     if (CreateSuspended) KeSuspendThread(&Thread->Tcb);
 
     /* Check if we were already terminated */
-    if (Thread->Terminated) KeForceResumeThread(&Thread->Tcb);
+    if (PspTestThreadTerminatedFlag(Thread)) KeForceResumeThread(&Thread->Tcb);
+
+    KiVBoxPrint("PspCreateThread 10\n");
 
     /* Create an access state */
     Status = SeCreateAccessStateEx(NULL,
@@ -432,7 +452,8 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
     if (!NT_SUCCESS(Status))
     {
         /* Access state failed, thread is dead */
-        PspSetCrossThreadFlag(Thread, CT_DEAD_THREAD_BIT);
+        // todo (andrew.boyarshin)
+        PspSetThreadDeadThreadFlagAssert(Thread);
 
         /* If we were suspended, wake it up */
         if (CreateSuspended) KeResumeThread(&Thread->Tcb);
@@ -445,6 +466,8 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
         return Status;
     }
 
+    KiVBoxPrint("PspCreateThread 11\n");
+
     /* Insert the Thread into the Object Manager */
     Status = ObInsertObject(Thread,
                             AccessState,
@@ -455,6 +478,8 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
 
     /* Delete the access state if we had one */
     if (AccessState) SeDeleteAccessState(AccessState);
+
+    KiVBoxPrint("PspCreateThread 12\n");
 
     /* Check for success */
     if (NT_SUCCESS(Status))
@@ -469,7 +494,8 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
         _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
         {
             /* Thread insertion failed, thread is dead */
-            PspSetCrossThreadFlag(Thread, CT_DEAD_THREAD_BIT);
+            // todo (andrew.boyarshin)
+            PspSetThreadDeadThreadFlagAssert(Thread);
 
             /* If we were suspended, wake it up */
             if (CreateSuspended) KeResumeThread(&Thread->Tcb);
@@ -487,31 +513,41 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
             _SEH2_YIELD(return _SEH2_GetExceptionCode());
         }
         _SEH2_END;
+
+        //PspSetThreadInsertedFlagAssert(Thread);
     }
     else
     {
         /* Thread insertion failed, thread is dead */
-        PspSetCrossThreadFlag(Thread, CT_DEAD_THREAD_BIT);
+        // todo (andrew.boyarshin)
+        // PspSetCrossThreadFlag(Thread, CT_DEAD_THREAD_BIT);
+        PspSetThreadDeadThreadFlagAssert(Thread);
 
         /* If we were suspended, wake it up */
         if (CreateSuspended) KeResumeThread(&Thread->Tcb);
     }
+
+    KiVBoxPrint("PspCreateThread 13\n");
 
     /* Get the create time */
     KeQuerySystemTime(&Thread->CreateTime);
     ASSERT(!(Thread->CreateTime.HighPart & 0xF0000000));
 
     /* Make sure the thread isn't dead */
-    if (!Thread->DeadThread)
+    // todo (andrew.boyarshin): when is ThreadInserted set?
+    if (!PspTestThreadDeadThreadFlag(Thread))
     {
         /* Get the thread's SD */
         Status = ObGetObjectSecurity(Thread,
                                      &SecurityDescriptor,
                                      &SdAllocated);
+        KiVBoxPrint("PspCreateThread 13.1\n");
         if (!NT_SUCCESS(Status))
         {
+            KiVBoxPrint("PspCreateThread 13.2\n");
             /* Thread insertion failed, thread is dead */
-            PspSetCrossThreadFlag(Thread, CT_DEAD_THREAD_BIT);
+            // todo (andrew.boyarshin)
+            PspSetThreadDeadThreadFlagAssert(Thread);
 
             /* If we were suspended, wake it up */
             if (CreateSuspended) KeResumeThread(&Thread->Tcb);
@@ -527,6 +563,7 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
             return Status;
         }
 
+        KiVBoxPrint("PspCreateThread 13.3\n");
         /* Create the subject context */
         SubjectContext.ProcessAuditId = Process;
         SubjectContext.PrimaryToken = PsReferencePrimaryToken(Process);
@@ -544,6 +581,7 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
                                &Thread->GrantedAccess,
                                &AccessStatus);
 
+        KiVBoxPrint("PspCreateThread 13.4\n");
         /* Dereference the token and let go the SD */
         ObFastDereferenceObject(&Process->Token,
                                 SubjectContext.PrimaryToken);
@@ -561,13 +599,20 @@ PspCreateThread(OUT PHANDLE ThreadHandle,
     {
         /* Set the thread access mask to maximum */
         Thread->GrantedAccess = THREAD_ALL_ACCESS;
+        KiVBoxPrint("PspCreateThread 13.5\n");
+        // todo (andrew.boyarshin): when?
+        ASSERT(FALSE);
     }
+
+    KiVBoxPrint("PspCreateThread 14\n");
 
     /* Dispatch thread */
     KeReadyThread(&Thread->Tcb);
 
     /* Dereference it, leaving only the keep-alive */
     ObDereferenceObject(Thread);
+
+    KiVBoxPrint("PspCreateThread 15\n");
 
     /* Return */
     return Status;
@@ -578,11 +623,15 @@ Quickie:
     ExReleasePushLockExclusive(&Process->ProcessLock);
     KeLeaveCriticalRegion();
 
+    KiVBoxPrint("PspCreateThread FAIL 16\n");
+
     /* Uninitailize it */
     KeUninitThread(&Thread->Tcb);
 
     /* If we had a TEB, delete it */
     if (TebBase) MmDeleteTeb(Process, TebBase);
+
+    KiVBoxPrint("PspCreateThread FAIL 17\n");
 
     /* Release rundown protection, which we also hold */
     ExReleaseRundownProtection(&Process->RundownProtect);
@@ -694,7 +743,7 @@ BOOLEAN
 NTAPI
 PsGetThreadHardErrorsAreDisabled(IN PETHREAD Thread)
 {
-    return Thread->HardErrorsAreDisabled ? TRUE : FALSE;
+    return PspTestThreadHardErrorsAreDisabledFlag(Thread);
 }
 
 /*
@@ -867,7 +916,7 @@ BOOLEAN
 NTAPI
 PsIsThreadTerminating(IN PETHREAD Thread)
 {
-    return Thread->Terminated ? TRUE : FALSE;
+    return PspTestThreadTerminatedFlag(Thread);
 }
 
 /*
@@ -877,7 +926,7 @@ BOOLEAN
 NTAPI
 PsIsSystemThread(IN PETHREAD Thread)
 {
-    return Thread->SystemThread ? TRUE: FALSE;
+    return KiTestThreadSystemThreadFlag(&Thread->Tcb);
 }
 
 /*
@@ -887,7 +936,7 @@ BOOLEAN
 NTAPI
 PsIsThreadImpersonating(IN PETHREAD Thread)
 {
-    return Thread->ActiveImpersonationInfo ? TRUE : FALSE;
+    return PspTestThreadActiveImpersonationInfoFlag(Thread);
 }
 
 /*
@@ -898,7 +947,7 @@ NTAPI
 PsSetThreadHardErrorsAreDisabled(IN PETHREAD Thread,
                                  IN BOOLEAN HardErrorsAreDisabled)
 {
-    Thread->HardErrorsAreDisabled = HardErrorsAreDisabled;
+    PspAssignThreadHardErrorsAreDisabledFlag(Thread, HardErrorsAreDisabled);
 }
 
 /*

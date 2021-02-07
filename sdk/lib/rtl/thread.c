@@ -18,6 +18,7 @@
 
 /* PRIVATE FUNCTIONS *******************************************************/
 
+/* note: keep in sync with kernel32.BaseCreateStack */
 NTSTATUS
 NTAPI
 RtlpCreateUserStack(IN HANDLE ProcessHandle,
@@ -48,7 +49,14 @@ RtlpCreateUserStack(IN HANDLE ProcessHandle,
         Headers = RtlImageNtHeader(NtCurrentPeb()->ImageBaseAddress);
         if (!Headers) return STATUS_INVALID_IMAGE_FORMAT;
 
-        /* If we didn't get the parameters, find them ourselves */
+        /*
+         * If we didn't get the parameters, find them ourselves.
+         *
+         * todo: * on WoW-capable arch (AMD64)
+         *       * only in RTL (not in kernel32.BaseCreateStack)
+         *       we should check the OptionalHeader Magic and use the appropriate header bitness
+         *
+         */
         if (StackReserve == 0)
             StackReserve = Headers->OptionalHeader.SizeOfStackReserve;
         if (StackCommit == 0)
@@ -88,7 +96,12 @@ RtlpCreateUserStack(IN HANDLE ProcessHandle,
                                      &StackReserve,
                                      MEM_RESERVE,
                                      PAGE_READWRITE);
-    if (!NT_SUCCESS(Status)) return Status;
+
+    if (!NT_SUCCESS(Status))
+    {
+        DPRINT1("Failure to reserve stack: 0x%08lX\n", Status);
+        return Status;
+    }
 
     /* Now set up some basic Initial TEB Parameters */
     InitialTeb->AllocatedStackBase = (PVOID)Stack;
@@ -120,6 +133,7 @@ RtlpCreateUserStack(IN HANDLE ProcessHandle,
                                      PAGE_READWRITE);
     if (!NT_SUCCESS(Status))
     {
+        DPRINT1("Failure to allocate stack: 0x%08lX\n", Status);
         GuardPageSize = 0;
         ZwFreeVirtualMemory(ProcessHandle, (PVOID*)&Stack, &GuardPageSize, MEM_RELEASE);
         return Status;
@@ -137,7 +151,11 @@ RtlpCreateUserStack(IN HANDLE ProcessHandle,
                                         &GuardPageSize,
                                         PAGE_GUARD | PAGE_READWRITE,
                                         &Dummy);
-        if (!NT_SUCCESS(Status)) return Status;
+        if (!NT_SUCCESS(Status))
+        {
+            DPRINT1("Failure to set guard page: 0x%08lX\n", Status);
+            return Status;
+        }
 
         /* Update the Stack Limit keeping in mind the Guard Page */
         InitialTeb->StackLimit = (PVOID)((ULONG_PTR)InitialTeb->StackLimit +
@@ -148,6 +166,7 @@ RtlpCreateUserStack(IN HANDLE ProcessHandle,
     return STATUS_SUCCESS;
 }
 
+/* note: keep in sync with kernel32.BaseFreeThreadStack */
 VOID
 NTAPI
 RtlpFreeUserStack(IN HANDLE ProcessHandle,
@@ -278,21 +297,6 @@ RtlCreateUserThread(IN HANDLE ProcessHandle,
 
     /* Return success or the previous failure */
     return Status;
-}
-
-/*
- * @implemented
- */
-VOID
-NTAPI
-RtlExitUserThread(NTSTATUS Status)
-{
-    /* Call the Loader and tell him to notify the DLLs */
-    LdrShutdownThread();
-
-    /* Shut us down */
-    NtCurrentTeb()->FreeStackOnTermination = TRUE;
-    NtTerminateThread(NtCurrentThread(), Status);
 }
 
 /*

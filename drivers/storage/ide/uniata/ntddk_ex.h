@@ -194,7 +194,7 @@ typedef unsigned int    BOOL;
 typedef unsigned long   DWORD;
 typedef unsigned char   BYTE;
 
-
+#if 0
 typedef struct _LDR_DATA_TABLE_ENTRY {
     LIST_ENTRY     LoadOrder;
     LIST_ENTRY     MemoryOrder;
@@ -385,6 +385,7 @@ typedef struct _TEB {
     PVOID ReservedForOle;
     ULONG WaitingOnLoaderLock;
 } TEB;
+
 typedef TEB *PTEB;
 
 typedef struct _KTHREAD_HDR {
@@ -522,6 +523,7 @@ typedef struct _KTHREAD_HDR {
     UCHAR DisableBoost;
 */
 } KTHREAD_HDR, *PKTHREAD_HDR;
+#endif
 
 #ifndef __REACTOS__
 typedef struct _IMAGE_DOS_HEADER {      // DOS .EXE header

@@ -64,7 +64,7 @@ ExpWin32SessionCallout(
     Win32ObjectHeader = Object;
 
     /* Check if we are not already in the correct session */
-    if (!PsGetCurrentProcess()->ProcessInSession ||
+    if (!PspTestProcessInSessionFlag(PsGetCurrentProcess()) ||
         (PsGetCurrentProcessSessionId() != Win32ObjectHeader->SessionId))
     {
         /* Get the session from the objects session Id */
@@ -214,9 +214,10 @@ ExpDesktopDelete(PVOID DeletedObject)
 NTSTATUS
 NTAPI
 ExpDesktopOpen(IN OB_OPEN_REASON Reason,
+               IN KPROCESSOR_MODE PreviousMode,
                IN PEPROCESS Process OPTIONAL,
                IN PVOID ObjectBody,
-               IN ACCESS_MASK GrantedAccess,
+               IN PACCESS_MASK GrantedAccess,
                IN ULONG HandleCount)
 {
     WIN32_OPENMETHOD_PARAMETERS Parameters;
@@ -224,7 +225,7 @@ ExpDesktopOpen(IN OB_OPEN_REASON Reason,
     Parameters.OpenReason = Reason;
     Parameters.Process = Process;
     Parameters.Object = ObjectBody;
-    Parameters.GrantedAccess = GrantedAccess;
+    Parameters.GrantedAccess = *GrantedAccess;
     Parameters.HandleCount = HandleCount;
 
     return ExpWin32SessionCallout(ObjectBody,

@@ -411,7 +411,7 @@ NtReplyWaitReceivePortEx(IN HANDLE PortHandle,
     else
     {
         /* If this is a system thread, then let it page out its stack */
-        if (Thread->SystemThread) WaitMode = UserMode;
+        if (KiTestThreadSystemThreadFlag(&Thread->Tcb)) WaitMode = UserMode;
 
         if (ReplyMessage != NULL)
             CapturedReplyMessage = *ReplyMessage;

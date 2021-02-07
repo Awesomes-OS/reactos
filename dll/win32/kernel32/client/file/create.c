@@ -459,7 +459,7 @@ OpenFile(LPCSTR lpFileName,
 	RtlInitAnsiString (&FileName, (LPSTR)lpFileName);
 
 	/* convert ansi (or oem) string to unicode */
-	if (bIsFileApiAnsi)
+	if (AreFileApisANSI())
 		RtlAnsiStringToUnicodeString (&FileNameU, &FileName, TRUE);
 	else
 		RtlOemStringToUnicodeString (&FileNameU, &FileName, TRUE);
@@ -497,7 +497,7 @@ OpenFile(LPCSTR lpFileName,
 	RtlInitUnicodeString(&FileNameU, PathNameW);
 
 	/* convert unicode string to ansi (or oem) */
-	if (bIsFileApiAnsi)
+	if (AreFileApisANSI())
 		RtlUnicodeStringToAnsiString (&FileName, &FileNameU, FALSE);
 	else
 		RtlUnicodeStringToOemString (&FileName, &FileNameU, FALSE);

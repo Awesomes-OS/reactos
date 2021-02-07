@@ -1137,6 +1137,7 @@ MmGetPfnForProcess(
     PVOID Address
 );
 
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
 BOOLEAN
 NTAPI
 MmCreateProcessAddressSpace(
@@ -1151,20 +1152,26 @@ MmInitializeHandBuiltProcess(
     IN PEPROCESS Process,
     IN PULONG_PTR DirectoryTableBase
 );
+#else
+BOOLEAN
+NTAPI
+MmCreateProcessAddressSpace(
+    IN ULONG MinWs,
+    IN PEPROCESS Dest
+);
+
+NTSTATUS
+NTAPI
+MmInitializeHandBuiltProcess(
+    IN PEPROCESS Process
+);
+#endif
 
 NTSTATUS
 NTAPI
 MmInitializeHandBuiltProcess2(
     IN PEPROCESS Process
 );
-
-NTSTATUS
-NTAPI
-MmSetExecuteOptions(IN ULONG ExecuteOptions);
-
-NTSTATUS
-NTAPI
-MmGetExecuteOptions(IN PULONG ExecuteOptions);
 
 VOID
 NTAPI
@@ -1496,14 +1503,14 @@ MmCheckSystemImage(
 NTSTATUS
 NTAPI
 MmCallDllInitialize(
-    IN PLDR_DATA_TABLE_ENTRY LdrEntry,
+    IN PKLDR_DATA_TABLE_ENTRY LdrEntry,
     IN PLIST_ENTRY ListHead
 );
 
 VOID
 NTAPI
 MmFreeDriverInitialization(
-    IN PLDR_DATA_TABLE_ENTRY LdrEntry);
+    IN PKLDR_DATA_TABLE_ENTRY LdrEntry);
 
 /* procsup.c *****************************************************************/
 

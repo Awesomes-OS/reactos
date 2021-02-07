@@ -7,6 +7,7 @@
  */
 
 #pragma once
+#include <mmtypes.h>
 
 #define MI_LOWEST_VAD_ADDRESS                   (PVOID)MM_LOWEST_USER_ADDRESS
 
@@ -1091,6 +1092,7 @@ MI_IS_WS_UNSAFE(IN PEPROCESS Process)
     return (Process->Vm.Flags.AcquiredUnsafe == TRUE);
 }
 
+#if 0
 //
 // Locks the working set for the given process
 //
@@ -1115,7 +1117,9 @@ MiLockProcessWorkingSet(IN PEPROCESS Process,
     ASSERT(Thread->OwnsProcessWorkingSetExclusive == FALSE);
     Thread->OwnsProcessWorkingSetExclusive = TRUE;
 }
+#endif
 
+#if 0
 FORCEINLINE
 VOID
 MiLockProcessWorkingSetShared(IN PEPROCESS Process,
@@ -1138,7 +1142,9 @@ MiLockProcessWorkingSetShared(IN PEPROCESS Process,
     ASSERT(Thread->OwnsProcessWorkingSetExclusive == FALSE);
     Thread->OwnsProcessWorkingSetShared = TRUE;
 }
+#endif
 
+#if 1
 FORCEINLINE
 VOID
 MiLockProcessWorkingSetUnsafe(IN PEPROCESS Process,
@@ -1160,6 +1166,7 @@ MiLockProcessWorkingSetUnsafe(IN PEPROCESS Process,
     ASSERT(Thread->OwnsProcessWorkingSetExclusive == FALSE);
     Thread->OwnsProcessWorkingSetExclusive = TRUE;
 }
+#endif
 
 //
 // Unlocks the working set for the given process
@@ -1316,6 +1323,72 @@ MiUnlockWorkingSet(IN PETHREAD Thread,
     /* Unblock APCs */
     KeLeaveGuardedRegion();
 }
+
+//
+// Unlocks the working set
+//
+FORCEINLINE
+VOID
+MiUnlockWorkingSetCoreExclusive(IN PKLOCK_QUEUE_HANDLE LockHandle)
+{
+    KeReleaseInStackQueuedSpinLockFromDpcLevel(LockHandle);
+
+    /* Unblock APCs */
+    KeLeaveGuardedRegion();
+}
+
+//
+// Locks the working set
+//
+FORCEINLINE
+VOID
+LOCK_WS(IN PETHREAD Thread, IN PEPROCESS Process)
+{
+    /* Block APCs */
+    KeEnterGuardedRegion();
+
+    /* Working set should be in global memory */
+    ASSERT(!MI_IS_SESSION_ADDRESS((PVOID)&Process->Vm));
+
+    /* Thread shouldn't already be owning something */
+    ASSERT(!MM_ANY_WS_LOCK_HELD(Thread));
+
+    /* Lock this working set */
+    ExAcquirePushLockExclusive(&Process->Vm.WorkingSetMutex);
+
+    /* Own the process working set */
+    ASSERT(!Thread->OwnsProcessWorkingSetExclusive);
+    Thread->OwnsProcessWorkingSetExclusive = TRUE;
+}
+
+#define MiLockProcessWorkingSet(Process, Thread) LOCK_WS((Thread), (Process))
+
+//
+// Locks the working set
+//
+FORCEINLINE
+VOID
+LOCK_WS_SHARED(IN PETHREAD Thread, IN PEPROCESS Process)
+{
+    /* Block APCs */
+    KeEnterGuardedRegion();
+
+    /* Working set should be in global memory */
+    ASSERT(!MI_IS_SESSION_ADDRESS((PVOID)&Process->Vm));
+
+    /* Thread shouldn't already be owning something */
+    ASSERT(!MM_ANY_WS_LOCK_HELD(Thread));
+
+    /* Lock this working set */
+    ExAcquirePushLockExclusive(&Process->Vm.WorkingSetMutex);
+
+    /* Own the process working set */
+    ASSERT(!Thread->OwnsProcessWorkingSetExclusive);
+    ASSERT(!Thread->OwnsProcessWorkingSetShared);
+    Thread->OwnsProcessWorkingSetShared = TRUE;
+}
+
+#define MiLockProcessWorkingSetShared(Process, Thread) LOCK_WS_SHARED((Thread), (Process))
 
 FORCEINLINE
 VOID
@@ -2010,7 +2083,7 @@ MiGetPageProtection(
     IN PMMPTE PointerPte
 );
 
-PLDR_DATA_TABLE_ENTRY
+PKLDR_DATA_TABLE_ENTRY
 NTAPI
 MiLookupDataTableEntry(
     IN PVOID Address
@@ -2321,5 +2394,9 @@ MiSynchronizeSystemPde(PMMPDE PointerPde)
     return SystemPde.u.Hard.Valid != 0;
 }
 #endif
+
+NTSTATUS
+NTAPI
+MmQueryMemoryListInformation(IN OUT PSYSTEM_MEMORY_LIST_INFORMATION data, IN SIZE_T size);
 
 /* EOF */

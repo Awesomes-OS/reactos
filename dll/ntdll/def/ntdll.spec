@@ -69,11 +69,7 @@
 @ stub -version=0x600+ EtwEnumerateProcessRegGuids
 @ stdcall -stub -version=0x502 EtwEnumerateTraceGuids(ptr long ptr)
 @ stub -version=0x600+ EtwEventActivityIdControl
-@ stub -version=0x600+ EtwEventEnabled
 @ stub -version=0x600+ EtwEventProviderEnabled
-@ stub -version=0x600+ EtwEventRegister
-@ stub -version=0x600+ EtwEventUnregister
-@ stub -version=0x600+ EtwEventWrite
 @ stub -version=0x600+ EtwEventWriteEndScenario
 @ stub -version=0x600+ EtwEventWriteFull
 @ stub -version=0x600+ EtwEventWriteStartScenario
@@ -154,7 +150,7 @@
 @ stdcall -stub -version=0x600+ LdrGetFileNameFromLoadAsDataTable(ptr ptr)
 @ stdcall -stub -version=0x600+ -arch=x86_64 LdrGetKnownDllSectionHandle(wstr long ptr)
 @ stdcall LdrGetProcedureAddress(ptr ptr long ptr)
-@ stdcall -stub -version=0x600+ LdrGetProcedureAddressEx(ptr ptr long ptr long)
+@ stdcall -version=0x600+ LdrGetProcedureAddressEx(ptr ptr long ptr long)
 @ stdcall -stub LdrHotPatchRoutine(ptr)
 @ stdcall -stub LdrInitShimEngineDynamic(ptr)
 @ stdcall LdrInitializeThunk(long long long long)
@@ -337,8 +333,6 @@
 @ stdcall NtGetCurrentProcessorNumber() ; 5.2 and higher
 @ stdcall NtGetDevicePowerState(ptr ptr)
 @ stub -version=0x600+ NtGetMUIRegistryInfo
-@ stub -version=0x600+ NtGetNextProcess
-@ stub -version=0x600+ NtGetNextThread
 @ stub -version=0x600+ NtGetNlsSectionPtr
 @ stub -version=0x600+ NtGetNotificationResourceManager
 @ stdcall NtGetPlugPlayEvent(long long ptr long)
@@ -607,8 +601,8 @@
 @ stdcall RtlAcquirePrivilege(ptr long long ptr)
 @ stdcall RtlAcquireResourceExclusive(ptr long)
 @ stdcall RtlAcquireResourceShared(ptr long)
-@ stdcall -stub -version=0x600+ RtlAcquireSRWLockExclusive(ptr)
-@ stdcall -stub -version=0x600+ RtlAcquireSRWLockShared(ptr)
+@ stdcall -version=0x600+ RtlAcquireSRWLockExclusive(ptr)
+@ stdcall -version=0x600+ RtlAcquireSRWLockShared(ptr)
 @ stdcall RtlActivateActivationContext(long ptr ptr)
 @ stdcall RtlActivateActivationContextEx(long ptr ptr ptr)
 @ stdcall -arch=x86_64 RtlActivateActivationContextUnsafeFast(ptr ptr)
@@ -682,7 +676,7 @@
 @ stdcall RtlCompareMemoryUlong(ptr long long)
 @ stdcall RtlCompareString(ptr ptr long)
 @ stdcall RtlCompareUnicodeString (ptr ptr long)
-@ stub -version=0x600+ RtlCompareUnicodeStrings
+@ stdcall -version=0x600+ RtlCompareUnicodeStrings(wstr long wstr long long)
 @ stub -version=0x600+ -arch=x86_64 RtlCompleteProcessCloning
 @ stdcall RtlCompressBuffer(long ptr long ptr long long ptr ptr)
 @ stdcall RtlComputeCrc32(long ptr long)
@@ -814,7 +808,6 @@
 @ stdcall RtlEqualString(ptr ptr long)
 @ stdcall RtlEqualUnicodeString(ptr ptr long)
 @ stdcall RtlEraseUnicodeString(ptr)
-@ stub -version=0x600+ RtlExitUserProcess
 @ stdcall RtlExitUserThread(long)
 @ stub -version=0x600+ RtlExpandEnvironmentStrings
 @ stdcall RtlExpandEnvironmentStrings_U(ptr ptr ptr ptr)
@@ -845,8 +838,8 @@
 @ stdcall RtlFindSetBitsAndClear(ptr long long)
 @ stdcall RtlFirstEntrySList(ptr)
 @ stdcall RtlFirstFreeAce(ptr ptr)
-@ stub -version=0x600+ RtlFlsAlloc
-@ stub -version=0x600+ RtlFlsFree
+@ stdcall -version=0x600+ RtlFlsAlloc(ptr ptr)
+@ stdcall -version=0x600+ RtlFlsFree(long)
 @ stdcall RtlFlushSecureMemoryCache(ptr ptr)
 @ stdcall RtlFormatCurrentUserKeyPath(ptr)
 @ stdcall RtlFormatMessage(ptr long long long long ptr ptr long ptr)
@@ -907,7 +900,6 @@
 @ stub -version=0x600+ RtlGetThreadPreferredUILanguages
 @ stub -version=0x600+ RtlGetUILanguageInfo
 @ stdcall RtlGetUnloadEventTrace()
-@ stub -version=0x600+ RtlGetUnloadEventTraceEx
 @ stdcall RtlGetUserInfoHeap(ptr long ptr ptr ptr)
 @ stub -version=0x600+ RtlGetUserPreferredUILanguages
 @ stdcall RtlGetVersion(ptr)
@@ -936,11 +928,11 @@
 @ stdcall RtlInitUnicodeStringEx(ptr wstr)
 @ stdcall -stub RtlInitializeAtomPackage(ptr)
 @ stdcall RtlInitializeBitMap(ptr long long)
-@ stdcall -stub -version=0x600+ RtlInitializeConditionVariable(ptr)
+@ stdcall -version=0x600+ RtlInitializeConditionVariable(ptr)
 @ stdcall RtlInitializeContext(ptr ptr ptr ptr ptr)
 @ stdcall RtlInitializeCriticalSection(ptr)
 @ stdcall RtlInitializeCriticalSectionAndSpinCount(ptr long)
-@ stub -version=0x600+ RtlInitializeCriticalSectionEx
+@ stdcall -version=0x600+ RtlInitializeCriticalSectionEx(ptr long long)
 @ stub -version=0x600+ -arch=i386 RtlInitializeExceptionChain
 @ stdcall RtlInitializeGenericTable(ptr ptr ptr ptr ptr)
 @ stdcall RtlInitializeGenericTableAvl(ptr ptr ptr ptr ptr)
@@ -949,7 +941,7 @@
 @ stdcall RtlInitializeRXact(ptr long ptr)
 @ stdcall RtlInitializeResource(ptr)
 @ stdcall RtlInitializeSListHead(ptr)
-@ stdcall -stub -version=0x600+ RtlInitializeSRWLock(ptr)
+@ stdcall -version=0x600+ RtlInitializeSRWLock(ptr)
 @ stdcall RtlInitializeSid(ptr ptr long)
 @ stdcall RtlInsertElementGenericTable(ptr ptr long ptr)
 @ stdcall RtlInsertElementGenericTableAvl(ptr ptr long ptr)
@@ -1063,7 +1055,7 @@
 @ stdcall RtlPrefixString(ptr ptr long)
 @ stdcall RtlPrefixUnicodeString(ptr ptr long)
 @ stub -version=0x600+ -arch=x86_64 RtlPrepareForProcessCloning
-@ stub -version=0x600+ RtlProcessFlsData
+# @ stdcall -version=0x600+ RtlProcessFlsData(ptr)
 @ stdcall RtlProtectHeap(ptr long)
 @ stdcall RtlPushFrame(ptr)
 @ stub -version=0x600+ RtlQueryActivationContextApplicationSettings
@@ -1108,8 +1100,8 @@
 @ stdcall RtlReleasePrivilege(ptr)
 @ stdcall RtlReleaseRelativeName(ptr)
 @ stdcall RtlReleaseResource(ptr)
-@ stdcall -stub -version=0x600+ RtlReleaseSRWLockExclusive(ptr)
-@ stdcall -stub -version=0x600+ RtlReleaseSRWLockShared(ptr)
+@ stdcall -version=0x600+ RtlReleaseSRWLockExclusive(ptr)
+@ stdcall -version=0x600+ RtlReleaseSRWLockShared(ptr)
 @ stdcall RtlRemoteCall(ptr ptr ptr long ptr long long)
 @ stub -version=0x600+ RtlRemovePrivileges
 @ stdcall RtlRemoveVectoredContinueHandler(ptr)
@@ -1124,10 +1116,6 @@
 @ stdcall RtlRevertMemoryStream(ptr)
 @ stdcall RtlRunDecodeUnicodeString(long ptr)
 @ stdcall RtlRunEncodeUnicodeString(long ptr)
-@ stdcall -stub -version=0x600+ RtlRunOnceBeginInitialize(ptr long ptr)
-@ stdcall -stub -version=0x600+ RtlRunOnceComplete(ptr long ptr)
-@ stdcall -stub -version=0x600+ RtlRunOnceExecuteOnce(ptr ptr ptr ptr)
-@ stdcall -stub -version=0x600+ RtlRunOnceInitialize(ptr)
 @ stdcall RtlSecondsSince1970ToTime(long ptr)
 @ stdcall RtlSecondsSince1980ToTime(long ptr)
 @ stdcall RtlSeekMemoryStream(ptr int64 long ptr)
@@ -1177,8 +1165,8 @@
 @ stub -version=0x600+ RtlSidHashLookup
 @ stub -version=0x600+ RtlSidIsHigherLevel
 @ stdcall RtlSizeHeap(long long ptr)
-@ stdcall -stub -version=0x600+ RtlSleepConditionVariableCS(ptr ptr ptr)
-@ stdcall -stub -version=0x600+ RtlSleepConditionVariableSRW(ptr ptr ptr long)
+@ stdcall -version=0x600+ RtlSleepConditionVariableCS(ptr ptr ptr)
+@ stdcall -version=0x600+ RtlSleepConditionVariableSRW(ptr ptr ptr long)
 @ stdcall RtlSplay(ptr)
 @ stdcall RtlStartRXact(ptr)
 @ stdcall RtlStatMemoryStream(ptr ptr long)
@@ -1250,8 +1238,8 @@
 @ stdcall RtlValidateUnicodeString(long ptr)
 @ stdcall RtlVerifyVersionInfo(ptr long double)
 @ stdcall -arch=x86_64 RtlVirtualUnwind(long long long ptr ptr ptr ptr ptr)
-@ stdcall -stub -version=0x600+ RtlWakeAllConditionVariable(ptr)
-@ stdcall -stub -version=0x600+ RtlWakeConditionVariable(ptr)
+@ stdcall -version=0x600+ RtlWakeAllConditionVariable(ptr)
+@ stdcall -version=0x600+ RtlWakeConditionVariable(ptr)
 @ stdcall RtlWalkFrameChain(ptr long long)
 @ stdcall RtlWalkHeap(long ptr)
 @ stub -version=0x600+ RtlWerpReportException
@@ -1311,45 +1299,17 @@
 @ stub -version=0x600+ ShipAssertMsgA
 @ stub -version=0x600+ ShipAssertMsgW
 @ stub -version=0x600+ TpAllocAlpcCompletion
-@ stub -version=0x600+ TpAllocCleanupGroup
 @ stub -version=0x600+ TpAllocIoCompletion
-@ stub -version=0x600+ TpAllocPool
-@ stub -version=0x600+ TpAllocTimer
-@ stub -version=0x600+ TpAllocWait
-@ stub -version=0x600+ TpAllocWork
-@ stub -version=0x600+ TpCallbackLeaveCriticalSectionOnCompletion
-@ stub -version=0x600+ TpCallbackMayRunLong
-@ stub -version=0x600+ TpCallbackReleaseMutexOnCompletion
-@ stub -version=0x600+ TpCallbackReleaseSemaphoreOnCompletion
-@ stub -version=0x600+ TpCallbackSetEventOnCompletion
-@ stub -version=0x600+ TpCallbackUnloadDllOnCompletion
 @ stub -version=0x600+ TpCancelAsyncIoOperation
 @ stub -version=0x600+ TpCaptureCaller
 @ stub -version=0x600+ TpCheckTerminateWorker
 @ stub -version=0x600+ TpDbgDumpHeapUsage
 @ stub -version=0x600+ TpDbgSetLogRoutine
-@ stub -version=0x600+ TpDisassociateCallback
-@ stub -version=0x600+ TpIsTimerSet
-@ stub -version=0x600+ TpPostWork
 @ stub -version=0x600+ TpReleaseAlpcCompletion
-@ stub -version=0x600+ TpReleaseCleanupGroup
-@ stub -version=0x600+ TpReleaseCleanupGroupMembers
 @ stub -version=0x600+ TpReleaseIoCompletion
-@ stub -version=0x600+ TpReleasePool
-@ stub -version=0x600+ TpReleaseTimer
-@ stub -version=0x600+ TpReleaseWait
-@ stub -version=0x600+ TpReleaseWork
-@ stub -version=0x600+ TpSetPoolMaxThreads
-@ stub -version=0x600+ TpSetPoolMinThreads
-@ stub -version=0x600+ TpSetTimer
-@ stub -version=0x600+ TpSetWait
-@ stub -version=0x600+ TpSimpleTryPost
 @ stub -version=0x600+ TpStartAsyncIoOperation
 @ stub -version=0x600+ TpWaitForAlpcCompletion
 @ stub -version=0x600+ TpWaitForIoCompletion
-@ stub -version=0x600+ TpWaitForTimer
-@ stub -version=0x600+ TpWaitForWait
-@ stub -version=0x600+ TpWaitForWork
 @ stdcall -ret64 VerSetConditionMask(double long long)
 @ stub -version=0x600+ WerCheckEventEscalation
 @ stub -version=0x600+ WerReportSQMEvent
@@ -1496,8 +1456,8 @@
 @ stdcall ZwGetCurrentProcessorNumber()
 @ stdcall ZwGetDevicePowerState(ptr ptr)
 @ stub -version=0x600+ ZwGetMUIRegistryInfo
-@ stub -version=0x600+ ZwGetNextProcess
-@ stub -version=0x600+ ZwGetNextThread
+@ stdcall -version=0x600+ ZwGetNextProcess(ptr long long long ptr)
+@ stdcall -version=0x600+ ZwGetNextThread(ptr ptr long long long ptr)
 @ stub -version=0x600+ ZwGetNlsSectionPtr
 @ stub -version=0x600+ ZwGetNotificationResourceManager
 @ stdcall ZwGetPlugPlayEvent(long long ptr long)
@@ -1768,8 +1728,10 @@
 @ cdecl -arch=i386 _alldvrm()
 @ cdecl -arch=i386 -ret64 _allmul(double double)
 @ cdecl -arch=i386 -norelay _alloca_probe()
-@ cdecl -version=0x600+ -arch=i386 _alloca_probe_16()
-@ stub -version=0x600+ -arch=i386 _alloca_probe_8
+# @ cdecl -version=0x600+ -arch=i386 _alloca_probe_16()
+# @ stub -version=0x600+ -arch=i386 _alloca_probe_8
+@ cdecl -stub -version=0x600+ -arch=i386 _alloca_probe_8()
+# @ cdecl -version=0x600+ -arch=i386 _alloca_probe_8()
 @ cdecl -arch=i386 -ret64 _allrem(double double)
 @ cdecl -arch=i386 _allshl()
 @ cdecl -arch=i386 _allshr()
@@ -1801,7 +1763,7 @@
 @ cdecl _strlwr(str)
 @ cdecl _strnicmp(str str long)
 @ cdecl _strupr(str)
-@ stub -version=0x600+ _swprintf
+@ cdecl -version=0x600+ _swprintf(ptr wstr)
 @ cdecl -version=0x502 _tolower(long)
 @ cdecl -version=0x502 _toupper(long)
 @ cdecl _ui64toa(double ptr long)
@@ -1811,6 +1773,7 @@
 @ cdecl _vscwprintf(wstr ptr)
 @ cdecl _vsnprintf(ptr long str ptr)
 @ cdecl _vsnwprintf(ptr long wstr ptr)
+# @ cdecl -version=0x600+ _vswprintf(ptr wstr ptr)
 @ stub -version=0x600+ _vswprintf
 @ cdecl _wcsicmp(wstr wstr)
 @ cdecl _wcslwr(wstr)
@@ -1912,3 +1875,63 @@
 @ stdcall -arch=arm __rt_udiv()
 @ stdcall -arch=arm __rt_udiv64()
 @ stdcall -arch=arm __rt_srsh()
+
+@ stdcall RtlGetFullPathName_UEx(wstr long ptr ptr ptr)
+@ stdcall RtlGetUnloadEventTraceEx(ptr ptr ptr)
+@ stdcall NtQueueApcThreadEx(long long ptr long long long)
+@ stdcall ZwQueueApcThreadEx(long long ptr long long long)
+@ stdcall RtlExitUserProcess(long)
+@ stdcall NtGetNextProcess(ptr long long long ptr)
+@ stdcall NtGetNextThread(ptr ptr long long long ptr)
+@ stdcall NtGetCurrentProcessorNumberEx(ptr)
+@ stdcall ZwGetCurrentProcessorNumberEx(ptr)
+@ stdcall RtlGetCurrentProcessorNumberEx(ptr)
+@ stdcall RtlIsProcessorFeaturePresent(long)
+
+@ stdcall RtlRunOnceInitialize(ptr)
+@ stdcall RtlRunOnceBeginInitialize(ptr long ptr)
+@ stdcall RtlRunOnceComplete(ptr long ptr)
+@ stdcall RtlRunOnceExecuteOnce(ptr ptr ptr ptr)
+
+@ stdcall TpAllocCleanupGroup(ptr)
+@ stdcall TpAllocPool(ptr ptr)
+@ stdcall TpAllocTimer(ptr ptr ptr ptr)
+@ stdcall TpAllocWait(ptr ptr ptr ptr)
+@ stdcall TpAllocWork(ptr ptr ptr ptr)
+@ stdcall TpCallbackLeaveCriticalSectionOnCompletion(ptr ptr)
+@ stdcall TpCallbackMayRunLong(ptr)
+@ stdcall TpCallbackReleaseMutexOnCompletion(ptr long)
+@ stdcall TpCallbackReleaseSemaphoreOnCompletion(ptr long long)
+@ stdcall TpCallbackSetEventOnCompletion(ptr long)
+@ stdcall TpCallbackUnloadDllOnCompletion(ptr ptr)
+@ stdcall TpDisassociateCallback(ptr)
+@ stdcall TpIsTimerSet(ptr)
+@ stdcall TpPostWork(ptr)
+@ stdcall TpReleaseCleanupGroup(ptr)
+@ stdcall TpReleaseCleanupGroupMembers(ptr long ptr)
+@ stdcall TpReleasePool(ptr)
+@ stdcall TpReleaseTimer(ptr)
+@ stdcall TpReleaseWait(ptr)
+@ stdcall TpReleaseWork(ptr)
+@ stdcall TpSetPoolMaxThreads(ptr long)
+@ stdcall TpSetPoolMinThreads(ptr long)
+@ stdcall TpSetTimer(ptr ptr long long)
+@ stdcall TpSetWait(ptr long ptr)
+@ stdcall TpSimpleTryPost(ptr ptr ptr)
+@ stdcall TpWaitForTimer(ptr long)
+@ stdcall TpWaitForWait(ptr long)
+@ stdcall TpWaitForWork(ptr long)
+
+@ stdcall EtwEventEnabled(int64 ptr)
+@ stdcall EtwEventRegister(ptr ptr ptr ptr)
+@ stdcall EtwEventSetInformation(int64 long ptr long)
+@ stdcall EtwEventUnregister(int64)
+@ stdcall EtwEventWrite(int64 ptr long ptr)
+
+@ stdcall RtlpFlsInitialize()
+@ stdcall RtlProcessFlsData(ptr long)
+@ stdcall RtlFlsGetValue(long ptr)
+@ stdcall RtlFlsSetValue(long ptr)
+@ stdcall RaiseException(long long long ptr) # TODO (andrew.boyarshin): merge into Rtl
+
+@ stdcall DbgOutput(str)

@@ -82,50 +82,6 @@ EtwGetTraceEnableLevel(
     return 0xFF;
 }
 
-ULONG
-NTAPI
-EtwUnregisterTraceGuids(
-    TRACEHANDLE RegistrationHandle
-)
-{
-    FIXME("EtwUnregisterTraceGuids stub()\n");
-    return ERROR_SUCCESS;
-}
-
-ULONG
-NTAPI
-EtwRegisterTraceGuidsA(
-    WMIDPREQUEST RequestAddress,
-    PVOID RequestContext,
-    LPCGUID ControlGuid,
-    ULONG GuidCount,
-    PTRACE_GUID_REGISTRATION TraceGuidReg,
-    LPCSTR MofImagePath,
-    LPCSTR MofResourceName,
-    PTRACEHANDLE RegistrationHandle
-)
-{
-    FIXME("EtwRegisterTraceGuidsA stub()\n");
-    return ERROR_SUCCESS;
-}
-
-ULONG
-NTAPI
-EtwRegisterTraceGuidsW(
-    WMIDPREQUEST RequestAddress,
-    PVOID RequestContext,
-    LPCGUID ControlGuid,
-    ULONG GuidCount,
-    PTRACE_GUID_REGISTRATION TraceGuidReg,
-    LPCWSTR MofImagePath,
-    LPCWSTR MofResourceName,
-    PTRACEHANDLE RegistrationHandle
-)
-{
-    FIXME("EtwRegisterTraceGuidsW stub()\n");
-    return ERROR_SUCCESS;
-}
-
 ULONG WINAPI EtwStartTraceW( PTRACEHANDLE pSessionHandle, LPCWSTR SessionName, PEVENT_TRACE_PROPERTIES Properties )
 {
     FIXME("(%p, %s, %p) stub\n", pSessionHandle, SessionName, Properties);

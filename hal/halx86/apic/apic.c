@@ -372,8 +372,7 @@ HalpAllocateSystemInterrupt(
     ReDirReg.Destination = 0;
 
     /* Initialize entry */
-    IOApicWrite(IOAPIC_REDTBL + 2 * Irq, ReDirReg.Long0);
-    IOApicWrite(IOAPIC_REDTBL + 2 * Irq + 1, ReDirReg.Long1);
+    ApicWriteIORedirectionEntry(Irq, ReDirReg);
 
     return Vector;
 }
@@ -413,8 +412,7 @@ ApicInitializeIOApic(VOID)
     for (Index = 0; Index < 24; Index++)
     {
         /* Initialize entry */
-        IOApicWrite(IOAPIC_REDTBL + 2 * Index, ReDirReg.Long0);
-        IOApicWrite(IOAPIC_REDTBL + 2 * Index + 1, ReDirReg.Long1);
+        ApicWriteIORedirectionEntry(Index, ReDirReg);
     }
 
     /* Init the vactor to index table */
@@ -669,6 +667,7 @@ HalDisableSystemInterrupt(
     ReDirReg.Mask = 1;
 
     /* Write back lower dword */
+    // todo (andrew.boyarshin): investigate
     IOApicWrite(IOAPIC_REDTBL + 2 * Irql, ReDirReg.Long0);
 }
 

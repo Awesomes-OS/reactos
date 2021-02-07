@@ -391,7 +391,7 @@ CheckNameLegalDOS8Dot3A(
     }
 
     RtlInitAnsiString(&AnsiInputName, (LPSTR)lpName);
-    if(bIsFileApiAnsi)
+    if(AreFileApisANSI())
       Status = RtlAnsiStringToUnicodeString(&Name, &AnsiInputName, TRUE);
     else
       Status = RtlOemStringToUnicodeString(&Name, &AnsiInputName, TRUE);

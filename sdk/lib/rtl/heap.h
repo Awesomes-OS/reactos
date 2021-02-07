@@ -321,6 +321,10 @@ typedef struct _HEAP_VIRTUAL_ALLOC_ENTRY
 /* Global variables */
 extern RTL_CRITICAL_SECTION RtlpProcessHeapsListLock;
 extern BOOLEAN RtlpPageHeapEnabled;
+extern PHEAP RtlpGlobalTagHeap;
+extern volatile BOOLEAN RtlpHeapInvalidBreakPoint;
+extern volatile PVOID RtlpHeapInvalidBadAddress;
+extern BOOLEAN RtlpValidateHeapHdrsEnable;
 
 /* Functions declarations */
 

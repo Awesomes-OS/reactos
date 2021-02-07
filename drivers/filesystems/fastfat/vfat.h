@@ -6,6 +6,8 @@
 #include <dos.h>
 #include <pseh/pseh2.h>
 #include <section_attribs.h>
+#include <ndk/rtltypes.h>
+#include <ndk/rtlfuncs2.h>
 #ifdef KDBG
 #include <ndk/kdfuncs.h>
 #include <reactos/kdros.h>

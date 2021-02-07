@@ -67,6 +67,8 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
     NTSTATUS Status;
     ULONG Length = 0;
     HANDLE DebugPort = 0;
+    PPROCESS_EXTENDED_BASIC_INFORMATION ProcessExtendedBasicInfo =
+        (PPROCESS_EXTENDED_BASIC_INFORMATION)ProcessInformation;
     PPROCESS_BASIC_INFORMATION ProcessBasicInfo =
         (PPROCESS_BASIC_INFORMATION)ProcessInformation;
     PKERNEL_USER_TIMES ProcessTime = (PKERNEL_USER_TIMES)ProcessInformation;
@@ -79,7 +81,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
     PIO_COUNTERS IoCounters = (PIO_COUNTERS)ProcessInformation;
     PQUOTA_LIMITS QuotaLimits = (PQUOTA_LIMITS)ProcessInformation;
     PUNICODE_STRING ImageName;
-    ULONG Cookie, ExecuteOptions = 0;
+    ULONG Cookie;
     ULONG_PTR Wow64 = 0;
     PROCESS_VALUES ProcessValues;
     ULONG Flags;
@@ -124,19 +126,30 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
     {
         /* Basic process information */
         case ProcessBasicInformation:
-
-            if (ProcessInformationLength != sizeof(PROCESS_BASIC_INFORMATION))
+            BOOLEAN extended;
+            if (ProcessInformationLength == sizeof(PROCESS_BASIC_INFORMATION))
+            {
+                extended = FALSE;
+            }
+            else if (ProcessInformationLength == sizeof(PROCESS_EXTENDED_BASIC_INFORMATION))
+            {
+                extended = TRUE;
+                ProcessBasicInfo = &ProcessExtendedBasicInfo->BasicInfo;
+                ProcessExtendedBasicInfo->Size = ProcessInformationLength;
+                ProcessExtendedBasicInfo->Flags = 0;
+            }
+            else
             {
                 Status = STATUS_INFO_LENGTH_MISMATCH;
                 break;
             }
 
             /* Set return length */
-            Length = sizeof(PROCESS_BASIC_INFORMATION);
+            Length = ProcessInformationLength;
 
             /* Reference the process */
             Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
+                                               PROCESS_QUERY_LIMITED_INFORMATION,
                                                PsProcessType,
                                                PreviousMode,
                                                (PVOID*)&Process,
@@ -149,6 +162,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
                 /* Write all the information from the EPROCESS/KPROCESS */
                 ProcessBasicInfo->ExitStatus = Process->ExitStatus;
                 ProcessBasicInfo->PebBaseAddress = Process->Peb;
+                // todo: fix to use proper group, by using ActiveGroupsMask from ProcessFlags in KPROCESS
                 ProcessBasicInfo->AffinityMask = Process->Pcb.Affinity;
                 ProcessBasicInfo->UniqueProcessId = (ULONG_PTR)Process->
                                                     UniqueProcessId;
@@ -156,6 +170,12 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
                     (ULONG_PTR)Process->InheritedFromUniqueProcessId;
                 ProcessBasicInfo->BasePriority = Process->Pcb.BasePriority;
 
+                if (extended)
+                {
+                    ProcessExtendedBasicInfo->IsProcessDeleting = PspIsProcessExiting(Process);
+                    ProcessExtendedBasicInfo->IsBackground = Process->PriorityClass == PsProcessPriorityBackground;
+                    ProcessExtendedBasicInfo->IsWow64Process = FALSE;
+                }
             }
             _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
             {
@@ -245,7 +265,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
 
             /* Reference the process */
             Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
+                                               PROCESS_QUERY_LIMITED_INFORMATION,
                                                PsProcessType,
                                                PreviousMode,
                                                (PVOID*)&Process,
@@ -286,7 +306,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
 
             /* Reference the process */
             Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
+                                               PROCESS_QUERY_LIMITED_INFORMATION,
                                                PsProcessType,
                                                PreviousMode,
                                                (PVOID*)&Process,
@@ -366,7 +386,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
 
             /* Reference the process */
             Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
+                                               PROCESS_QUERY_LIMITED_INFORMATION,
                                                PsProcessType,
                                                PreviousMode,
                                                (PVOID*)&Process,
@@ -407,7 +427,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
 
             /* Reference the process */
             Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
+                                               PROCESS_QUERY_LIMITED_INFORMATION,
                                                PsProcessType,
                                                PreviousMode,
                                                (PVOID*)&Process,
@@ -444,7 +464,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
 
             /* Reference the process */
             Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
+                                               PROCESS_QUERY_LIMITED_INFORMATION,
                                                PsProcessType,
                                                PreviousMode,
                                                (PVOID*)&Process,
@@ -497,7 +517,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
 
             /* Reference the process */
             Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
+                                               PROCESS_QUERY_LIMITED_INFORMATION,
                                                PsProcessType,
                                                PreviousMode,
                                                (PVOID*)&Process,
@@ -536,7 +556,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
 
             /* Reference the process */
             Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
+                                               PROCESS_QUERY_LIMITED_INFORMATION,
                                                PsProcessType,
                                                PreviousMode,
                                                (PVOID*)&Process,
@@ -547,8 +567,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
             _SEH2_TRY
             {
                 /* Return boost status */
-                *(PULONG)ProcessInformation = Process->Pcb.DisableBoost ?
-                                              TRUE : FALSE;
+                *(PULONG)ProcessInformation = KiTestProcessDisableBoostFlag(&Process->Pcb);
             }
             _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
             {
@@ -641,7 +660,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
 
             /* Reference the process */
             Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
+                                               PROCESS_QUERY_LIMITED_INFORMATION,
                                                PsProcessType,
                                                PreviousMode,
                                                (PVOID*)&Process,
@@ -670,7 +689,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
 
             /* Reference the process */
             Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
+                                               PROCESS_QUERY_LIMITED_INFORMATION,
                                                PsProcessType,
                                                PreviousMode,
                                                (PVOID*)&Process,
@@ -744,7 +763,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
             _SEH2_TRY
             {
                 /* Return the debug flag state */
-                *(PULONG)ProcessInformation = Process->NoDebugInherit ? 0 : 1;
+                *(PULONG)ProcessInformation = !PspTestProcessNoDebugInheritFlag(Process);
             }
             _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
             {
@@ -781,7 +800,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
             _SEH2_TRY
             {
                 /* Return the BreakOnTermination state */
-                *(PULONG)ProcessInformation = Process->BreakOnTermination;
+                *(PULONG)ProcessInformation = PspTestProcessBreakOnTerminationFlag(Process);
             }
             _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
             {
@@ -964,7 +983,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
             _SEH2_TRY
             {
                 /* Return if the flag is set */
-                *(PULONG)ProcessInformation = (ULONG)Process->VdmAllowed;
+                *(PULONG)ProcessInformation = PspTestProcessVdmAllowedFlag(Process);
             }
             _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
             {
@@ -990,7 +1009,7 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
 
             /* Reference the process */
             Status = ObReferenceObjectByHandle(ProcessHandle,
-                                               PROCESS_QUERY_INFORMATION,
+                                               PROCESS_QUERY_LIMITED_INFORMATION,
                                                PsProcessType,
                                                PreviousMode,
                                                (PVOID*)&Process,
@@ -1028,6 +1047,8 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
             break;
 
         case ProcessExecuteFlags:
+        {
+            KEXECUTE_OPTIONS ExecuteOptions = {0};
 
             if (ProcessInformationLength != sizeof(ULONG))
             {
@@ -1040,18 +1061,20 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
 
             if (ProcessHandle != NtCurrentProcess())
             {
-                return STATUS_INVALID_PARAMETER;
+                Status = STATUS_INVALID_PARAMETER;
+                break;
             }
 
             /* Get the options */
-            Status = MmGetExecuteOptions(&ExecuteOptions);
+            Status = KeGetExecuteOptions(&PsGetCurrentProcess()->Pcb, &ExecuteOptions);
+
             if (NT_SUCCESS(Status))
             {
                 /* Protect write with SEH */
                 _SEH2_TRY
                 {
                     /* Return them */
-                    *(PULONG)ProcessInformation = ExecuteOptions;
+                    *(PULONG)ProcessInformation = ExecuteOptions.ExecuteOptions;
                 }
                 _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
                 {
@@ -1060,7 +1083,9 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
                 }
                 _SEH2_END;
             }
+
             break;
+        }
 
         case ProcessLdtInformation:
             DPRINT1("VDM/16-bit not implemented: %lx\n", ProcessInformationClass);
@@ -1099,6 +1124,307 @@ NtQueryInformationProcess(IN HANDLE ProcessHandle,
     return Status;
 }
 
+NTSTATUS PspSetTlsProcessInformation(PVOID ProcessInformation, ULONG ProcessInformationLength, PEPROCESS Process)
+{
+    const ULONG nonThreadUserTlsInfoLength = RTL_SIZEOF_THROUGH_FIELD(PROCESS_TLS_INFORMATION, TlsIndex);
+    PROCESS_TLS_INFORMATION OneThreadTlsInfo;
+    PPROCESS_TLS_INFORMATION TlsInfo;
+    PPROCESS_TLS_INFORMATION UserTlsInfo = (PPROCESS_TLS_INFORMATION)ProcessInformation;
+    PETHREAD Thread;
+
+    /* Check buffer length */
+    if (ProcessInformationLength < sizeof(PROCESS_TLS_INFORMATION))
+    {
+        return STATUS_INFO_LENGTH_MISMATCH;
+    }
+
+    const ULONG threadUserTlsLength = ProcessInformationLength - nonThreadUserTlsInfoLength;
+    const ULONG ThreadCount = threadUserTlsLength / sizeof(THREAD_TLS_INFORMATION);
+
+    if (threadUserTlsLength % sizeof(THREAD_TLS_INFORMATION) != 0)
+    {
+        return STATUS_INFO_LENGTH_MISMATCH;
+    }
+
+    if (ProcessInformationLength == sizeof(OneThreadTlsInfo))
+    {
+        TlsInfo = &OneThreadTlsInfo;
+    }
+    else
+    {
+        TlsInfo = ExAllocatePoolWithQuota(PagedPool | POOL_QUOTA_FAIL_INSTEAD_OF_RAISE,
+                                          ProcessInformationLength);
+        if (!TlsInfo)
+        {
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
+    }
+
+    _SEH2_TRY
+    {
+        /* Enter SEH for direct buffer read */
+        _SEH2_TRY
+        {
+            if (ProcessInformationLength == sizeof(OneThreadTlsInfo))
+            {
+                OneThreadTlsInfo = *(PPROCESS_TLS_INFORMATION)ProcessInformation;
+            }
+            else
+            {
+                memcpy(TlsInfo, ProcessInformation, ProcessInformationLength);
+            }
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            /* Get exception code */
+            _SEH2_YIELD(return _SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+
+        if (TlsInfo->OperationType > MaxProcessTlsOperation)
+        {
+            _SEH2_YIELD(return STATUS_INVALID_PARAMETER);
+        }
+
+        if (TlsInfo->ThreadDataCount < 1)
+        {
+            _SEH2_YIELD(return STATUS_INVALID_PARAMETER);
+        }
+
+        if (TlsInfo->ThreadDataCount != ThreadCount)
+        {
+            _SEH2_YIELD(return STATUS_INVALID_PARAMETER);
+        }
+
+        if (TlsInfo->Reserved)
+        {
+            _SEH2_YIELD(return STATUS_INVALID_PARAMETER);
+        }
+
+        ULONG ThreadIndex = 0;
+
+        for (; ThreadIndex < TlsInfo->ThreadDataCount; ++ThreadIndex)
+        {
+            if (TlsInfo->ThreadData[ThreadIndex].Flags != 0)
+                _SEH2_YIELD(return STATUS_INVALID_PARAMETER);
+        }
+
+        ThreadIndex = 0;
+
+        for (Thread = PsGetNextProcessThread(Process, NULL);
+             Thread && (ThreadIndex < TlsInfo->ThreadDataCount);
+             Thread = PsGetNextProcessThread(Process, Thread))
+        {
+            BOOLEAN Failure = FALSE;
+
+            /* Make sure the process isn't dying */
+            if (!ExAcquireRundownProtection(&Thread->RundownProtect))
+            {
+                /* Avoid race conditions */
+                continue;
+            }
+
+            _SEH2_TRY
+            {
+                PVOID** AddrOfCurrentTlsBlock;
+                PVOID* CurrentTlsBlock;
+
+                _SEH2_TRY
+                {
+                    AddrOfCurrentTlsBlock = (PVOID**)&Thread->Tcb.Teb->ThreadLocalStoragePointer;
+                    CurrentTlsBlock = (PVOID*)Thread->Tcb.Teb->ThreadLocalStoragePointer;
+                }
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                {
+                    Failure = TRUE;
+                    _SEH2_YIELD(return _SEH2_GetExceptionCode());
+                }
+                _SEH2_END
+
+                if (!CurrentTlsBlock)
+                    _SEH2_YIELD(continue);
+
+                if (TlsInfo->OperationType == ProcessTlsReplaceIndex)
+                {
+                    // This thread didn't expand the TLS bitmap.
+
+                    _SEH2_TRY
+                    {
+                        UserTlsInfo->ThreadData[ThreadIndex].Flags |= 0x1;
+                    }
+                    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                    {
+                        Failure = TRUE;
+                        _SEH2_YIELD(return _SEH2_GetExceptionCode());
+                    }
+                    _SEH2_END
+
+                    _SEH2_TRY
+                    {
+                        PVOID OldModuleTlsData;
+
+                        ProbeForReadPointer(&CurrentTlsBlock[TlsInfo->TlsIndex]);
+
+                        // Get the old TLS pointer.
+
+                        OldModuleTlsData = CurrentTlsBlock[TlsInfo->TlsIndex];
+
+                        ProbeForWritePointer(&CurrentTlsBlock[TlsInfo->TlsIndex]);
+
+                        // Store the new module TLS pointer.
+
+                        CurrentTlsBlock[TlsInfo->TlsIndex] =
+                            TlsInfo->ThreadData[ThreadIndex].TlsModulePointer;
+
+                        UserTlsInfo->ThreadData[ThreadIndex].TlsVector = (PVOID*)OldModuleTlsData;
+                        UserTlsInfo->ThreadData[ThreadIndex].Flags ^= 0x3;
+
+                        ThreadIndex++;
+                    }
+                    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                    {
+                        NTSTATUS Status = _SEH2_GetExceptionCode();
+                        Failure = TRUE;
+
+                        _SEH2_TRY
+                        {
+                            UserTlsInfo->ThreadData[ThreadIndex].Flags &= ~0x1;
+                        }
+                        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                        {
+                            if (NT_SUCCESS(Status))
+                                Status = _SEH2_GetExceptionCode();
+                        }
+                        _SEH2_END
+
+                        _SEH2_YIELD(return Status);
+                    }
+                    _SEH2_END
+                }
+                else
+                {
+                    if (CurrentTlsBlock == (PVOID*)&Thread->Tcb.Teb->ThreadLocalStoragePointer)
+                    {
+                        CurrentTlsBlock = NULL;
+                    }
+                    else
+                    {
+                        const ULONG tlsVectorByteLength = TlsInfo->TlsVectorLength * sizeof(PVOID);
+
+                        // We need to copy over the TLS bitmap.
+
+                        if (tlsVectorByteLength)
+                        {
+                            PVOID* ThreadTlsVector;
+
+                            _SEH2_TRY
+                            {
+                                ProbeForRead(
+                                    CurrentTlsBlock,
+                                    tlsVectorByteLength,
+                                    TYPE_ALIGNMENT(PVOID)
+                                );
+                            }
+                            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                            {
+                                Failure = TRUE;
+                                _SEH2_YIELD(return _SEH2_GetExceptionCode());
+                            }
+                            _SEH2_END
+
+                            // The actual implementation saves the address, but I see
+                            // no reason to dereference it again.
+
+                            ThreadTlsVector = TlsInfo->ThreadData[ThreadIndex].TlsVector;
+
+                            _SEH2_TRY
+                            {
+                                ProbeForWrite(
+                                    ThreadTlsVector,
+                                    tlsVectorByteLength,
+                                    TYPE_ALIGNMENT(PVOID)
+                                );
+
+                                memcpy(
+                                    ThreadTlsVector,
+                                    CurrentTlsBlock,
+                                    tlsVectorByteLength
+                                );
+                            }
+                            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                            {
+                                Failure = TRUE;
+                                _SEH2_YIELD(return _SEH2_GetExceptionCode());
+                            }
+                            _SEH2_END
+                        }
+                    }
+
+                    // Set flags accordingly as we're going to set the vector for this thread.
+
+                    _SEH2_TRY
+                    {
+                        UserTlsInfo->ThreadData[ThreadIndex].Flags |= 0x1;
+                    }
+                    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                    {
+                        Failure = TRUE;
+                        _SEH2_YIELD(return _SEH2_GetExceptionCode());
+                    }
+                    _SEH2_END
+
+                    _SEH2_TRY
+                    {
+                        const HANDLE uniqueThread = Thread->Tcb.Teb->ClientId.UniqueThread;
+
+                        *AddrOfCurrentTlsBlock = TlsInfo->ThreadData[ThreadIndex].TlsVector;
+
+                        UserTlsInfo->ThreadData[ThreadIndex].ThreadId = uniqueThread;
+                        UserTlsInfo->ThreadData[ThreadIndex].TlsVector = CurrentTlsBlock;
+                        UserTlsInfo->ThreadData[ThreadIndex].Flags ^= 0x3;
+
+                        ThreadIndex++;
+                    }
+                    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                    {
+                        NTSTATUS Status = _SEH2_GetExceptionCode();
+                        Failure = TRUE;
+
+                        _SEH2_TRY
+                        {
+                            UserTlsInfo->ThreadData[ThreadIndex].Flags &= ~0x1;
+                        }
+                        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                        {
+                            if (NT_SUCCESS(Status))
+                                Status = _SEH2_GetExceptionCode();
+                        }
+                        _SEH2_END
+
+                        _SEH2_YIELD(return Status);
+                    }
+                    _SEH2_END
+                }
+            }
+            _SEH2_FINALLY
+            {
+                ExReleaseRundownProtection(&Thread->RundownProtect);
+                if (Failure)
+                    ObDereferenceObject(Thread);
+            }
+            _SEH2_END;
+        }
+
+        _SEH2_YIELD(return STATUS_SUCCESS);
+    }
+    _SEH2_FINALLY
+    {
+        if (TlsInfo && TlsInfo != &OneThreadTlsInfo)
+            ExFreePool(TlsInfo);
+    }
+    _SEH2_END;
+}
+
 /*
  * @implemented
  */
@@ -1127,7 +1453,7 @@ NtSetInformationProcess(IN HANDLE ProcessHandle,
     BOOLEAN DisableBoost = 0;
     ULONG DefaultHardErrorMode = 0;
     ULONG DebugFlags = 0, EnableFixup = 0, Boost = 0;
-    ULONG NoExecute = 0, VdmPower = 0;
+    ULONG VdmPower = 0;
     BOOLEAN HasPrivilege;
     PLIST_ENTRY Next;
     PETHREAD Thread;
@@ -1204,11 +1530,11 @@ NtSetInformationProcess(IN HANDLE ProcessHandle,
             /* Set or clear the flag */
             if (VdmPower)
             {
-                PspSetProcessFlag(Process, PSF_VDM_ALLOWED_BIT);
+                PspSetProcessVdmAllowedFlag(Process);
             }
             else
             {
-                PspClearProcessFlag(Process, PSF_VDM_ALLOWED_BIT);
+                PspClearProcessVdmAllowedFlag(Process);
             }
             break;
 
@@ -1254,9 +1580,15 @@ NtSetInformationProcess(IN HANDLE ProcessHandle,
             if (!NT_SUCCESS(Status)) break;
 
             /* Change the pointer */
+#if (NTDDI_VERSION >= NTDDI_LONGHORN)
+            if (InterlockedCompareExchangePointer(&Process->ExceptionPortData,
+                                                  ExceptionPort,
+                                                  NULL))
+#else
             if (InterlockedCompareExchangePointer(&Process->ExceptionPort,
                                                   ExceptionPort,
                                                   NULL))
+#endif
             {
                 /* We already had one, fail */
                 ObDereferenceObject(ExceptionPort);
@@ -1668,14 +2000,7 @@ NtSetInformationProcess(IN HANDLE ProcessHandle,
             }
 
             /* Set or clear the flag */
-            if (Break)
-            {
-                PspSetProcessFlag(Process, PSF_BREAK_ON_TERMINATION_BIT);
-            }
-            else
-            {
-                PspClearProcessFlag(Process, PSF_BREAK_ON_TERMINATION_BIT);
-            }
+            PspAssignProcessBreakOnTerminationFlag(Process, Break);
 
             break;
 
@@ -1743,6 +2068,12 @@ NtSetInformationProcess(IN HANDLE ProcessHandle,
                 Status = STATUS_PROCESS_IS_TERMINATING;
             }
             break;
+
+        case ProcessTlsInformation:
+        {
+            Status = PspSetTlsProcessInformation(ProcessInformation, ProcessInformationLength, Process);
+            break;
+        }
 
         /* Priority Boosting status */
         case ProcessPriorityBoost:
@@ -1834,11 +2165,11 @@ NtSetInformationProcess(IN HANDLE ProcessHandle,
             {
                 if (DebugFlags & 1)
                 {
-                    PspClearProcessFlag(Process, PSF_NO_DEBUG_INHERIT_BIT);
+                    PspClearProcessNoDebugInheritFlag(Process);
                 }
                 else
                 {
-                    PspSetProcessFlag(Process, PSF_NO_DEBUG_INHERIT_BIT);
+                    PspSetProcessNoDebugInheritFlag(Process);
                 }
             }
 
@@ -1895,7 +2226,7 @@ NtSetInformationProcess(IN HANDLE ProcessHandle,
             }
 
             /* Only supported on x86 */
-#if defined (_X86_)
+#if defined (_X86_) && (NTDDI_VERSION < NTDDI_LONGHORN)
             Ke386SetIOPL();
 #elif defined(_M_AMD64)
             /* On x64 this function isn't implemented.
@@ -1913,6 +2244,10 @@ NtSetInformationProcess(IN HANDLE ProcessHandle,
             break;
 
         case ProcessExecuteFlags:
+        {
+            KEXECUTE_OPTIONS ExecuteOptions = {
+                .ExecuteOptionsNV = 0
+            };
 
             /* Check buffer length */
             if (ProcessInformationLength != sizeof(ULONG))
@@ -1930,7 +2265,7 @@ NtSetInformationProcess(IN HANDLE ProcessHandle,
             /* Enter SEH for direct buffer read */
             _SEH2_TRY
             {
-                NoExecute = *(PULONG)ProcessInformation;
+                ExecuteOptions.ExecuteOptions = (UCHAR)*(PULONG)ProcessInformation;
             }
             _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
             {
@@ -1941,8 +2276,9 @@ NtSetInformationProcess(IN HANDLE ProcessHandle,
             _SEH2_END;
 
             /* Call Mm for the update */
-            Status = MmSetExecuteOptions(NoExecute);
+            Status = KeSetExecuteOptions(&PsGetCurrentProcess()->Pcb, ExecuteOptions);
             break;
+        }
 
         case ProcessDeviceMap:
 
@@ -2026,7 +2362,7 @@ NtSetInformationThread(IN HANDLE ThreadHandle,
     NTSTATUS Status;
     HANDLE TokenHandle = NULL;
     KPRIORITY Priority = 0;
-    KAFFINITY Affinity = 0, CombinedAffinity;
+    KAFFINITY CombinedAffinity;
     PVOID Address = NULL;
     PEPROCESS Process;
     ULONG_PTR DisableBoost = 0;
@@ -2153,9 +2489,11 @@ NtSetInformationThread(IN HANDLE ThreadHandle,
             break;
 
         case ThreadAffinityMask:
+        {
+            KAFFINITY Affinity;
 
             /* Check buffer length */
-            if (ThreadInformationLength != sizeof(ULONG_PTR))
+            if (ThreadInformationLength != sizeof(KAFFINITY))
             {
                 Status = STATUS_INFO_LENGTH_MISMATCH;
                 break;
@@ -2165,9 +2503,9 @@ NtSetInformationThread(IN HANDLE ThreadHandle,
             _SEH2_TRY
             {
                 /* Get the priority */
-                Affinity = *(PULONG_PTR)ThreadInformation;
+                Affinity = *(PKAFFINITY)ThreadInformation;
             }
-            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+                _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
             {
                 /* Get the exception code */
                 Status = _SEH2_GetExceptionCode();
@@ -2219,6 +2557,7 @@ NtSetInformationThread(IN HANDLE ThreadHandle,
 
             /* Return status */
             break;
+        }
 
         case ThreadImpersonationToken:
 
@@ -2461,11 +2800,11 @@ NtSetInformationThread(IN HANDLE ThreadHandle,
             /* Set or clear the flag */
             if (Break)
             {
-                PspSetCrossThreadFlag(Thread, CT_BREAK_ON_TERMINATION_BIT);
+                PspSetThreadBreakOnTerminationFlag(Thread);
             }
             else
             {
-                PspClearCrossThreadFlag(Thread, CT_BREAK_ON_TERMINATION_BIT);
+                PspClearThreadBreakOnTerminationFlag(Thread);
             }
             break;
 
@@ -2479,7 +2818,7 @@ NtSetInformationThread(IN HANDLE ThreadHandle,
             }
 
             /* Set the flag */
-            PspSetCrossThreadFlag(Thread, CT_HIDE_FROM_DEBUGGER_BIT);
+            PspSetThreadHideFromDebuggerFlag(Thread);
             break;
 
         default:
@@ -2754,7 +3093,7 @@ NtQueryInformationThread(IN HANDLE ThreadHandle,
 
             _SEH2_TRY
             {
-                *(PULONG)ThreadInformation = Thread->Tcb.DisableBoost ? 1 : 0;
+                *(PULONG)ThreadInformation = KiTestThreadDisableBoostFlag(&Thread->Tcb);
             }
             _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
             {
@@ -2787,6 +3126,31 @@ NtQueryInformationThread(IN HANDLE ThreadHandle,
             _SEH2_END;
 
             break;
+
+        case ThreadHideFromDebugger:
+        {
+            /* Set the return length */
+            Length = sizeof(BOOLEAN);
+
+            if (ThreadInformationLength != Length)
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+                break;
+            }
+
+            _SEH2_TRY
+            {
+                *(PBOOLEAN)ThreadInformation = PspTestThreadHideFromDebuggerFlag(Thread) ? 1 : 0;
+            }
+            _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+            {
+                Status = _SEH2_GetExceptionCode();
+            }
+            _SEH2_END;
+
+            break;
+        }
+
 
         /* Anything else */
         default:

@@ -5,7 +5,7 @@
  * PURPOSE:         Driver Object Management
  * PROGRAMMERS:     Alex Ionescu (alex.ionescu@reactos.org)
  *                  Filip Navara (navaraf@reactos.org)
- *                  Hervé Poussineau (hpoussin@reactos.org)
+ *                  Hervï¿½ Poussineau (hpoussin@reactos.org)
  */
 
 /* INCLUDES *******************************************************************/
@@ -401,7 +401,7 @@ IopNormalizeImagePath(
  */
 NTSTATUS
 IopInitializeDriverModule(
-    _In_ PLDR_DATA_TABLE_ENTRY ModuleObject,
+    _In_ PKLDR_DATA_TABLE_ENTRY ModuleObject,
     _In_ HANDLE ServiceHandle,
     _Out_ PDRIVER_OBJECT *OutDriverObject,
     _Out_ NTSTATUS *DriverEntryStatus)
@@ -639,7 +639,7 @@ IopInitializeDriverModule(
 
     *OutDriverObject = driverObject;
 
-    MmFreeDriverInitialization((PLDR_DATA_TABLE_ENTRY)driverObject->DriverSection);
+    MmFreeDriverInitialization((PKLDR_DATA_TABLE_ENTRY)driverObject->DriverSection);
 
     /* Set the driver as initialized */
     IopReadyDeviceObjects(driverObject);
@@ -664,9 +664,9 @@ MiResolveImageReferences(IN PVOID ImageBase,
 CODE_SEG("INIT")
 NTSTATUS
 NTAPI
-LdrProcessDriverModule(PLDR_DATA_TABLE_ENTRY LdrEntry,
+LdrProcessDriverModule(PKLDR_DATA_TABLE_ENTRY LdrEntry,
                        PUNICODE_STRING FileName,
-                       PLDR_DATA_TABLE_ENTRY *ModuleObject)
+                       PKLDR_DATA_TABLE_ENTRY *ModuleObject)
 {
     NTSTATUS Status;
     UNICODE_STRING BaseName, BaseDirectory;
@@ -748,14 +748,14 @@ IopGetDeviceObjectFromDeviceInstance(PUNICODE_STRING DeviceInstance);
  */
 CODE_SEG("INIT")
 BOOLEAN
-IopInitializeBuiltinDriver(IN PLDR_DATA_TABLE_ENTRY BootLdrEntry)
+IopInitializeBuiltinDriver(IN PKLDR_DATA_TABLE_ENTRY BootLdrEntry)
 {
     PDRIVER_OBJECT DriverObject;
     NTSTATUS Status;
     PWCHAR Buffer, FileNameWithoutPath;
     PWSTR FileExtension;
     PUNICODE_STRING ModuleName = &BootLdrEntry->BaseDllName;
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PKLDR_DATA_TABLE_ENTRY LdrEntry;
     PLIST_ENTRY NextEntry;
     UNICODE_STRING ServiceName;
     BOOLEAN Success;
@@ -834,7 +834,7 @@ IopInitializeBuiltinDriver(IN PLDR_DATA_TABLE_ENTRY BootLdrEntry)
     while (NextEntry != &PsLoadedModuleList)
     {
         LdrEntry = CONTAINING_RECORD(NextEntry,
-                                     LDR_DATA_TABLE_ENTRY,
+                                     KLDR_DATA_TABLE_ENTRY,
                                      InLoadOrderLinks);
         if (RtlEqualUnicodeString(ModuleName, &LdrEntry->BaseDllName, TRUE))
         {
@@ -960,7 +960,7 @@ FASTCALL
 IopInitializeBootDrivers(VOID)
 {
     PLIST_ENTRY ListHead, NextEntry, NextEntry2;
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PKLDR_DATA_TABLE_ENTRY LdrEntry;
     NTSTATUS Status;
     UNICODE_STRING DriverName;
     ULONG i, Index;
@@ -999,11 +999,11 @@ IopInitializeBootDrivers(VOID)
     {
         /* Get the entry */
         LdrEntry = CONTAINING_RECORD(NextEntry,
-                                     LDR_DATA_TABLE_ENTRY,
+                                     KLDR_DATA_TABLE_ENTRY,
                                      InLoadOrderLinks);
 
         /* Check if the DLL needs to be initialized */
-        if (LdrEntry->Flags & LDRP_DRIVER_DEPENDENT_DLL)
+        if (LdrEntry->DriverDependency)
         {
             /* Call its entrypoint */
             MmCallDllInitialize(LdrEntry, NULL);
@@ -1871,7 +1871,7 @@ IopLoadDriver(
 {
     UNICODE_STRING ImagePath;
     NTSTATUS Status;
-    PLDR_DATA_TABLE_ENTRY ModuleObject;
+    PKLDR_DATA_TABLE_ENTRY ModuleObject;
     PVOID BaseAddress;
 
     PKEY_VALUE_FULL_INFORMATION kvInfo;

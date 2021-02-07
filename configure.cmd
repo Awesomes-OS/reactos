@@ -39,13 +39,7 @@ REM Detect presence of cmake
 cmd /c cmake --version 2>&1 | find "cmake version" > NUL || goto cmake_notfound
 
 REM Detect build environment (MinGW, VS, WDK, ...)
-if defined ROS_ARCH (
-    echo Detected RosBE for %ROS_ARCH%
-    set BUILD_ENVIRONMENT=MinGW
-    set ARCH=%ROS_ARCH%
-    set MINGW_TOOCHAIN_FILE=toolchain-gcc.cmake
-
-) else if defined VCINSTALLDIR (
+if defined VCINSTALLDIR (
     REM VS command prompt does not put this in environment vars
     cl 2>&1 | find "x86" > NUL && set ARCH=i386
     cl 2>&1 | find "x64" > NUL && set ARCH=amd64
@@ -116,7 +110,7 @@ REM Parse command line parameters
             )
             set CMAKE_GENERATOR="Visual Studio !VS_VERSION!"
             if "!ARCH!" == "i386" (
-                set CMAKE_ARCH=-A Win32
+                set CMAKE_ARCH=-A Win32 -T host=x86
             ) else if "!ARCH!" == "amd64" (
                 set CMAKE_ARCH=-A x64
             ) else if "!ARCH!" == "arm" (

@@ -9,7 +9,7 @@
 #include "lsasrv.h"
 
 #include <ndk/sefuncs.h>
-#include <ndk/umfuncs.h>
+#include <ndk/ldrfuncs.h>
 
 typedef enum _LSA_TOKEN_INFORMATION_TYPE
 {

@@ -7,6 +7,7 @@
  * @implemented
  */
 double
+CDECL
 strtod(const char *s, char **sret)
 {
   long double r;		/* result */

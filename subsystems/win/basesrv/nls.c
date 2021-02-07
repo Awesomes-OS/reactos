@@ -11,6 +11,7 @@
 #include "basesrv.h"
 
 #include <ndk/mmfuncs.h>
+#include <ndk/ldrfuncs.h>
 
 #define NDEBUG
 #include <debug.h>

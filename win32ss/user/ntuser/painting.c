@@ -381,19 +381,78 @@ IntSendChildNCPaint(PWND pWnd)
     }
 }
 
+BOOL IntSendEraseBackground(PWND Wnd, HDC hDC, HRGN hrgnUpdate)
+{
+   if (!Wnd || (!hDC && !hrgnUpdate) || (Wnd->style & WS_MINIMIZE))
+   {
+      return FALSE;
+   }
+
+   BOOL acquiredDC = FALSE;
+   if (!hDC)
+   {
+      hDC = UserGetDCEx(Wnd,
+         hrgnUpdate,
+         DCX_CACHE | DCX_USESTYLE | DCX_INTERSECTRGN | DCX_KEEPCLIPRGN);
+
+      if (!hDC || !GreIsHandleValid(hDC))
+         return FALSE;
+      
+      acquiredDC = TRUE;
+   }
+
+   // If we (for some unbelievable reason) have to send WM_ERASEBKGND to another process
+   // make sure we actually can by changing DC object ownership to, basically, everyone.
+   BOOL restoreToOwned = FALSE;
+   {
+      const PTHREADINFO pti = PsGetCurrentThreadWin32Thread();
+      const BOOL differentProcess = Wnd->head.pti->ppi != pti->ppi;
+      if (differentProcess)
+      {
+         WARN("IntSendEraseBackground: cross-process");
+         if (GreGetObjectOwner(hDC) != GDI_OBJ_HMGR_PUBLIC)
+         {
+            restoreToOwned = GreSetDCOwner(hDC, GDI_OBJ_HMGR_PUBLIC);
+         }
+      }
+   }
+
+   // Clear the flags to make sure we will be able to know if we need to
+   // erase background again next time ( (!result) check later ).
+   Wnd->state ^= WNDS_SENDERASEBACKGROUND | WNDS_ERASEBACKGROUND;
+
+   const LRESULT result = co_IntSendMessage(UserHMGetHandle(Wnd), WM_ERASEBKGND, (WPARAM)hDC, 0);
+
+   // Restore original DC ownership state if it wasn't public already.
+   if (restoreToOwned)
+   {
+      GreSetDCOwner(hDC, GDI_OBJ_HMGR_POWNED);
+   }
+
+   // If our message didn't erase the background we need to know that by setting flags to
+   // attempt to erase background again next time.
+   if (!result)
+   {
+      Wnd->state |= (WNDS_SENDERASEBACKGROUND | WNDS_ERASEBACKGROUND);
+   }
+
+   // Release DC only if we acquired it ourselves.
+   if (acquiredDC)
+   {
+      UserReleaseDC(Wnd, hDC, FALSE);
+   }
+
+   return result;
+}
+
 /*
  * IntPaintWindows
  *
  * Internal function used by IntRedrawWindow.
  */
-
 VOID FASTCALL
 co_IntPaintWindows(PWND Wnd, ULONG Flags, BOOL Recurse)
 {
-   HDC hDC;
-   HWND hWnd = Wnd->head.h;
-   HRGN TempRegion = NULL;
-
    Wnd->state &= ~WNDS_PAINTNOTPROCESSED;
 
    if (Wnd->state & WNDS_SENDNCPAINT ||
@@ -404,56 +463,44 @@ co_IntPaintWindows(PWND Wnd, ULONG Flags, BOOL Recurse)
          Wnd->state &= ~(WNDS_SENDNCPAINT|WNDS_SENDERASEBACKGROUND|WNDS_ERASEBACKGROUND);
          return;
       }
-      else
+
+      if (Wnd->hrgnUpdate == NULL)
       {
-         if (Wnd->hrgnUpdate == NULL)
-         {
-            Wnd->state &= ~(WNDS_SENDERASEBACKGROUND|WNDS_ERASEBACKGROUND);
-         }
+         Wnd->state &= ~(WNDS_SENDERASEBACKGROUND|WNDS_ERASEBACKGROUND);
+      }
 
-         if (Wnd->head.pti == PsGetCurrentThreadWin32Thread())
+      if (Wnd->head.pti == PsGetCurrentThreadWin32Thread())
+      {
+         HRGN TempRegion = IntGetNCUpdateRgn(Wnd, TRUE);
+
+         if (Wnd->state & WNDS_SENDNCPAINT)
          {
-            if (Wnd->state & WNDS_SENDNCPAINT)
+            IntSendNCPaint(Wnd, TempRegion);
+
+            if (TempRegion > HRGN_MONITOR && GreIsHandleValid(TempRegion))
             {
-               TempRegion = IntGetNCUpdateRgn(Wnd, TRUE);
-
-               IntSendNCPaint(Wnd, TempRegion);
-
-               if (TempRegion > HRGN_WINDOW && GreIsHandleValid(TempRegion))
-               {
-                  /* NOTE: The region can already be deleted! */
-                  GreDeleteObject(TempRegion);
-               }
+               /* NOTE: The region can already be deleted! */
+               GreDeleteObject(TempRegion);
             }
 
-            if (Wnd->state & WNDS_SENDERASEBACKGROUND)
-            {
-               PTHREADINFO pti = PsGetCurrentThreadWin32Thread();
-               if (Wnd->hrgnUpdate)
-               {
-                  hDC = UserGetDCEx( Wnd,
-                                     Wnd->hrgnUpdate,
-                                     DCX_CACHE|DCX_USESTYLE|DCX_INTERSECTRGN|DCX_KEEPCLIPRGN);
-
-                  if (Wnd->head.pti->ppi != pti->ppi)
-                  {
-                     ERR("Sending DC to another Process!!!\n");
-                  }
-
-                  Wnd->state &= ~(WNDS_SENDERASEBACKGROUND|WNDS_ERASEBACKGROUND);
-                  // Kill the loop, so Clear before we send.
-                  if (!co_IntSendMessage(hWnd, WM_ERASEBKGND, (WPARAM)hDC, 0))
-                  {
-                     Wnd->state |= (WNDS_SENDERASEBACKGROUND|WNDS_ERASEBACKGROUND);
-                  }
-                  UserReleaseDC(Wnd, hDC, FALSE);
-               }
-            }
+            // Quickly refresh the region since it might have become obsolete
+            // during NCPAINT and definitely so after GreDeleteObject.
+            TempRegion = IntGetNCUpdateRgn(Wnd, FALSE);
          }
 
+         if (Wnd->state & WNDS_SENDERASEBACKGROUND)
+         {
+            IntSendEraseBackground(Wnd, NULL, TempRegion);
+         }
+
+         if (TempRegion > HRGN_MONITOR && GreIsHandleValid(TempRegion))
+         {
+            GreDeleteObject(TempRegion);
+         }
       }
    }
 
+   const HWND hWnd = Wnd->head.h;
    /*
     * Check that the window is still valid at this point
     */
@@ -462,12 +509,16 @@ co_IntPaintWindows(PWND Wnd, ULONG Flags, BOOL Recurse)
       return;
    }
 
+   if (!Recurse || (Flags & RDW_NOCHILDREN))
+   {
+      return;
+   }
+
    /*
     * Paint child windows.
     */
 
-   if (!(Flags & RDW_NOCHILDREN) &&
-       !(Wnd->style & WS_MINIMIZE) &&
+   if (!(Wnd->style & WS_MINIMIZE) &&
         ( Flags & RDW_ALLCHILDREN ||
          (Flags & RDW_CLIPCHILDREN && Wnd->style & WS_CLIPCHILDREN) ) )
    {
@@ -530,7 +581,12 @@ co_IntUpdateWindows(PWND Wnd, ULONG Flags, BOOL Recurse)
       Wnd->state &= ~WNDS_UPDATEDIRTY;
 
       Wnd->state2 |= WNDS2_WMPAINTSENT;
-      co_IntSendMessage(hWnd, WM_PAINT, 0, 0); 
+      // http://winapi.freetechsecrets.com/win32/WIN32WMPAINTICON.htm
+      // Send PAINTICON instead of PAINT when window is minimized and has a class icon
+      if ((Wnd->state & WS_MINIMIZE) && (Wnd->pcls->spicn))
+         co_IntSendMessage(hWnd, WM_PAINTICON, TRUE, 0);
+      else
+         co_IntSendMessage(hWnd, WM_PAINT, 0, 0);
 
       if (Wnd->state & WNDS_PAINTNOTPROCESSED)
       {
@@ -543,6 +599,11 @@ co_IntUpdateWindows(PWND Wnd, ULONG Flags, BOOL Recurse)
 
    // Force flags as a toggle. Fixes msg:test_paint_messages:WmChildPaintNc.
    Flags = (Flags & RDW_NOCHILDREN) ? RDW_NOCHILDREN : RDW_ALLCHILDREN; // All children is the default.
+
+   if (!Recurse)
+   {
+      return;
+   }
 
   /*
    * Update child windows.
@@ -848,18 +909,24 @@ IntInvalidateWindows(PWND Wnd, PREGION Rgn, ULONG Flags)
 BOOL FASTCALL
 IntIsWindowDrawable(PWND Wnd)
 {
-   PWND WndObject;
-
-   for (WndObject = Wnd; WndObject != NULL; WndObject = WndObject->spwndParent)
+   for (PWND WndObject = Wnd; WndObject != NULL; WndObject = WndObject->spwndParent)
    {
-      if ( WndObject->state2 & WNDS2_INDESTROY ||
-           WndObject->state & WNDS_DESTROYED ||
-           !WndObject ||
-           !(WndObject->style & WS_VISIBLE) ||
-            ((WndObject->style & WS_MINIMIZE) && (WndObject != Wnd)))
-      {
+      // We are not interested in dying windows
+      if (WndObject->state2 & WNDS2_INDESTROY ||
+         WndObject->state & WNDS_DESTROYED)
          return FALSE;
-      }
+
+      // We do not draw invisible windows
+      if (!(WndObject->style & WS_VISIBLE))
+         return FALSE;
+
+      // Children of minimized windows are invisible
+      if ((WndObject->style & WS_MINIMIZE) && (WndObject != Wnd))
+         return FALSE;
+
+      // We have already reached desktop, abort iteration and return success.
+      if (WndObject->fnid == FNID_DESKTOP)
+         break;
    }
 
    return TRUE;
@@ -1292,10 +1359,11 @@ FASTCALL
 IntFlashWindowEx(PWND pWnd, PFLASHWINFO pfwi)
 {
    DWORD_PTR FlashState;
-   UINT uCount = pfwi->uCount;
-   BOOL Activate = FALSE, Ret = FALSE;
 
    ASSERT(pfwi);
+
+   UINT uCount = pfwi->uCount;
+   BOOL Activate = FALSE, Ret = FALSE;
 
    FlashState = (DWORD_PTR)UserGetProp(pWnd, AtomFlashWndState, TRUE);
 
@@ -1470,10 +1538,12 @@ IntBeginPaint(PWND Window, PPAINTSTRUCT Ps)
    // If set, always clear flags out due to the conditions later on for sending the message.
    if (Window->state & WNDS_SENDERASEBACKGROUND)
    {
+      // We actually clear them in IntSendEraseBackground, but better do it twice than forget one time.
       Window->state &= ~(WNDS_SENDERASEBACKGROUND|WNDS_ERASEBACKGROUND);
       Erase = TRUE;
    }
 
+   const HRGN hrgnUpdateSave = Window->hrgnUpdate;
    if (Window->hrgnUpdate != NULL)
    {
       MsqDecPaintCountQueue(Window->head.pti);
@@ -1498,16 +1568,9 @@ IntBeginPaint(PWND Window, PPAINTSTRUCT Ps)
         (!(Window->pcls->style & CS_PARENTDC) || // not parent dc or
          RECTL_bIntersectRect( &Rect, &Rect, &Ps->rcPaint) ) ) // intersecting.
    {
-      Ps->fErase = !co_IntSendMessage(UserHMGetHandle(Window), WM_ERASEBKGND, (WPARAM)Ps->hdc, 0);
-      if ( Ps->fErase )
-      {
-         Window->state |= (WNDS_SENDERASEBACKGROUND|WNDS_ERASEBACKGROUND);
-      }
+      IntSendEraseBackground(Window, Ps->hdc, hrgnUpdateSave);
    }
-   else
-   {
-      Ps->fErase = FALSE;
-   }
+   Ps->fErase = (Window->state & WNDS_ERASEBACKGROUND) != 0;
 
    IntSendChildNCPaint(Window);
 
@@ -1543,41 +1606,42 @@ IntFillWindow(PWND pWndParent,
               HBRUSH hBrush)
 {
    RECT Rect, Rect1;
-   INT type;
 
    if (!pWndParent)
       pWndParent = pWnd;
 
-   type = GdiGetClipBox(hDC, &Rect);
+   INT type = GdiGetClipBox(hDC, &Rect);
 
    IntGetClientRect(pWnd, &Rect1);
 
-   if ( type != NULLREGION && // Clip box is not empty,
-       (!(pWnd->pcls->style & CS_PARENTDC) || // not parent dc or
-         RECTL_bIntersectRect( &Rect, &Rect, &Rect1) ) ) // intersecting.
-   {
-      POINT ppt;
-      INT x = 0, y = 0;
-
-      if (!UserIsDesktopWindow(pWndParent))
-      {
-          x = pWndParent->rcClient.left - pWnd->rcClient.left;
-          y = pWndParent->rcClient.top  - pWnd->rcClient.top;
-      }
-
-      GreSetBrushOrg(hDC, x, y, &ppt);
-
-      if ( hBrush < (HBRUSH)CTLCOLOR_MAX )
-          hBrush = GetControlColor( pWndParent, pWnd, hDC, HandleToUlong(hBrush) + WM_CTLCOLORMSGBOX);
-
-      FillRect(hDC, &Rect, hBrush);
-
-      GreSetBrushOrg(hDC, ppt.x, ppt.y, NULL);
-
-      return TRUE;
-   }
-   else
+   if ( type == NULLREGION )
       return FALSE;
+
+   if ( !pWnd || pWnd->pcls->style & CS_PARENTDC )
+      return FALSE;
+
+   if ( !RECTL_bIntersectRect( &Rect, &Rect, &Rect1) ) // intersecting.
+      return FALSE;
+
+   POINT ppt;
+   INT x = 0, y = 0;
+
+   if (!UserIsDesktopWindow(pWndParent))
+   {
+      x = pWndParent->rcClient.left - pWnd->rcClient.left;
+      y = pWndParent->rcClient.top - pWnd->rcClient.top;
+   }
+
+   GreSetBrushOrg(hDC, x, y, &ppt);
+
+   if (hBrush < (HBRUSH)CTLCOLOR_MAX)
+      hBrush = GetControlColor(pWndParent, pWnd, hDC, HandleToUlong(hBrush) + WM_CTLCOLORMSGBOX);
+
+   FillRect(hDC, &Rect, hBrush);
+
+   GreSetBrushOrg(hDC, ppt.x, ppt.y, NULL);
+
+   return TRUE;
 }
 
 /* PUBLIC FUNCTIONS ***********************************************************/
@@ -1769,10 +1833,6 @@ Exit:
 INT FASTCALL
 co_UserGetUpdateRgn(PWND Window, HRGN hRgn, BOOL bErase)
 {
-   int RegionType;
-   BOOL Type;
-   RECTL Rect;
-
    ASSERT_REFS_CO(Window);
 
    if (bErase)
@@ -1787,37 +1847,24 @@ co_UserGetUpdateRgn(PWND Window, HRGN hRgn, BOOL bErase)
 
    if (Window->hrgnUpdate == NULL)
    {
-       NtGdiSetRectRgn(hRgn, 0, 0, 0, 0);
-       return NULLREGION;
+      NtGdiSetRectRgn(hRgn, 0, 0, 0, 0);
+      return NULLREGION;
    }
 
-   Rect = Window->rcClient;
-   Type = IntIntersectWithParents(Window, &Rect);
+   RECTL Rect = Window->rcClient;
 
-   if (Window->hrgnUpdate == HRGN_WINDOW)
+   if (!IntIntersectWithParents(Window, &Rect))
    {
-      // Trap it out.
-      ERR("GURn: Caller is passing Window Region 1\n");
-      if (!Type)
-      {
-         NtGdiSetRectRgn(hRgn, 0, 0, 0, 0);
-         return NULLREGION;
-      }
-
-      RegionType = SIMPLEREGION;
-
-      if (!UserIsDesktopWindow(Window))
-      {
-         RECTL_vOffsetRect(&Rect,
-                          -Window->rcClient.left,
-                          -Window->rcClient.top);
-      }
-      GreSetRectRgnIndirect(hRgn, &Rect);
+      NtGdiSetRectRgn(hRgn, 0, 0, 0, 0);
+      return NULLREGION;
    }
-   else
-   {
-      HRGN hrgnTemp = GreCreateRectRgnIndirect(&Rect);
 
+   HRGN hrgnTemp = NULL;
+   INT RegionType = SIMPLEREGION;
+
+   if (Window->hrgnUpdate != HRGN_WINDOW)
+   {
+      hrgnTemp = GreCreateRectRgnIndirect(&Rect);
       RegionType = NtGdiCombineRgn(hRgn, hrgnTemp, Window->hrgnUpdate, RGN_AND);
 
       if (RegionType == ERROR || RegionType == NULLREGION)
@@ -1826,15 +1873,20 @@ co_UserGetUpdateRgn(PWND Window, HRGN hRgn, BOOL bErase)
          NtGdiSetRectRgn(hRgn, 0, 0, 0, 0);
          return RegionType;
       }
-
-      if (!UserIsDesktopWindow(Window))
-      {
-         NtGdiOffsetRgn(hRgn,
-                       -Window->rcClient.left,
-                       -Window->rcClient.top);
-      }
-      if (hrgnTemp) GreDeleteObject(hrgnTemp);
    }
+   else
+   {
+      GreSetRectRgnIndirect(hRgn, &Rect);
+   }
+
+   if (!UserIsDesktopWindow(Window))
+   {
+      NtGdiOffsetRgn(hRgn,
+                     -Window->rcClient.left,
+                     -Window->rcClient.top);
+   }
+
+   if (hrgnTemp) GreDeleteObject(hrgnTemp);
    return RegionType;
 }
 
@@ -2555,7 +2607,7 @@ NtUserInvalidateRgn(
        EngSetLastError( ERROR_INVALID_WINDOW_HANDLE );
        return FALSE;
     }
-    return NtUserRedrawWindow(hWnd, NULL, hRgn, RDW_INVALIDATE | (bErase? RDW_ERASE : 0));
+    return NtUserRedrawWindow(hWnd, NULL, hRgn, RDW_INVALIDATE | (bErase ? RDW_ERASE : 0));
 }
 
 BOOL

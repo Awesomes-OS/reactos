@@ -156,7 +156,6 @@ PrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo)
 /* GLOBALS ********************************************************************/
 
 LPTOP_LEVEL_EXCEPTION_FILTER GlobalTopLevelExceptionFilter;
-DWORD g_dwLastErrorToBreakOn;
 
 /* FUNCTIONS ******************************************************************/
 
@@ -688,66 +687,6 @@ Quit:
 /*
  * @implemented
  */
-VOID
-WINAPI
-RaiseException(IN DWORD dwExceptionCode,
-               IN DWORD dwExceptionFlags,
-               IN DWORD nNumberOfArguments,
-               IN CONST ULONG_PTR *lpArguments OPTIONAL)
-{
-    EXCEPTION_RECORD ExceptionRecord;
-
-    /* Setup the exception record */
-    ExceptionRecord.ExceptionCode = dwExceptionCode;
-    ExceptionRecord.ExceptionRecord = NULL;
-    ExceptionRecord.ExceptionAddress = (PVOID)RaiseException;
-    ExceptionRecord.ExceptionFlags = dwExceptionFlags & EXCEPTION_NONCONTINUABLE;
-
-    /* Check if we have arguments */
-    if (!lpArguments)
-    {
-        /* We don't */
-        ExceptionRecord.NumberParameters = 0;
-    }
-    else
-    {
-        /* We do, normalize the count */
-        if (nNumberOfArguments > EXCEPTION_MAXIMUM_PARAMETERS)
-            nNumberOfArguments = EXCEPTION_MAXIMUM_PARAMETERS;
-
-        /* Set the count of parameters and copy them */
-        ExceptionRecord.NumberParameters = nNumberOfArguments;
-        RtlCopyMemory(ExceptionRecord.ExceptionInformation,
-                      lpArguments,
-                      nNumberOfArguments * sizeof(ULONG));
-    }
-
-    /* Better handling of Delphi Exceptions... a ReactOS Hack */
-    if (dwExceptionCode == 0xeedface || dwExceptionCode == 0xeedfade)
-    {
-        DPRINT1("Delphi Exception at address: %p\n", ExceptionRecord.ExceptionInformation[0]);
-        DPRINT1("Exception-Object: %p\n", ExceptionRecord.ExceptionInformation[1]);
-        DPRINT1("Exception text: %lx\n", ExceptionRecord.ExceptionInformation[2]);
-    }
-
-    /* Trace the wine special error and show the modulename and functionname */
-    if (dwExceptionCode == 0x80000100 /* EXCEPTION_WINE_STUB */)
-    {
-        /* Numbers of parameter must be equal to two */
-        if (ExceptionRecord.NumberParameters == 2)
-        {
-            DPRINT1("Missing function in   : %s\n", ExceptionRecord.ExceptionInformation[0]);
-            DPRINT1("with the functionname : %s\n", ExceptionRecord.ExceptionInformation[1]);
-        }
-    }
-
-    /* Raise the exception */
-    RtlRaiseException(&ExceptionRecord);
-}
-
-/*
- * @implemented
- */
 UINT
 WINAPI
 SetErrorMode(IN UINT uMode)
@@ -1027,24 +966,70 @@ IsBadStringPtrA(IN LPCSTR lpsz,
  */
 VOID
 WINAPI
-SetLastError(IN DWORD dwErrCode)
+RaiseFailFastException(
+    IN PEXCEPTION_RECORD pExceptionRecord OPTIONAL,
+    IN PCONTEXT pContextRecord OPTIONAL,
+    IN DWORD dwFlags)
 {
-    /* Break if a debugger requested checking for this error code */
-    if ((g_dwLastErrorToBreakOn) && (g_dwLastErrorToBreakOn == dwErrCode)) DbgBreakPoint();
+    EXCEPTION_RECORD createdExceptionRecord;
+    CONTEXT context;
+    HANDLE debugPort;
+    BOOL isUnderDebugger = IsDebuggerPresent();
 
-    /* Set last error if it's a new error */
-    if (NtCurrentTeb()->LastErrorValue != dwErrCode) NtCurrentTeb()->LastErrorValue = dwErrCode;
-}
+    if (pExceptionRecord)
+    {
+        if (dwFlags & FAIL_FAST_GENERATE_EXCEPTION_ADDRESS)
+            pExceptionRecord->ExceptionAddress = _ReturnAddress();
+    }
+    else
+    {
+        pExceptionRecord = &createdExceptionRecord;
 
-/*
- * @implemented
- */
-DWORD
-WINAPI
-GetLastError(VOID)
-{
-    /* Return the current value */
-    return NtCurrentTeb()->LastErrorValue;
+        /* Setup the exception record */
+        pExceptionRecord->ExceptionCode = STATUS_FAIL_FAST_EXCEPTION;
+        pExceptionRecord->ExceptionRecord = NULL;
+        pExceptionRecord->ExceptionAddress = _ReturnAddress();
+        pExceptionRecord->ExceptionFlags = 0;
+    }
+    pExceptionRecord->ExceptionFlags |= EXCEPTION_NONCONTINUABLE;
+
+    if (!pContextRecord)
+    {
+        RtlCaptureContext(&context);
+        pContextRecord = &context;
+    }
+
+    if (!isUnderDebugger)
+    {
+        const NTSTATUS status = NtQueryInformationProcess(NtCurrentProcess(),
+                                                          ProcessDebugPort,
+                                                          &debugPort,
+                                                          sizeof(debugPort),
+                                                          NULL);
+        isUnderDebugger = NT_SUCCESS(status) && debugPort;
+    }
+
+    if (isUnderDebugger)
+    {
+        /* If the process is being debugged, pass the exception to the debugger */
+        NtRaiseException(pExceptionRecord, pContextRecord, FALSE);
+    }
+    else
+    {
+        if (!(dwFlags & FAIL_FAST_NO_HARD_ERROR_DLG))
+        {
+            ULONG errorResponse;
+
+            NtRaiseHardError(pExceptionRecord->ExceptionCode | HARDERROR_OVERRIDE_ERRORMODE,
+                             0,
+                             0,
+                             0,
+                             OptionOk,
+                             &errorResponse);
+        }
+
+        TerminateProcess(NtCurrentProcess(), pExceptionRecord->ExceptionCode);
+    }
 }
 
 /* EOF */

@@ -14,6 +14,11 @@
 #define NDEBUG
 #include <debug.h>
 
+/* GLOBALS ********************************************************************/
+
+volatile BOOLEAN RtlpHeapInvalidBreakPoint = FALSE;
+volatile PVOID RtlpHeapInvalidBadAddress = NULL;
+
 /* FUNCTIONS ******************************************************************/
 
 HANDLE NTAPI
@@ -32,18 +37,21 @@ RtlDebugCreateHeap(ULONG Flags,
     if (ReserveSize <= HEAP_ENTRY_SIZE)
     {
         DPRINT1("HEAP: Incorrect ReserveSize %x\n", ReserveSize);
+        RtlpBreakPointHeap(NULL);
         return NULL;
     }
 
     if (ReserveSize < CommitSize)
     {
         DPRINT1("HEAP: Incorrect CommitSize %x\n", CommitSize);
+        RtlpBreakPointHeap(NULL);
         return NULL;
     }
 
     if (Flags & HEAP_NO_SERIALIZE && Lock)
     {
         DPRINT1("HEAP: Can't specify Lock routine and have HEAP_NO_SERIALIZE flag set\n");
+        RtlpBreakPointHeap(NULL);
         return NULL;
     }
 
@@ -60,18 +68,21 @@ RtlDebugCreateHeap(ULONG Flags,
         if (!NT_SUCCESS(Status))
         {
             DPRINT1("HEAP: Specified heap base address %p is invalid, Status 0x%08X\n", Addr, Status);
+            RtlpBreakPointHeap(NULL);
             return NULL;
         }
 
         if (MemoryInfo.BaseAddress != Addr)
         {
             DPRINT1("HEAP: Specified heap base address %p is not really a base one %p\n", Addr, MemoryInfo.BaseAddress);
+            RtlpBreakPointHeap(NULL);
             return NULL;
         }
 
         if (MemoryInfo.State == MEM_FREE)
         {
             DPRINT1("HEAP: Specified heap base address %p is free\n", Addr);
+            RtlpBreakPointHeap(NULL);
             return NULL;
         }
     }
@@ -103,11 +114,8 @@ RtlDebugDestroyHeap(HANDLE HeapPtr)
         return FALSE;
     }
 
-    if (Heap->Signature != HEAP_SIGNATURE)
-    {
-        DPRINT1("HEAP: Invalid heap %p signature 0x%x\n", Heap, Heap->Signature);
+    if (!RtlpCheckHeapSignature(Heap, "RtlDestroyHeap"))
         return FALSE;
-    }
 
     if (!RtlpValidateHeap(Heap, FALSE)) return FALSE;
 
@@ -139,11 +147,8 @@ RtlDebugAllocateHeap(PVOID HeapPtr,
     if (Heap->ForceFlags & HEAP_FLAG_PAGE_ALLOCS)
         return RtlpPageHeapAllocate(HeapPtr, Flags, Size);
 
-    if (Heap->Signature != HEAP_SIGNATURE)
-    {
-        DPRINT1("HEAP: Invalid heap %p signature 0x%x\n", Heap, Heap->Signature);
+    if (!RtlpCheckHeapSignature(Heap, "RtlAllocateHeap"))
         return NULL;
-    }
 
     /* Add settable user value flag */
     Flags |= Heap->ForceFlags | HEAP_SETTABLE_USER_VALUE | HEAP_SKIP_VALIDATION_CHECKS;
@@ -206,11 +211,8 @@ RtlDebugReAllocateHeap(HANDLE HeapPtr,
     if (Heap->ForceFlags & HEAP_FLAG_PAGE_ALLOCS)
         return RtlpPageHeapReAllocate(HeapPtr, Flags, Ptr, Size);
 
-    if (Heap->Signature != HEAP_SIGNATURE)
-    {
-        DPRINT1("HEAP: Invalid heap %p signature 0x%x\n", Heap, Heap->Signature);
+    if (!RtlpCheckHeapSignature(Heap, "RtlReAllocateHeap"))
         return NULL;
-    }
 
     /* Add settable user value flag */
     Flags |= Heap->ForceFlags | HEAP_SETTABLE_USER_VALUE | HEAP_SKIP_VALIDATION_CHECKS;
@@ -276,11 +278,8 @@ RtlDebugFreeHeap(HANDLE HeapPtr,
     if (Heap->ForceFlags & HEAP_FLAG_PAGE_ALLOCS)
         return RtlpPageHeapFree(HeapPtr, Flags, Ptr);
 
-    if (Heap->Signature != HEAP_SIGNATURE)
-    {
-        DPRINT1("HEAP: Invalid heap %p signature 0x%x\n", Heap, Heap->Signature);
+    if (!RtlpCheckHeapSignature(Heap, "RtlFreeHeap"))
         return FALSE;
-    }
 
     /* Add skip validation flag */
     Flags |= Heap->ForceFlags | HEAP_SKIP_VALIDATION_CHECKS;
@@ -333,11 +332,8 @@ RtlDebugGetUserInfoHeap(PVOID HeapHandle,
     if (Heap->ForceFlags & HEAP_FLAG_PAGE_ALLOCS)
         return RtlpPageHeapGetUserInfo(HeapHandle, Flags, BaseAddress, UserValue, UserFlags);
 
-    if (Heap->Signature != HEAP_SIGNATURE)
-    {
-        DPRINT1("HEAP: Invalid heap %p signature 0x%x\n", Heap, Heap->Signature);
+    if (!RtlpCheckHeapSignature(Heap, "RtlGetUserInfoHeap"))
         return FALSE;
-    }
 
     /* Add skip validation flag */
     Flags |= Heap->ForceFlags | HEAP_SKIP_VALIDATION_CHECKS;
@@ -385,11 +381,8 @@ RtlDebugSetUserValueHeap(PVOID HeapHandle,
     if (Heap->ForceFlags & HEAP_FLAG_PAGE_ALLOCS)
         return RtlpPageHeapSetUserValue(HeapHandle, Flags, BaseAddress, UserValue);
 
-    if (Heap->Signature != HEAP_SIGNATURE)
-    {
-        DPRINT1("HEAP: Invalid heap %p signature 0x%x\n", Heap, Heap->Signature);
+    if (!RtlpCheckHeapSignature(Heap, "RtlSetUserValueHeap"))
         return FALSE;
-    }
 
     /* Add skip validation flag */
     Flags |= Heap->ForceFlags | HEAP_SKIP_VALIDATION_CHECKS;
@@ -449,11 +442,8 @@ RtlDebugSetUserFlagsHeap(PVOID HeapHandle,
         return FALSE;
     }
 
-    if (Heap->Signature != HEAP_SIGNATURE)
-    {
-        DPRINT1("HEAP: Invalid heap %p signature 0x%x\n", Heap, Heap->Signature);
+    if (!RtlpCheckHeapSignature(Heap, "RtlSetUserFlagsHeap"))
         return FALSE;
-    }
 
     /* Add skip validation flag */
     Flags |= Heap->ForceFlags | HEAP_SKIP_VALIDATION_CHECKS;
@@ -504,11 +494,8 @@ RtlDebugSizeHeap(HANDLE HeapPtr,
         return RtlpPageHeapSize(HeapPtr, Flags, Ptr);
 
     /* Check heap signature */
-    if (Heap->Signature != HEAP_SIGNATURE)
-    {
-        DPRINT1("HEAP: Invalid heap %p signature 0x%x\n", Heap, Heap->Signature);
+    if (!RtlpCheckHeapSignature(Heap, "RtlSizeHeap"))
         return FALSE;
-    }
 
     /* Add skip validation flag */
     Flags |= Heap->ForceFlags | HEAP_SKIP_VALIDATION_CHECKS;
@@ -540,6 +527,45 @@ RtlDebugSizeHeap(HANDLE HeapPtr,
     if (HeapLocked) RtlLeaveHeapLock(Heap->LockVariable);
 
     return Result;
+}
+
+BOOLEAN
+NTAPI
+RtlpCheckHeapSignature(IN HANDLE HeapHandle, IN PCSTR Caller OPTIONAL)
+{
+    const PHEAP Heap = (PHEAP)HeapHandle;
+
+    ASSERT(Heap);
+
+    if (Heap->Signature == HEAP_SIGNATURE)
+        return TRUE;
+
+    DbgPrint("HEAP: Invalid heap [%p] signature 0x%lX", Heap, Heap->Signature);
+
+    if (Caller != NULL)
+        DbgPrint(", passed to %s", Caller);
+
+    DbgPrint("\n");
+
+    RtlpBreakPointHeap(&Heap->Signature);
+
+    return FALSE;
+}
+
+void
+NTAPI
+RtlpBreakPointHeap(IN PVOID BadAddress OPTIONAL)
+{
+    if (!NtCurrentPeb()->BeingDebugged)
+        return;
+
+    RtlpHeapInvalidBreakPoint = TRUE;
+
+    RtlpHeapInvalidBadAddress = BadAddress;
+
+    DbgBreakPoint();
+
+    RtlpHeapInvalidBreakPoint = FALSE;
 }
 
 /* EOF */

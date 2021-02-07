@@ -20,6 +20,10 @@ volatile KSYSTEM_TIME KeTickCount = { 0, 0, 0 };
 ULONG KeMaximumIncrement;
 ULONG KeMinimumIncrement;
 ULONG KeTimeIncrement;
+ULONG KiCyclesPerClockQuantum;
+ULONG KiShortExecutionCycles;
+ULONG KiDirectQuantumTarget;
+ULONG KiLockQuantumTarget;
 
 /* PRIVATE FUNCTIONS *********************************************************/
 
@@ -234,6 +238,46 @@ KeSetTimeIncrement(IN ULONG MaxIncrement,
     KeTimeAdjustment = MaxIncrement;
     KeTimeIncrement = MaxIncrement;
     KiTickOffset = MaxIncrement;
+}
+
+ULONGLONG
+NTAPI
+KiQueryUnbiasedInterruptTime(BOOLEAN WaitForSafePoint)
+{
+    ULONG64 InterruptTimeBias;
+#if (NTDDI_VERSION >= NTDDI_VISTA)
+    InterruptTimeBias = SharedUserData->InterruptTimeBias;
+    while (WaitForSafePoint && InterruptTimeBias != SharedUserData->InterruptTimeBias)
+        InterruptTimeBias = SharedUserData->InterruptTimeBias;
+#else
+    InterruptTimeBias = 0;
+#endif
+
+    ULARGE_INTEGER InterruptTime;
+
+#ifdef _WIN64
+    InterruptTime.QuadPart = *((volatile ULONG64*)&SharedUserData->InterruptTime);
+#else
+    do
+    {
+        InterruptTime.HighPart = (ULONG)SharedUserData->InterruptTime.High1Time;
+        InterruptTime.LowPart = SharedUserData->InterruptTime.LowPart;
+
+        if (InterruptTime.HighPart == (ULONG)SharedUserData->InterruptTime.High2Time)
+            break;
+
+        YieldProcessor();
+    } while (WaitForSafePoint);
+#endif
+
+    return InterruptTime.QuadPart - InterruptTimeBias;
+}
+
+ULONGLONG
+NTAPI
+KeQueryUnbiasedInterruptTime(VOID)
+{
+    return KiQueryUnbiasedInterruptTime(TRUE);
 }
 
 /* EOF */

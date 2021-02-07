@@ -81,6 +81,8 @@ UCHAR FillPattern[HEAP_ENTRY_SIZE] =
     HEAP_TAIL_FILL
 };
 
+BOOLEAN RtlpValidateHeapHdrsEnable = FALSE;
+
 /* FUNCTIONS *****************************************************************/
 
 NTSTATUS NTAPI
@@ -2233,6 +2235,7 @@ BOOLEAN NTAPI RtlFreeHeap(
         {
             /* This is an invalid block */
             DPRINT1("HEAP: Trying to free an invalid address %p!\n", Ptr);
+            __debugbreak();
             RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
             _SEH2_YIELD(return FALSE);
         }
@@ -2241,6 +2244,7 @@ BOOLEAN NTAPI RtlFreeHeap(
     {
         /* The pointer was invalid */
         DPRINT1("HEAP: Trying to free an invalid address %p!\n", Ptr);
+        __debugbreak();
         RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
         _SEH2_YIELD(return FALSE);
     }
@@ -2821,7 +2825,8 @@ RtlReAllocateHeap(HANDLE HeapPtr,
 
                 if (!NT_SUCCESS(Status))
                 {
-                    DPRINT1("HEAP: Unable to release memory (pointer %p, size 0x%x), Status %08x\n", DecommitBase, DecommitSize, Status);
+                    DPRINT1("HEAP: Unable to release memory (pointer %p, size 0x%x), Status 0x%08lX\n", DecommitBase, DecommitSize, Status);
+                    RtlpBreakPointHeap(NULL);
                 }
                 else
                 {
@@ -3071,7 +3076,8 @@ RtlLockHeap(IN HANDLE HeapPtr)
     }
 
     /* Check if it's really a heap */
-    if (Heap->Signature != HEAP_SIGNATURE) return FALSE;
+    if (!RtlpCheckHeapSignature(Heap, __FUNCTION__))
+        return FALSE;
 
     /* Lock if it's lockable */
     if (!(Heap->Flags & HEAP_NO_SERIALIZE))
@@ -3108,7 +3114,8 @@ RtlUnlockHeap(HANDLE HeapPtr)
     }
 
     /* Check if it's really a heap */
-    if (Heap->Signature != HEAP_SIGNATURE) return FALSE;
+    if (!RtlpCheckHeapSignature(Heap, __FUNCTION__))
+        return FALSE;
 
     /* Unlock if it's lockable */
     if (!(Heap->Flags & HEAP_NO_SERIALIZE))
@@ -3206,6 +3213,7 @@ RtlpCheckInUsePattern(PHEAP_ENTRY HeapEntry)
     if (Result != HEAP_ENTRY_SIZE)
     {
         DPRINT1("HEAP: Heap entry (size %x) %p tail is modified at %p\n", Size, HeapEntry, TailPart + Result);
+        RtlpBreakPointHeap(HeapEntry);
         return FALSE;
     }
 
@@ -3213,13 +3221,61 @@ RtlpCheckInUsePattern(PHEAP_ENTRY HeapEntry)
     return TRUE;
 }
 
-BOOLEAN NTAPI
-RtlpValidateHeapHeaders(
-    PHEAP Heap,
-    BOOLEAN Recalculate)
+BOOLEAN
+NTAPI
+RtlpValidateHeapHeaders(IN PHEAP Heap, IN BOOLEAN Recalculate)
 {
-    // We skip header validation for now
-    return TRUE;
+    SIZE_T FullLength, MatchingLength;
+
+    ASSERT(Heap);
+
+    if (!RtlpValidateHeapHdrsEnable)
+        return TRUE;
+
+    if (!Heap->HeaderValidateCopy)
+    {
+        NTSTATUS Status;
+
+        FullLength = Heap->HeaderValidateLength;
+
+        Status = NtAllocateVirtualMemory(NtCurrentProcess(),
+                                         &Heap->HeaderValidateCopy,
+                                         0,
+                                         &FullLength,
+                                         MEM_COMMIT,
+                                         PAGE_READWRITE);
+
+        if (!NT_SUCCESS(Status))
+            return TRUE;
+
+        Recalculate = TRUE;
+    }
+
+    FullLength = Heap->HeaderValidateLength;
+
+    if (Recalculate)
+    {
+        ASSERT(Heap->HeaderValidateCopy);
+
+        RtlMoveMemory(Heap->HeaderValidateCopy, Heap, FullLength);
+
+        return TRUE;
+    }
+
+    MatchingLength = RtlCompareMemory(Heap,
+                                      Heap->HeaderValidateCopy,
+                                      FullLength);
+
+    if (FullLength == MatchingLength)
+        return TRUE;
+
+    DPRINT1("Heap %p - headers modified (%p is 0x%lX instead of 0x%lX)\n",
+            Heap,
+            (PVOID)((ULONG_PTR)Heap + MatchingLength),
+            *(PULONG)((ULONG_PTR)Heap + MatchingLength),
+            *(PULONG)((ULONG_PTR)Heap->HeaderValidateCopy + MatchingLength));
+
+    return FALSE;
 }
 
 BOOLEAN NTAPI
@@ -3650,11 +3706,8 @@ BOOLEAN NTAPI RtlValidateHeap(
         return RtlpDebugPageHeapValidate(HeapPtr, Flags, Block);
 
     /* Check signature */
-    if (Heap->Signature != HEAP_SIGNATURE)
-    {
-        DPRINT1("HEAP: Signature %lx is invalid for heap %p\n", Heap->Signature, Heap);
+    if (!RtlpCheckHeapSignature(Heap, __FUNCTION__))
         return FALSE;
-    }
 
     /* Force flags */
     Flags |= Heap->ForceFlags;

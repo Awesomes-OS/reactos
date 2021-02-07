@@ -13,7 +13,7 @@
 
 /* INCLUDES *****************************************************************/
 
-#include <rtl_vista.h>
+#include <rtl.h>
 
 #define NDEBUG
 #include <debug.h>
@@ -33,6 +33,40 @@
 #define InterlockedOrPointer(ptr,val) InterlockedOr((PLONG)ptr,(LONG)val)
 #define _ONE 1L
 #endif
+
+ULONG32 SRWLockSpinCycleCount = 0;
+
+/* Increasing back-off for contended locks */
+void
+NTAPI
+RtlBackoff(ULONG32* const pBackoff)
+{
+    ULONG32 Backoff;
+
+    ASSERT(pBackoff);
+
+    Backoff = *pBackoff;
+    if (Backoff)
+    {
+        if (Backoff + 1 < (1u << 13))
+            Backoff *= 2;
+    }
+    else
+    {
+        /* No need to do back-off on UP */
+        if (NtCurrentTeb()->ProcessEnvironmentBlock->NumberOfProcessors == 1)
+            return;
+
+        Backoff = 64;
+    }
+
+    *pBackoff = Backoff;
+
+    Backoff += (Backoff - 1) & __rdtsc();
+
+    for (ULONG32 i = 0; i < Backoff; ++i)
+        YieldProcessor();
+}
 
 #define RTL_SRWLOCK_OWNED_BIT   0
 #define RTL_SRWLOCK_CONTENDED_BIT   1

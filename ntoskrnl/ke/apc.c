@@ -210,13 +210,13 @@ KiInsertQueueApc(IN PKAPC Apc,
                     /* Wake up the thread */
                     KiUnwaitThread(Thread, Status, PriorityBoost);
                 }
-                else if (Thread->State == GateWait)
+                else if (Thread->State == GateWaitObsolete)
                 {
                     /* Lock the thread */
                     KiAcquireThreadLock(Thread);
                     
                     /* Essentially do the same check as above */
-                    if ((Thread->State == GateWait) &&
+                    if ((Thread->State == GateWaitObsolete) &&
                         (Thread->WaitIrql == PASSIVE_LEVEL) &&
                         !(Thread->SpecialApcDisable) &&
                         (!(Apc->NormalRoutine) ||

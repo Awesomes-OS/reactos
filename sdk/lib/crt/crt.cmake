@@ -165,6 +165,8 @@ list(APPEND CRT_SOURCE
     printf/vprintf_s.c
     printf/vsprintf.c
     printf/vsprintf_s.c
+    printf/vsnprintf.c
+    printf/vsnprintf_s.c
     printf/vswprintf.c
     printf/vswprintf_s.c
     printf/vwprintf.c
@@ -259,18 +261,18 @@ list(APPEND CRT_SOURCE
     stdlib/wmakpath_s.c
     string/_mbsnlen.c
     string/_mbstrnlen.c
-    string/_splitpath.c
     string/_splitpath_s.c
+    string/_splitpath.c
     string/_wcslwr_s.c
-    string/_wsplitpath.c
     string/_wsplitpath_s.c
+    string/_wsplitpath.c
     string/atof.c
     string/atoi.c
     string/atoi64.c
     string/atol.c
     string/ctype.c
-    string/iswctype.c
     string/is_wctype.c
+    string/iswctype.c
     string/itoa.c
     string/itow.c
     string/mbstowcs_s.c
@@ -291,8 +293,8 @@ list(APPEND CRT_SOURCE
     string/strstr.c
     string/strtod.c
     string/strtoi64.c
-    string/strtok.c
     string/strtok_s.c
+    string/strtok.c
     string/strtol.c
     string/strtoul.c
     string/strtoull.c
@@ -303,11 +305,11 @@ list(APPEND CRT_SOURCE
     string/wcstombs_s.c
     string/wcstoul.c
     string/wctype.c
+    string/winesup.c
     string/wtof.c
     string/wtoi.c
     string/wtoi64.c
     string/wtol.c
-    string/winesup.c
     sys_stat/systime.c
     time/asctime.c
     time/clock.c

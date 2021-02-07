@@ -1,14 +1,20 @@
-
 add_subdirectory(kernel32_vista)
 
 add_definitions(-D_KERNEL32_)
+
+remove_definitions(-D_WIN32_WINNT=0x502 -DWINVER=0x502)
+add_definitions(-D_WIN32_WINNT=0x600 -DWINVER=0x600)
+
 include_directories(${REACTOS_SOURCE_DIR}/sdk/include/reactos/subsys)
 spec2def(kernel32.dll kernel32.spec ADD_IMPORTLIB)
+
+aliasobj(${CMAKE_CURRENT_LIST_DIR}/kernel32-alias.txt)
 
 # Shared between kernel32 and kernel32_vista
 add_library(kernel32_shared
     client/shared_utils.c
     client/file/fileutils.c
+    ${CMAKE_CURRENT_BINARY_DIR}/aliasobj_output.obj
 )
 
 add_dependencies(kernel32_shared psdk)
@@ -24,6 +30,7 @@ list(APPEND SOURCE
     client/environ.c
     client/except.c
     client/fiber.c
+    client/fls.c
     client/handle.c
     client/heapmem.c
     client/job.c
@@ -107,6 +114,7 @@ elseif(ARCH STREQUAL "arm")
 endif()
 
 add_asm_files(kernel32_asm ${ASM_SOURCE})
+
 add_library(kernel32 MODULE
     ${SOURCE}
     ${kernel32_asm}
@@ -114,14 +122,16 @@ add_library(kernel32 MODULE
     ${CMAKE_CURRENT_BINARY_DIR}/kernel32_stubs.c
     ${CMAKE_CURRENT_BINARY_DIR}/kernel32.def)
 
+_add_library(libkernel32_vista ALIAS libkernel32)
+
 set_module_type(kernel32 win32dll ENTRYPOINT DllMain 12)
 #############################################
 ## HACK FOR MSVC COMPILATION WITH win32dll ##
 set_subsystem(kernel32 console)
 ################# END  HACK #################
 
-target_link_libraries(kernel32 kernel32_shared wine chkstk ${PSEH_LIB})
-add_importlibs(kernel32 ntdll)
+target_link_libraries(kernel32 kernel32_shared kernel32_vista wine chkstk ${PSEH_LIB})
+add_importlibs(kernel32 ntdll advapi32)
 add_pch(kernel32 k32.h SOURCE)
 add_dependencies(kernel32 psdk errcodes asm)
 add_cd_file(TARGET kernel32 DESTINATION reactos/system32 FOR all)

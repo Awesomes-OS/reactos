@@ -41,4 +41,21 @@
 
 #define FLT_ROUNDS 1
 
+#define DBL_DECIMAL_DIG  17                      // # of decimal digits of rounding precision
+#define DBL_HAS_SUBNORM  1                       // type does support subnormal numbers
+#define _DBL_RADIX       2                       // exponent radix
+#define DBL_TRUE_MIN     4.9406564584124654e-324 // min positive value
+
+#define FLT_DECIMAL_DIG  9                       // # of decimal digits of rounding precision
+#define FLT_HAS_SUBNORM  1                       // type does support subnormal numbers
+#define FLT_GUARD        0
+#define FLT_NORMALIZE    0
+#define FLT_TRUE_MIN     1.401298464e-45F        // min positive value
+
+#define LDBL_HAS_SUBNORM DBL_HAS_SUBNORM         // type does support subnormal numbers
+#define _LDBL_RADIX      _DBL_RADIX              // exponent radix
+#define LDBL_TRUE_MIN    DBL_TRUE_MIN            // min positive value
+
+#define DECIMAL_DIG      DBL_DECIMAL_DIG
+
 #endif

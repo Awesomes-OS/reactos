@@ -223,7 +223,7 @@ MiInsertVadEx(
 
     /* Acquire the address creation lock and make sure the process is alive */
     KeAcquireGuardedMutex(&CurrentProcess->AddressCreationLock);
-    if (CurrentProcess->VmDeleted)
+    if (PspTestProcessVmDeletedFlag(CurrentProcess))
     {
         KeReleaseGuardedMutex(&CurrentProcess->AddressCreationLock);
         DPRINT1("The process is dying\n");
@@ -237,7 +237,7 @@ MiInsertVadEx(
         HighestAddress = min(HighestAddress, (ULONG_PTR)MM_HIGHEST_VAD_ADDRESS);
 
         /* Which way should we search? */
-        if ((AllocationType & MEM_TOP_DOWN) || CurrentProcess->VmTopDown)
+        if ((AllocationType & MEM_TOP_DOWN) || PspTestProcessVmTopDownFlag(CurrentProcess))
         {
             /* Find an address top-down */
             Result = MiFindEmptyAddressRangeDownTree(ViewSize,

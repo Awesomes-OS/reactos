@@ -316,9 +316,16 @@ typedef struct _IO_WORKITEM
 //
 typedef struct _IO_INTERRUPT
 {
+#if 0
+    KINTERRUPT InterruptObject;
+    KSPIN_LOCK SpinLock;
+    GROUP_AFFINITY Affinity;
+    PKINTERRUPT Interrupt[ANYSIZE_ARRAY];
+#else
     KINTERRUPT FirstInterrupt;
     PKINTERRUPT Interrupt[MAXIMUM_PROCESSORS];
     KSPIN_LOCK SpinLock;
+#endif
 } IO_INTERRUPT, *PIO_INTERRUPT;
 
 //
@@ -1091,7 +1098,7 @@ IopGetDriverNames(
 
 NTSTATUS
 IopInitializeDriverModule(
-    _In_ PLDR_DATA_TABLE_ENTRY ModuleObject,
+    _In_ PKLDR_DATA_TABLE_ENTRY ModuleObject,
     _In_ HANDLE ServiceHandle,
     _Out_ PDRIVER_OBJECT *DriverObject,
     _Out_ NTSTATUS *DriverEntryStatus);

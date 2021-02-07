@@ -26,6 +26,7 @@
 #include "icd.h"
 
 /* *$%$£^§! headers inclusion */
+#if 0
 static __inline
 BOOLEAN
 RemoveEntryList(
@@ -65,6 +66,7 @@ InitializeListHead(
 {
     ListHead->Flink = ListHead->Blink = ListHead;
 }
+#endif
 
 extern LIST_ENTRY ContextListHead;
 

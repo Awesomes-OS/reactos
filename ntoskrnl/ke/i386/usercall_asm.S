@@ -121,7 +121,7 @@ _KeSwitchKernelStack@8:
     push edi
 
     /* Get current thread */
-    mov edx, fs:[KPCR_CURRENT_THREAD]
+    mov edx, fs:[KPCR_PRCB_DATA+PbCurrentThread]
 
     /* Get new and current base */
     mov edi, [esp+12]

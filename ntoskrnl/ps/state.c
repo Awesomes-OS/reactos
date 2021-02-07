@@ -78,7 +78,7 @@ PsSuspendThread(
         if (ExAcquireRundownProtection(&Thread->RundownProtect))
         {
             /* Make sure the thread isn't terminating */
-            if (Thread->Terminated)
+            if (PspTestThreadTerminatedFlag(Thread))
             {
                 /* Fail */
                 Status = STATUS_THREAD_IS_TERMINATING;
@@ -99,7 +99,7 @@ PsSuspendThread(
                 _SEH2_END;
 
                 /* Check if it was terminated during the suspend */
-                if (Thread->Terminated)
+                if (PspTestThreadTerminatedFlag(Thread))
                 {
                     /* Wake it back up and fail */
                     KeForceResumeThread(&Thread->Tcb);
@@ -171,7 +171,7 @@ PsSuspendProcess(IN PEPROCESS Process)
     Thread = PsGetNextProcessThread(Process, NULL);
     while (Thread)
     {
-        /* Resume it */
+        /* Suspend it */
         PsSuspendThread(Thread, NULL);
 
         /* Move to the next thread */
@@ -523,7 +523,7 @@ NtQueueApcThreadEx(IN HANDLE ThreadHandle,
     if (!NT_SUCCESS(Status)) return Status;
 
     /* Check if this is a System Thread */
-    if (Thread->SystemThread)
+    if (KiTestThreadSystemThreadFlag(&Thread->Tcb))
     {
         /* Fail */
         Status = STATUS_INVALID_HANDLE;

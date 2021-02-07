@@ -675,6 +675,16 @@ KeUnstackDetachProcess(
 _IRQL_requires_min_(PASSIVE_LEVEL)
 _IRQL_requires_max_(DISPATCH_LEVEL)
 NTKERNELAPI
+NTSTATUS
+NTAPI
+KeSetIdealProcessorThreadByNumber(
+  _In_ PKTHREAD Thread,
+  _In_ PPROCESSOR_NUMBER ProcessorNumber,
+  _In_ PPROCESSOR_NUMBER OldIdealProcessorNumber);
+
+_IRQL_requires_min_(PASSIVE_LEVEL)
+_IRQL_requires_max_(DISPATCH_LEVEL)
+NTKERNELAPI
 UCHAR
 NTAPI
 KeSetIdealProcessorThread(

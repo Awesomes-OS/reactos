@@ -34,6 +34,8 @@ struct error_table
 
 static const struct error_table error_table[20];
 
+DWORD g_dwLastErrorToBreakOn;
+
 /**************************************************************************
  *           RtlNtStatusToDosErrorNoTeb (NTDLL.@)
  *
@@ -150,6 +152,10 @@ VOID
 NTAPI
 RtlSetLastWin32Error(IN ULONG LastError)
 {
+    /* Break if a debugger requested checking for this error code */
+    if ((g_dwLastErrorToBreakOn) && (g_dwLastErrorToBreakOn == LastError))
+        DbgBreakPoint();
+
     NtCurrentTeb()->LastErrorValue = LastError;
 }
 

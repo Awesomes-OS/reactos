@@ -2,263 +2,9 @@
  *                         Runtime Library Functions                          *
  ******************************************************************************/
 
+#include <ndk/rtlfuncs.inl>
+
 $if (_WDMDDK_)
-#define FAST_FAIL_LEGACY_GS_VIOLATION           0
-#define FAST_FAIL_VTGUARD_CHECK_FAILURE         1
-#define FAST_FAIL_STACK_COOKIE_CHECK_FAILURE    2
-#define FAST_FAIL_CORRUPT_LIST_ENTRY            3
-#define FAST_FAIL_INCORRECT_STACK               4
-#define FAST_FAIL_INVALID_ARG                   5
-#define FAST_FAIL_GS_COOKIE_INIT                6
-#define FAST_FAIL_FATAL_APP_EXIT                7
-#define FAST_FAIL_RANGE_CHECK_FAILURE           8
-#define FAST_FAIL_UNSAFE_REGISTRY_ACCESS        9
-#define FAST_FAIL_GUARD_ICALL_CHECK_FAILURE     10
-#define FAST_FAIL_GUARD_WRITE_CHECK_FAILURE     11
-#define FAST_FAIL_INVALID_FIBER_SWITCH          12
-#define FAST_FAIL_INVALID_SET_OF_CONTEXT        13
-#define FAST_FAIL_INVALID_REFERENCE_COUNT       14
-#define FAST_FAIL_INVALID_JUMP_BUFFER           18
-#define FAST_FAIL_MRDATA_MODIFIED               19
-#define FAST_FAIL_INVALID_FAST_FAIL_CODE        0xFFFFFFFF
-
-DECLSPEC_NORETURN
-FORCEINLINE
-VOID
-RtlFailFast(
-  _In_ ULONG Code)
-{
-  __fastfail(Code);
-}
-
-#if !defined(NO_KERNEL_LIST_ENTRY_CHECKS) && (defined(_M_CEE_PURE) || defined(_M_CEE_SAFE))
-#define NO_KERNEL_LIST_ENTRY_CHECKS
-#endif
-
-#if !defined(EXTRA_KERNEL_LIST_ENTRY_CHECKS) && defined(__REACTOS__)
-#define EXTRA_KERNEL_LIST_ENTRY_CHECKS
-#endif
-
-#if !defined(MIDL_PASS) && !defined(SORTPP_PASS)
-
-#define RTL_STATIC_LIST_HEAD(x) LIST_ENTRY x = { &x, &x }
-
-FORCEINLINE
-VOID
-InitializeListHead(
-  _Out_ PLIST_ENTRY ListHead)
-{
-  ListHead->Flink = ListHead->Blink = ListHead;
-}
-
-_Must_inspect_result_
-FORCEINLINE
-BOOLEAN
-IsListEmpty(
-  _In_ const LIST_ENTRY * ListHead)
-{
-  return (BOOLEAN)(ListHead->Flink == ListHead);
-}
-
-FORCEINLINE
-BOOLEAN
-RemoveEntryListUnsafe(
-  _In_ PLIST_ENTRY Entry)
-{
-  PLIST_ENTRY OldFlink;
-  PLIST_ENTRY OldBlink;
-
-  OldFlink = Entry->Flink;
-  OldBlink = Entry->Blink;
-  OldFlink->Blink = OldBlink;
-  OldBlink->Flink = OldFlink;
-  return (BOOLEAN)(OldFlink == OldBlink);
-}
-
-#if !defined(NO_KERNEL_LIST_ENTRY_CHECKS)
-FORCEINLINE
-VOID
-FatalListEntryError(
-  _In_ PVOID P1,
-  _In_ PVOID P2,
-  _In_ PVOID P3)
-{
-  UNREFERENCED_PARAMETER(P1);
-  UNREFERENCED_PARAMETER(P2);
-  UNREFERENCED_PARAMETER(P3);
-
-  RtlFailFast(FAST_FAIL_CORRUPT_LIST_ENTRY);
-}
-
-FORCEINLINE
-VOID
-RtlpCheckListEntry(
-  _In_ PLIST_ENTRY Entry)
-{
-  if (Entry->Flink->Blink != Entry || Entry->Blink->Flink != Entry)
-    FatalListEntryError(Entry->Blink, Entry, Entry->Flink);
-}
-#endif
-
-FORCEINLINE
-BOOLEAN
-RemoveEntryList(
-  _In_ PLIST_ENTRY Entry)
-{
-  PLIST_ENTRY OldFlink;
-  PLIST_ENTRY OldBlink;
-
-  OldFlink = Entry->Flink;
-  OldBlink = Entry->Blink;
-#if !defined(NO_KERNEL_LIST_ENTRY_CHECKS)
-#ifdef EXTRA_KERNEL_LIST_ENTRY_CHECKS
-  if (OldFlink == Entry || OldBlink == Entry)
-    FatalListEntryError(OldBlink, Entry, OldFlink);
-#endif
-  if (OldFlink->Blink != Entry || OldBlink->Flink != Entry)
-    FatalListEntryError(OldBlink, Entry, OldFlink);
-#endif
-  OldFlink->Blink = OldBlink;
-  OldBlink->Flink = OldFlink;
-  return (BOOLEAN)(OldFlink == OldBlink);
-}
-
-FORCEINLINE
-PLIST_ENTRY
-RemoveHeadList(
-  _Inout_ PLIST_ENTRY ListHead)
-{
-  PLIST_ENTRY Flink;
-  PLIST_ENTRY Entry;
-
-#if !defined(NO_KERNEL_LIST_ENTRY_CHECKS) && DBG
-  RtlpCheckListEntry(ListHead);
-#ifdef EXTRA_KERNEL_LIST_ENTRY_CHECKS
-  if (ListHead->Flink == ListHead || ListHead->Blink == ListHead)
-    FatalListEntryError(ListHead->Blink, ListHead, ListHead->Flink);
-#endif
-#endif
-  Entry = ListHead->Flink;
-  Flink = Entry->Flink;
-#if !defined(NO_KERNEL_LIST_ENTRY_CHECKS)
-  if (Entry->Blink != ListHead || Flink->Blink != Entry)
-    FatalListEntryError(ListHead, Entry, Flink);
-#endif
-  ListHead->Flink = Flink;
-  Flink->Blink = ListHead;
-  return Entry;
-}
-
-FORCEINLINE
-PLIST_ENTRY
-RemoveTailList(
-  _Inout_ PLIST_ENTRY ListHead)
-{
-  PLIST_ENTRY Blink;
-  PLIST_ENTRY Entry;
-
-#if !defined(NO_KERNEL_LIST_ENTRY_CHECKS) && DBG
-  RtlpCheckListEntry(ListHead);
-#ifdef EXTRA_KERNEL_LIST_ENTRY_CHECKS
-  if (ListHead->Flink == ListHead || ListHead->Blink == ListHead)
-    FatalListEntryError(ListHead->Blink, ListHead, ListHead->Flink);
-#endif
-#endif
-  Entry = ListHead->Blink;
-  Blink = Entry->Blink;
-#if !defined(NO_KERNEL_LIST_ENTRY_CHECKS)
-  if (Blink->Flink != Entry || Entry->Flink != ListHead)
-    FatalListEntryError(Blink, Entry, ListHead);
-#endif
-  ListHead->Blink = Blink;
-  Blink->Flink = ListHead;
-  return Entry;
-}
-
-FORCEINLINE
-VOID
-InsertTailList(
-  _Inout_ PLIST_ENTRY ListHead,
-  _Inout_ __drv_aliasesMem PLIST_ENTRY Entry)
-{
-  PLIST_ENTRY OldBlink;
-#if !defined(NO_KERNEL_LIST_ENTRY_CHECKS) && DBG
-  RtlpCheckListEntry(ListHead);
-#endif
-  OldBlink = ListHead->Blink;
-  Entry->Flink = ListHead;
-  Entry->Blink = OldBlink;
-#if !defined(NO_KERNEL_LIST_ENTRY_CHECKS)
-  if (OldBlink->Flink != ListHead)
-    FatalListEntryError(OldBlink->Blink, OldBlink, ListHead);
-#endif
-  OldBlink->Flink = Entry;
-  ListHead->Blink = Entry;
-}
-
-FORCEINLINE
-VOID
-InsertHeadList(
-  _Inout_ PLIST_ENTRY ListHead,
-  _Inout_ __drv_aliasesMem PLIST_ENTRY Entry)
-{
-  PLIST_ENTRY OldFlink;
-#if !defined(NO_KERNEL_LIST_ENTRY_CHECKS) && DBG
-  RtlpCheckListEntry(ListHead);
-#endif
-  OldFlink = ListHead->Flink;
-  Entry->Flink = OldFlink;
-  Entry->Blink = ListHead;
-#if !defined(NO_KERNEL_LIST_ENTRY_CHECKS)
-  if (OldFlink->Blink != ListHead)
-    FatalListEntryError(ListHead, OldFlink, OldFlink->Flink);
-#endif
-  OldFlink->Blink = Entry;
-  ListHead->Flink = Entry;
-}
-
-FORCEINLINE
-VOID
-AppendTailList(
-  _Inout_ PLIST_ENTRY ListHead,
-  _Inout_ PLIST_ENTRY ListToAppend)
-{
-  PLIST_ENTRY ListEnd = ListHead->Blink;
-
-#if !defined(NO_KERNEL_LIST_ENTRY_CHECKS)
-  RtlpCheckListEntry(ListHead);
-  RtlpCheckListEntry(ListToAppend);
-#endif
-  ListHead->Blink->Flink = ListToAppend;
-  ListHead->Blink = ListToAppend->Blink;
-  ListToAppend->Blink->Flink = ListHead;
-  ListToAppend->Blink = ListEnd;
-}
-
-FORCEINLINE
-PSINGLE_LIST_ENTRY
-PopEntryList(
-  _Inout_ PSINGLE_LIST_ENTRY ListHead)
-{
-  PSINGLE_LIST_ENTRY FirstEntry;
-  FirstEntry = ListHead->Next;
-  if (FirstEntry != NULL) {
-    ListHead->Next = FirstEntry->Next;
-  }
-  return FirstEntry;
-}
-
-FORCEINLINE
-VOID
-PushEntryList(
-  _Inout_ PSINGLE_LIST_ENTRY ListHead,
-  _Inout_ __drv_aliasesMem PSINGLE_LIST_ENTRY Entry)
-{
-  Entry->Next = ListHead->Next;
-  ListHead->Next = Entry;
-}
-
-#endif /* !defined(MIDL_PASS) && !defined(SORTPP_PASS) */
 
 __analysis_noreturn
 NTSYSAPI
@@ -279,8 +25,6 @@ RtlAssert(
 #define RtlCopyMemory(Destination, Source, Length) \
     memcpy(Destination, Source, Length)
 
-#define RtlCopyBytes RtlCopyMemory
-
 #if defined(_M_AMD64)
 NTSYSAPI
 VOID
@@ -292,14 +36,6 @@ RtlCopyMemoryNonTemporal(
 #else
 #define RtlCopyMemoryNonTemporal RtlCopyMemory
 #endif
-
-/* BOOLEAN
- * RtlEqualLuid(
- *     IN PLUID Luid1,
- *     IN PLUID Luid2)
- */
-#define RtlEqualLuid(Luid1, Luid2) \
-    (((Luid1)->LowPart == (Luid2)->LowPart) && ((Luid1)->HighPart == (Luid2)->HighPart))
 
 /* LOGICAL
  * RtlEqualMemory(
@@ -318,8 +54,6 @@ RtlCopyMemoryNonTemporal(
  */
 #define RtlFillMemory(Destination, Length, Fill) \
     memset(Destination, Fill, Length)
-
-#define RtlFillBytes RtlFillMemory
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 NTSYSAPI
@@ -380,7 +114,6 @@ RtlStringFromGUID(
 #define RtlZeroMemory(Destination, Length) \
     memset(Destination, 0, Length)
 
-#define RtlZeroBytes RtlZeroMemory
 $endif (_WDMDDK_)
 
 #if (NTDDI_VERSION >= NTDDI_WIN2K)
@@ -422,12 +155,6 @@ ULONG
 NTAPI
 RtlxAnsiStringToUnicodeSize(
   _In_ PCANSI_STRING AnsiString);
-
-#define RtlAnsiStringToUnicodeSize(String) (               \
-  NLS_MB_CODE_PAGE_TAG ?                                   \
-  RtlxAnsiStringToUnicodeSize(String) :                    \
-  ((String)->Length + sizeof(ANSI_NULL)) * sizeof(WCHAR)   \
-)
 
 _Success_(1)
 _Unchanged_(Destination->MaximumLength)
@@ -738,21 +465,6 @@ RtlInt64ToUnicodeString(
   _In_opt_ ULONG Base,
   _Inout_ PUNICODE_STRING String);
 
-#ifdef _WIN64
-#define RtlIntPtrToUnicodeString(Value, Base, String) \
-    RtlInt64ToUnicodeString(Value, Base, String)
-#else
-#define RtlIntPtrToUnicodeString(Value, Base, String) \
-    RtlIntegerToUnicodeString(Value, Base, String)
-#endif
-
-/* BOOLEAN
- * RtlIsZeroLuid(
- *     IN PLUID L1);
- */
-#define RtlIsZeroLuid(_L1) \
-    ((BOOLEAN) ((!(_L1)->LowPart) && (!(_L1)->HighPart)))
-
 _IRQL_requires_max_(APC_LEVEL)
 NTSYSAPI
 ULONG
@@ -784,19 +496,6 @@ RtlQueryRegistryValues(
     _In_opt_ PVOID Context,
     _In_opt_ PVOID Environment);
 
-#define SHORT_SIZE  (sizeof(USHORT))
-#define SHORT_MASK  (SHORT_SIZE - 1)
-#define LONG_SIZE (sizeof(LONG))
-#define LONGLONG_SIZE   (sizeof(LONGLONG))
-#define LONG_MASK (LONG_SIZE - 1)
-#define LONGLONG_MASK   (LONGLONG_SIZE - 1)
-#define LOWBYTE_MASK 0x00FF
-
-#define FIRSTBYTE(VALUE)  ((VALUE) & LOWBYTE_MASK)
-#define SECONDBYTE(VALUE) (((VALUE) >> 8) & LOWBYTE_MASK)
-#define THIRDBYTE(VALUE)  (((VALUE) >> 16) & LOWBYTE_MASK)
-#define FOURTHBYTE(VALUE) (((VALUE) >> 24) & LOWBYTE_MASK)
-
 NTSYSAPI
 VOID
 NTAPI
@@ -820,117 +519,6 @@ RtlSetDaclSecurityDescriptor(
   _In_ BOOLEAN DaclPresent,
   _In_opt_ PACL Dacl,
   _In_opt_ BOOLEAN DaclDefaulted);
-
-#if defined(_AMD64_)
-
-/* VOID
- * RtlStoreUlong(
- *     IN PULONG Address,
- *     IN ULONG Value);
- */
-#define RtlStoreUlong(Address,Value) \
-    *(ULONG UNALIGNED *)(Address) = (Value)
-
-/* VOID
- * RtlStoreUlonglong(
- *     IN OUT PULONGLONG Address,
- *     ULONGLONG Value);
- */
-#define RtlStoreUlonglong(Address,Value) \
-    *(ULONGLONG UNALIGNED *)(Address) = (Value)
-
-/* VOID
- * RtlStoreUshort(
- *     IN PUSHORT Address,
- *     IN USHORT Value);
- */
-#define RtlStoreUshort(Address,Value) \
-    *(USHORT UNALIGNED *)(Address) = (Value)
-
-/* VOID
- * RtlRetrieveUshort(
- *     PUSHORT DestinationAddress,
- *    PUSHORT SourceAddress);
- */
-#define RtlRetrieveUshort(DestAddress,SrcAddress) \
-    *(USHORT UNALIGNED *)(DestAddress) = *(USHORT)(SrcAddress)
-
-/* VOID
- * RtlRetrieveUlong(
- *    PULONG DestinationAddress,
- *    PULONG SourceAddress);
- */
-#define RtlRetrieveUlong(DestAddress,SrcAddress) \
-    *(ULONG UNALIGNED *)(DestAddress) = *(PULONG)(SrcAddress)
-
-#else
-
-#define RtlStoreUlong(Address,Value)                      \
-    if ((ULONG_PTR)(Address) & LONG_MASK) { \
-        ((PUCHAR) (Address))[LONG_LEAST_SIGNIFICANT_BIT]    = (UCHAR)(FIRSTBYTE(Value)); \
-        ((PUCHAR) (Address))[LONG_3RD_MOST_SIGNIFICANT_BIT] = (UCHAR)(SECONDBYTE(Value)); \
-        ((PUCHAR) (Address))[LONG_2ND_MOST_SIGNIFICANT_BIT] = (UCHAR)(THIRDBYTE(Value)); \
-        ((PUCHAR) (Address))[LONG_MOST_SIGNIFICANT_BIT]     = (UCHAR)(FOURTHBYTE(Value)); \
-    } \
-    else { \
-        *((PULONG)(Address)) = (ULONG) (Value); \
-    }
-
-#define RtlStoreUlonglong(Address,Value) \
-    if ((ULONG_PTR)(Address) & LONGLONG_MASK) { \
-        RtlStoreUlong((ULONG_PTR)(Address), \
-                      (ULONGLONG)(Value) & 0xFFFFFFFF); \
-        RtlStoreUlong((ULONG_PTR)(Address)+sizeof(ULONG), \
-                      (ULONGLONG)(Value) >> 32); \
-    } else { \
-        *((PULONGLONG)(Address)) = (ULONGLONG)(Value); \
-    }
-
-#define RtlStoreUshort(Address,Value) \
-    if ((ULONG_PTR)(Address) & SHORT_MASK) { \
-        ((PUCHAR) (Address))[SHORT_LEAST_SIGNIFICANT_BIT] = (UCHAR)(FIRSTBYTE(Value)); \
-        ((PUCHAR) (Address))[SHORT_MOST_SIGNIFICANT_BIT ] = (UCHAR)(SECONDBYTE(Value)); \
-    } \
-    else { \
-        *((PUSHORT) (Address)) = (USHORT)Value; \
-    }
-
-#define RtlRetrieveUshort(DestAddress,SrcAddress) \
-    if ((ULONG_PTR)(SrcAddress) & LONG_MASK) \
-    { \
-        ((PUCHAR)(DestAddress))[0]=((PUCHAR)(SrcAddress))[0]; \
-        ((PUCHAR)(DestAddress))[1]=((PUCHAR)(SrcAddress))[1]; \
-    } \
-    else \
-    { \
-        *((PUSHORT)(DestAddress))=*((PUSHORT)(SrcAddress)); \
-    }
-
-#define RtlRetrieveUlong(DestAddress,SrcAddress) \
-    if ((ULONG_PTR)(SrcAddress) & LONG_MASK) \
-    { \
-        ((PUCHAR)(DestAddress))[0]=((PUCHAR)(SrcAddress))[0]; \
-        ((PUCHAR)(DestAddress))[1]=((PUCHAR)(SrcAddress))[1]; \
-        ((PUCHAR)(DestAddress))[2]=((PUCHAR)(SrcAddress))[2]; \
-        ((PUCHAR)(DestAddress))[3]=((PUCHAR)(SrcAddress))[3]; \
-    } \
-    else \
-    { \
-        *((PULONG)(DestAddress))=*((PULONG)(SrcAddress)); \
-    }
-
-#endif /* defined(_AMD64_) */
-
-#ifdef _WIN64
-/* VOID
- * RtlStoreUlongPtr(
- *     IN OUT PULONG_PTR Address,
- *     IN ULONG_PTR Value);
- */
-#define RtlStoreUlongPtr(Address,Value) RtlStoreUlonglong(Address,Value)
-#else
-#define RtlStoreUlongPtr(Address,Value) RtlStoreUlong(Address,Value)
-#endif /* _WIN64 */
 
 _Success_(return!=FALSE)
 _Must_inspect_result_
@@ -1002,12 +590,6 @@ ULONG
 NTAPI
 RtlxUnicodeStringToAnsiSize(
   _In_ PCUNICODE_STRING UnicodeString);
-
-#define RtlUnicodeStringToAnsiSize(String) (                  \
-    NLS_MB_CODE_PAGE_TAG ?                                    \
-    RtlxUnicodeStringToAnsiSize(String) :                     \
-    ((String)->Length + sizeof(UNICODE_NULL)) / sizeof(WCHAR) \
-)
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 NTSYSAPI
@@ -2951,37 +2533,6 @@ RtlEnlargedIntegerMultiply(
   return ret;
 }
 
-_At_(AnsiString->Buffer, _Post_equal_to_(Buffer))
-_At_(AnsiString->Length, _Post_equal_to_(0))
-_At_(AnsiString->MaximumLength, _Post_equal_to_(BufferSize))
-FORCEINLINE
-VOID
-RtlInitEmptyAnsiString(
-  _Out_ PANSI_STRING AnsiString,
-  _Pre_maybenull_ _Pre_readable_size_(BufferSize) __drv_aliasesMem PCHAR Buffer,
-  _In_ USHORT BufferSize)
-{
-  AnsiString->Length = 0;
-  AnsiString->MaximumLength = BufferSize;
-  AnsiString->Buffer = Buffer;
-}
-
-_At_(UnicodeString->Buffer, _Post_equal_to_(Buffer))
-_At_(UnicodeString->Length, _Post_equal_to_(0))
-_At_(UnicodeString->MaximumLength, _Post_equal_to_(BufferSize))
-FORCEINLINE
-VOID
-RtlInitEmptyUnicodeString(
-    _Out_ PUNICODE_STRING UnicodeString,
-    _Writable_bytes_(BufferSize)
-    _When_(BufferSize != 0, _Notnull_)
-    __drv_aliasesMem PWSTR Buffer,
-    _In_ USHORT BufferSize)
-{
-    UnicodeString->Length = 0;
-    UnicodeString->MaximumLength = BufferSize;
-    UnicodeString->Buffer = Buffer;
-}
 $endif (_WDMDDK_)
 
 #if defined(_AMD64_) || defined(_IA64_)
@@ -3114,85 +2665,6 @@ RtlLargeIntegerArithmeticShift(
   return ret;
 }
 
-/* BOOLEAN
- * RtlLargeIntegerEqualTo(
- *     IN LARGE_INTEGER  Operand1,
- *     IN LARGE_INTEGER  Operand2);
- */
-#define RtlLargeIntegerEqualTo(X,Y) \
-    (!(((X).LowPart ^ (Y).LowPart) | ((X).HighPart ^ (Y).HighPart)))
-
-FORCEINLINE
-PVOID
-RtlSecureZeroMemory(
-  _Out_writes_bytes_all_(Size) PVOID Pointer,
-  _In_ SIZE_T Size)
-{
-  volatile char* vptr = (volatile char*)Pointer;
-#if defined(_M_AMD64)
-  __stosb((PUCHAR)vptr, 0, Size);
-#else
-  char * endptr = (char *)vptr + Size;
-  while (vptr < endptr) {
-    *vptr = 0; vptr++;
-  }
-#endif
-   return Pointer;
-}
-
-#if defined(_M_AMD64)
-_Must_inspect_result_
-FORCEINLINE
-BOOLEAN
-RtlCheckBit(
-  _In_ PRTL_BITMAP BitMapHeader,
-  _In_range_(<, BitMapHeader->SizeOfBitMap) ULONG BitPosition)
-{
-  return BitTest64((LONG64 CONST*)BitMapHeader->Buffer, (LONG64)BitPosition);
-}
-#else
-#define RtlCheckBit(BMH,BP) (((((PLONG)(BMH)->Buffer)[(BP)/32]) >> ((BP)%32)) & 0x1)
-#endif /* defined(_M_AMD64) */
-
-#define RtlLargeIntegerGreaterThan(X,Y) (                              \
-    (((X).HighPart == (Y).HighPart) && ((X).LowPart > (Y).LowPart)) || \
-    ((X).HighPart > (Y).HighPart)                                      \
-)
-
-#define RtlLargeIntegerGreaterThanOrEqualTo(X,Y) (                      \
-    (((X).HighPart == (Y).HighPart) && ((X).LowPart >= (Y).LowPart)) || \
-    ((X).HighPart > (Y).HighPart)                                       \
-)
-
-#define RtlLargeIntegerNotEqualTo(X,Y) (                          \
-    (((X).LowPart ^ (Y).LowPart) | ((X).HighPart ^ (Y).HighPart)) \
-)
-
-#define RtlLargeIntegerLessThan(X,Y) (                                 \
-    (((X).HighPart == (Y).HighPart) && ((X).LowPart < (Y).LowPart)) || \
-    ((X).HighPart < (Y).HighPart)                                      \
-)
-
-#define RtlLargeIntegerLessThanOrEqualTo(X,Y) (                         \
-    (((X).HighPart == (Y).HighPart) && ((X).LowPart <= (Y).LowPart)) || \
-    ((X).HighPart < (Y).HighPart)                                       \
-)
-
-#define RtlLargeIntegerGreaterThanZero(X) (       \
-    (((X).HighPart == 0) && ((X).LowPart > 0)) || \
-    ((X).HighPart > 0 )                           \
-)
-
-#define RtlLargeIntegerGreaterOrEqualToZero(X) ( (X).HighPart >= 0 )
-
-#define RtlLargeIntegerEqualToZero(X) ( !((X).LowPart | (X).HighPart) )
-
-#define RtlLargeIntegerNotEqualToZero(X) ( ((X).LowPart | (X).HighPart) )
-
-#define RtlLargeIntegerLessThanZero(X) ( ((X).HighPart < 0) )
-
-#define RtlLargeIntegerLessOrEqualToZero(X) ( ((X).HighPart < 0) || !((X).LowPart | (X).HighPart) )
-
 #endif /* !defined(MIDL_PASS) */
 
 /* Byte Swap Functions */
@@ -3238,14 +2710,6 @@ RtlCheckBit(
 
 #if DBG
 
-#define RTL_VERIFY(exp) \
-  ((!(exp)) ? \
-    RtlAssert( (PVOID)#exp, (PVOID)__FILE__, __LINE__, NULL ), FALSE : TRUE)
-
-#define RTL_VERIFYMSG(msg, exp) \
-  ((!(exp)) ? \
-    RtlAssert( (PVOID)#exp, (PVOID)__FILE__, __LINE__, (PCHAR)msg ), FALSE : TRUE)
-
 #define RTL_SOFT_VERIFY(exp) \
   ((!(exp)) ? \
     DbgPrint("%s(%d): Soft assertion failed\n   Expression: %s\n", __FILE__, __LINE__, #exp), FALSE : TRUE)
@@ -3255,8 +2719,6 @@ RtlCheckBit(
     DbgPrint("%s(%d): Soft assertion failed\n   Expression: %s\n   Message: %s\n", __FILE__, __LINE__, #exp, (msg)), FALSE : TRUE)
 
 /* The ASSERTs must be cast to void to avoid warnings about unused results. */
-#define ASSERT                 (void)RTL_VERIFY
-#define ASSERTMSG              (void)RTL_VERIFYMSG
 #define RTL_SOFT_ASSERT        (void)RTL_SOFT_VERIFY
 #define RTL_SOFT_ASSERTMSG     (void)RTL_SOFT_VERIFYMSG
 
@@ -3273,9 +2735,6 @@ RtlCheckBit(
 #define NT_ASSERTMSGW_NOASSUME (void)NT_ASSERTMSGW_ACTION
 
 #else /* !DBG */
-
-#define ASSERT(exp)                  ((void)0)
-#define ASSERTMSG(msg, exp)          ((void)0)
 
 #define RTL_SOFT_ASSERT(exp)         ((void)0)
 #define RTL_SOFT_ASSERTMSG(msg, exp) ((void)0)
@@ -3324,9 +2783,6 @@ RtlCheckBit(
 #undef RTL_VERIFY
 #define RTL_VERIFY NT_VERIFY
 #endif
-
-#define InitializeListHead32(ListHead) (\
-    (ListHead)->Flink = (ListHead)->Blink = PtrToUlong((ListHead)))
 
 #if !defined(_WINBASE_)
 
@@ -3404,19 +2860,6 @@ InterlockedPopEntrySList(
 
 #endif /* !defined(_WINBASE_) */
 
-#define RTL_CONTEXT_EX_OFFSET(ContextEx, Chunk) ((ContextEx)->Chunk.Offset)
-#define RTL_CONTEXT_EX_LENGTH(ContextEx, Chunk) ((ContextEx)->Chunk.Length)
-#define RTL_CONTEXT_EX_CHUNK(Base, Layout, Chunk)       \
-    ((PVOID)((PCHAR)(Base) + RTL_CONTEXT_EX_OFFSET(Layout, Chunk)))
-#define RTL_CONTEXT_OFFSET(Context, Chunk)              \
-    RTL_CONTEXT_EX_OFFSET((PCONTEXT_EX)(Context + 1), Chunk)
-#define RTL_CONTEXT_LENGTH(Context, Chunk)              \
-    RTL_CONTEXT_EX_LENGTH((PCONTEXT_EX)(Context + 1), Chunk)
-#define RTL_CONTEXT_CHUNK(Context, Chunk)               \
-    RTL_CONTEXT_EX_CHUNK((PCONTEXT_EX)(Context + 1),    \
-                         (PCONTEXT_EX)(Context + 1),    \
-                         Chunk)
-
 BOOLEAN
 RTLVERLIB_DDI(RtlIsNtDdiVersionAvailable)(
   _In_ ULONG Version);
@@ -3432,27 +2875,6 @@ RTLVERLIB_DDI(RtlIsServicePackVersionInstalled)(
 #ifndef RtlIsServicePackVersionInstalled
 #define RtlIsServicePackVersionInstalled WdmlibRtlIsServicePackVersionInstalled
 #endif
-
-#define RtlInterlockedSetBits(Flags, Flag) \
-    InterlockedOr((PLONG)(Flags), Flag)
-
-#define RtlInterlockedAndBits(Flags, Flag) \
-    InterlockedAnd((PLONG)(Flags), Flag)
-
-#define RtlInterlockedClearBits(Flags, Flag) \
-    RtlInterlockedAndBits(Flags, ~(Flag))
-
-#define RtlInterlockedXorBits(Flags, Flag) \
-    InterlockedXor(Flags, Flag)
-
-#define RtlInterlockedSetBitsDiscardReturn(Flags, Flag) \
-    (VOID) RtlInterlockedSetBits(Flags, Flag)
-
-#define RtlInterlockedAndBitsDiscardReturn(Flags, Flag) \
-    (VOID) RtlInterlockedAndBits(Flags, Flag)
-
-#define RtlInterlockedClearBitsDiscardReturn(Flags, Flag) \
-    RtlInterlockedAndBitsDiscardReturn(Flags, ~(Flag))
 
 $endif (_WDMDDK_)
 
@@ -3473,84 +2895,6 @@ $if (_NTDDK_)
 #define RtlIsGenericTableEmpty                  RtlIsGenericTableEmptyAvl
 
 #endif /* RTL_USE_AVL_TABLES */
-
-#define RtlInitializeSplayLinks(Links) {    \
-  PRTL_SPLAY_LINKS _SplayLinks;            \
-  _SplayLinks = (PRTL_SPLAY_LINKS)(Links); \
-  _SplayLinks->Parent = _SplayLinks;   \
-  _SplayLinks->LeftChild = NULL;       \
-  _SplayLinks->RightChild = NULL;      \
-}
-
-#define RtlIsLeftChild(Links) \
-    (RtlLeftChild(RtlParent(Links)) == (PRTL_SPLAY_LINKS)(Links))
-
-#define RtlIsRightChild(Links) \
-    (RtlRightChild(RtlParent(Links)) == (PRTL_SPLAY_LINKS)(Links))
-
-#define RtlRightChild(Links) \
-    ((PRTL_SPLAY_LINKS)(Links))->RightChild
-
-#define RtlIsRoot(Links) \
-    (RtlParent(Links) == (PRTL_SPLAY_LINKS)(Links))
-
-#define RtlLeftChild(Links) \
-    ((PRTL_SPLAY_LINKS)(Links))->LeftChild
-
-#define RtlParent(Links) \
-    ((PRTL_SPLAY_LINKS)(Links))->Parent
-
-#define RtlInsertAsLeftChild(ParentLinks,ChildLinks)    \
-    {                                                   \
-        PRTL_SPLAY_LINKS _SplayParent;                  \
-        PRTL_SPLAY_LINKS _SplayChild;                   \
-        _SplayParent = (PRTL_SPLAY_LINKS)(ParentLinks); \
-        _SplayChild = (PRTL_SPLAY_LINKS)(ChildLinks);   \
-        _SplayParent->LeftChild = _SplayChild;          \
-        _SplayChild->Parent = _SplayParent;             \
-    }
-
-#define RtlInsertAsRightChild(ParentLinks,ChildLinks)   \
-    {                                                   \
-        PRTL_SPLAY_LINKS _SplayParent;                  \
-        PRTL_SPLAY_LINKS _SplayChild;                   \
-        _SplayParent = (PRTL_SPLAY_LINKS)(ParentLinks); \
-        _SplayChild = (PRTL_SPLAY_LINKS)(ChildLinks);   \
-        _SplayParent->RightChild = _SplayChild;         \
-        _SplayChild->Parent = _SplayParent;             \
-    }
-
-#if !defined(MIDL_PASS)
-
-FORCEINLINE
-LUID
-NTAPI_INLINE
-RtlConvertLongToLuid(
-  _In_ LONG Val)
-{
-  LUID Luid;
-  LARGE_INTEGER Temp;
-
-  Temp.QuadPart = Val;
-  Luid.LowPart = Temp.u.LowPart;
-  Luid.HighPart = Temp.u.HighPart;
-  return Luid;
-}
-
-FORCEINLINE
-LUID
-NTAPI_INLINE
-RtlConvertUlongToLuid(
-  _In_ ULONG Val)
-{
-  LUID Luid;
-
-  Luid.LowPart = Val;
-  Luid.HighPart = 0;
-  return Luid;
-}
-
-#endif /* !defined(MIDL_PASS) */
 
 #if (defined(_M_AMD64) || defined(_M_IA64)) && !defined(_REALLY_GET_CALLERS_CALLER_)
 #define RtlGetCallersAddress(CallersAddress, CallersCaller) \
@@ -3657,21 +3001,4 @@ $if (_NTIFS_)
 #define RTL_DUPLICATE_UNICODE_STRING_NULL_TERMINATE 1
 #define RTL_DUPLICATE_UNICODE_STRING_ALLOCATE_NULL_STRING 2
 
-#define RtlUnicodeStringToOemSize(STRING) (NLS_MB_OEM_CODE_PAGE_TAG ?                                \
-                                           RtlxUnicodeStringToOemSize(STRING) :                      \
-                                           ((STRING)->Length + sizeof(UNICODE_NULL)) / sizeof(WCHAR) \
-)
-
-#define RtlOemStringToUnicodeSize(STRING) (                 \
-    NLS_MB_OEM_CODE_PAGE_TAG ?                              \
-    RtlxOemStringToUnicodeSize(STRING) :                    \
-    ((STRING)->Length + sizeof(ANSI_NULL)) * sizeof(WCHAR)  \
-)
-
-#define RtlOemStringToCountedUnicodeSize(STRING) (                    \
-    (ULONG)(RtlOemStringToUnicodeSize(STRING) - sizeof(UNICODE_NULL)) \
-)
-
-#define RtlOffsetToPointer(B,O) ((PCHAR)(((PCHAR)(B)) + ((ULONG_PTR)(O))))
-#define RtlPointerToOffset(B,P) ((ULONG)(((PCHAR)(P)) - ((PCHAR)(B))))
 $endif (_NTIFS_)

@@ -484,7 +484,7 @@ KiQuantumEnd(VOID)
     {
         /* Check if we're real-time and with quantums disabled */
         if ((Thread->Priority >= LOW_REALTIME_PRIORITY) &&
-            (Thread->ApcState.Process->DisableQuantum))
+            KiTestProcessDisableQuantumFlag(Thread->ApcState.Process))
         {
             /* Otherwise, set maximum quantum */
             Thread->Quantum = MAX_QUANTUM;

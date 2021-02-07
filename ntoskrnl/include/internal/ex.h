@@ -65,38 +65,6 @@ extern ULONG_PTR ExpDebuggerPageIn;
 
 VOID NTAPI ExpDebuggerWorker(IN PVOID Context);
 
-#ifdef _WIN64
-#define HANDLE_LOW_BITS (PAGE_SHIFT - 4)
-#define HANDLE_HIGH_BITS (PAGE_SHIFT - 3)
-#else
-#define HANDLE_LOW_BITS (PAGE_SHIFT - 3)
-#define HANDLE_HIGH_BITS (PAGE_SHIFT - 2)
-#endif
-#define HANDLE_TAG_BITS (2)
-#define HANDLE_INDEX_BITS (HANDLE_LOW_BITS + 2*HANDLE_HIGH_BITS)
-#define KERNEL_FLAG_BITS (sizeof(PVOID)*8 - HANDLE_INDEX_BITS - HANDLE_TAG_BITS)
-
-typedef union _EXHANDLE
-{
-     struct
-     {
-         ULONG_PTR TagBits:     HANDLE_TAG_BITS;
-         ULONG_PTR Index:       HANDLE_INDEX_BITS;
-         ULONG_PTR KernelFlag : KERNEL_FLAG_BITS;
-     };
-     struct
-     {
-         ULONG_PTR TagBits2:    HANDLE_TAG_BITS;
-         ULONG_PTR LowIndex:    HANDLE_LOW_BITS;
-         ULONG_PTR MidIndex:    HANDLE_HIGH_BITS;
-         ULONG_PTR HighIndex:   HANDLE_HIGH_BITS;
-         ULONG_PTR KernelFlag2: KERNEL_FLAG_BITS;
-     };
-     HANDLE GenericHandleOverlay;
-     ULONG_PTR Value;
-     ULONG AsULONG;
-} EXHANDLE, *PEXHANDLE;
-
 typedef struct _ETIMER
 {
     KTIMER KeTimer;
@@ -1309,7 +1277,7 @@ _ExAcquireFastMutexUnsafe(IN PFAST_MUTEX FastMutex)
     ASSERT((KeGetCurrentIrql() == APC_LEVEL) ||
            (Thread->CombinedApcDisable != 0) ||
            (Thread->Teb == NULL) ||
-           (Thread->Teb >= (PTEB)MM_SYSTEM_RANGE_START));
+           ((ULONG_PTR)Thread->Teb >= (ULONG_PTR)MM_SYSTEM_RANGE_START));
     ASSERT(FastMutex->Owner != Thread);
 
     /* Decrease the count */
@@ -1330,7 +1298,7 @@ _ExReleaseFastMutexUnsafe(IN OUT PFAST_MUTEX FastMutex)
     ASSERT((KeGetCurrentIrql() == APC_LEVEL) ||
            (KeGetCurrentThread()->CombinedApcDisable != 0) ||
            (KeGetCurrentThread()->Teb == NULL) ||
-           (KeGetCurrentThread()->Teb >= (PTEB)MM_SYSTEM_RANGE_START));
+           ((ULONG_PTR)KeGetCurrentThread()->Teb >= (ULONG_PTR)MM_SYSTEM_RANGE_START));
     ASSERT(FastMutex->Owner == KeGetCurrentThread());
 
     /* Erase the owner */

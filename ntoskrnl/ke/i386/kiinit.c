@@ -103,13 +103,13 @@ KiInitMachineDependent(VOID)
                 KeSetSystemAffinityThread(Affinity);
 
                 /* Detect FPU errata */
-                if (KiIsNpxErrataPresent())
-                {
-                    /* Disable NPX support */
-                    KeI386NpxPresent = FALSE;
-                    SharedUserData->
-                        ProcessorFeatures[PF_FLOATING_POINT_PRECISION_ERRATA] =
-                        TRUE;
+            if (KiIsNpxErrataPresent())
+            {
+                /* Disable NPX support */
+                KeI386NpxPresent = FALSE;
+                SharedUserData->
+                    ProcessorFeatures[PF_FLOATING_POINT_PRECISION_ERRATA] =
+                    TRUE;
                     break;
                 }
             }
@@ -181,136 +181,136 @@ KiInitMachineDependent(VOID)
             KeSetSystemAffinityThread(Affinity);
 
             /* Reset MHz to 0 for this CPU */
-            KeGetCurrentPrcb()->MHz = 0;
+        KeGetCurrentPrcb()->MHz = 0;
 
-            /* Check if we can use RDTSC */
-            if (KeFeatureBits & KF_RDTSC)
+        /* Check if we can use RDTSC */
+        if (KeFeatureBits & KF_RDTSC)
+        {
+            /* Start sampling loop */
+            for (;;)
             {
-                /* Start sampling loop */
-                for (;;)
+                /* Do a dummy CPUID to start the sample */
+                KiCpuId(&CpuInfo, 0);
+
+                /* Fill out the starting data */
+                CurrentSample->PerfStart = KeQueryPerformanceCounter(NULL);
+                CurrentSample->TSCStart = __rdtsc();
+                CurrentSample->PerfFreq.QuadPart = -50000;
+
+                /* Sleep for this sample */
+                KeDelayExecutionThread(KernelMode,
+                                       FALSE,
+                                       &CurrentSample->PerfFreq);
+
+                /* Do another dummy CPUID */
+                KiCpuId(&CpuInfo, 0);
+
+                /* Fill out the ending data */
+                CurrentSample->PerfEnd =
+                    KeQueryPerformanceCounter(&CurrentSample->PerfFreq);
+                CurrentSample->TSCEnd = __rdtsc();
+
+                /* Calculate the differences */
+                CurrentSample->PerfDelta = CurrentSample->PerfEnd.QuadPart -
+                                           CurrentSample->PerfStart.QuadPart;
+                CurrentSample->TSCDelta = CurrentSample->TSCEnd -
+                                          CurrentSample->TSCStart;
+
+                /* Compute CPU Speed */
+                CurrentSample->MHz = (ULONG)((CurrentSample->TSCDelta *
+                                              CurrentSample->
+                                              PerfFreq.QuadPart + 500000) /
+                                             (CurrentSample->PerfDelta *
+                                              1000000));
+
+                /* Check if this isn't the first sample */
+                if (Sample)
                 {
-                    /* Do a dummy CPUID to start the sample */
-                    KiCpuId(&CpuInfo, 0);
-
-                    /* Fill out the starting data */
-                    CurrentSample->PerfStart = KeQueryPerformanceCounter(NULL);
-                    CurrentSample->TSCStart = __rdtsc();
-                    CurrentSample->PerfFreq.QuadPart = -50000;
-
-                    /* Sleep for this sample */
-                    KeDelayExecutionThread(KernelMode,
-                                           FALSE,
-                                           &CurrentSample->PerfFreq);
-
-                    /* Do another dummy CPUID */
-                    KiCpuId(&CpuInfo, 0);
-
-                    /* Fill out the ending data */
-                    CurrentSample->PerfEnd =
-                        KeQueryPerformanceCounter(&CurrentSample->PerfFreq);
-                    CurrentSample->TSCEnd = __rdtsc();
-
-                    /* Calculate the differences */
-                    CurrentSample->PerfDelta = CurrentSample->PerfEnd.QuadPart -
-                                               CurrentSample->PerfStart.QuadPart;
-                    CurrentSample->TSCDelta = CurrentSample->TSCEnd -
-                                              CurrentSample->TSCStart;
-
-                    /* Compute CPU Speed */
-                    CurrentSample->MHz = (ULONG)((CurrentSample->TSCDelta *
-                                                  CurrentSample->
-                                                  PerfFreq.QuadPart + 500000) /
-                                                 (CurrentSample->PerfDelta *
-                                                  1000000));
-
-                    /* Check if this isn't the first sample */
-                    if (Sample)
+                    /* Check if we got a good precision within 1MHz */
+                    if ((CurrentSample->MHz == CurrentSample[-1].MHz) ||
+                        (CurrentSample->MHz == CurrentSample[-1].MHz + 1) ||
+                        (CurrentSample->MHz == CurrentSample[-1].MHz - 1))
                     {
-                        /* Check if we got a good precision within 1MHz */
-                        if ((CurrentSample->MHz == CurrentSample[-1].MHz) ||
-                            (CurrentSample->MHz == CurrentSample[-1].MHz + 1) ||
-                            (CurrentSample->MHz == CurrentSample[-1].MHz - 1))
-                        {
-                            /* We did, stop sampling */
-                            break;
-                        }
-                    }
-
-                    /* Move on */
-                    CurrentSample++;
-                    Sample++;
-
-                    if (Sample == RTL_NUMBER_OF(Samples))
-                    {
-                        /* No luck. Average the samples and be done */
-                        ULONG TotalMHz = 0;
-                        while (Sample--)
-                        {
-                            TotalMHz += Samples[Sample].MHz;
-                        }
-                        CurrentSample[-1].MHz = TotalMHz / RTL_NUMBER_OF(Samples);
-                        DPRINT1("Sampling CPU frequency failed. Using average of %lu MHz\n", CurrentSample[-1].MHz);
+                        /* We did, stop sampling */
                         break;
                     }
                 }
 
-                /* Save the CPU Speed */
-                KeGetCurrentPrcb()->MHz = CurrentSample[-1].MHz;
+                /* Move on */
+                CurrentSample++;
+                Sample++;
+
+                if (Sample == RTL_NUMBER_OF(Samples))
+                {
+                    /* No luck. Average the samples and be done */
+                    ULONG TotalMHz = 0;
+                    while (Sample--)
+                    {
+                        TotalMHz += Samples[Sample].MHz;
+                    }
+                    CurrentSample[-1].MHz = TotalMHz / RTL_NUMBER_OF(Samples);
+                    DPRINT1("Sampling CPU frequency failed. Using average of %lu MHz\n", CurrentSample[-1].MHz);
+                    break;
+                }
             }
 
-            /* Check if we have MTRR */
+            /* Save the CPU Speed */
+            KeGetCurrentPrcb()->MHz = CurrentSample[-1].MHz;
+        }
+
+        /* Check if we have MTRR */
             if (KeFeatureBits & KF_MTRR)
             {
                 /* Then manually initialize MTRR for the CPU */
                 KiInitializeMTRR(i ? FALSE : TRUE);
             }
 
-            /* Check if we have AMD MTRR and initialize it for the CPU */
-            if (KeFeatureBits & KF_AMDK6MTRR) KiAmdK6InitializeMTRR();
+        /* Check if we have AMD MTRR and initialize it for the CPU */
+        if (KeFeatureBits & KF_AMDK6MTRR) KiAmdK6InitializeMTRR();
 
-            /* Check if this is a buggy Pentium and apply the fixup if so */
-            if (KiI386PentiumLockErrataPresent) KiI386PentiumLockErrataFixup();
+        /* Check if this is a buggy Pentium and apply the fixup if so */
+        if (KiI386PentiumLockErrataPresent) KiI386PentiumLockErrataFixup();
 
-            /* Check if the CPU supports FXSR */
-            if (KeFeatureBits & KF_FXSR)
+        /* Check if the CPU supports FXSR */
+        if (KeFeatureBits & KF_FXSR)
+        {
+            /* Get the current thread NPX state */
+            FxSaveArea = KiGetThreadNpxArea(KeGetCurrentThread());
+
+            /* Clear initial MXCsr mask */
+            FxSaveArea->U.FxArea.MXCsrMask = 0;
+
+            /* Save the current NPX State */
+            Ke386SaveFpuState(FxSaveArea);
+
+            /* Check if the current mask doesn't match the reserved bits */
+            if (FxSaveArea->U.FxArea.MXCsrMask != 0)
             {
-                /* Get the current thread NPX state */
-                FxSaveArea = KiGetThreadNpxArea(KeGetCurrentThread());
+                /* Then use whatever it's holding */
+                MXCsrMask = FxSaveArea->U.FxArea.MXCsrMask;
+            }
 
-                /* Clear initial MXCsr mask */
-                FxSaveArea->U.FxArea.MXCsrMask = 0;
-
-                /* Save the current NPX State */
-                Ke386SaveFpuState(FxSaveArea);
-
-                /* Check if the current mask doesn't match the reserved bits */
-                if (FxSaveArea->U.FxArea.MXCsrMask != 0)
+            /* Check if nobody set the kernel-wide mask */
+            if (!KiMXCsrMask)
+            {
+                /* Then use the one we calculated above */
+                KiMXCsrMask = MXCsrMask;
+            }
+            else
+            {
+                /* Was it set to the same value we found now? */
+                if (KiMXCsrMask != MXCsrMask)
                 {
-                    /* Then use whatever it's holding */
-                    MXCsrMask = FxSaveArea->U.FxArea.MXCsrMask;
+                    /* No, something is definitely wrong */
+                    KeBugCheckEx(MULTIPROCESSOR_CONFIGURATION_NOT_SUPPORTED,
+                                 KF_FXSR,
+                                 KiMXCsrMask,
+                                 MXCsrMask,
+                                 0);
                 }
+            }
 
-                /* Check if nobody set the kernel-wide mask */
-                if (!KiMXCsrMask)
-                {
-                    /* Then use the one we calculated above */
-                    KiMXCsrMask = MXCsrMask;
-                }
-                else
-                {
-                    /* Was it set to the same value we found now? */
-                    if (KiMXCsrMask != MXCsrMask)
-                    {
-                        /* No, something is definitely wrong */
-                        KeBugCheckEx(MULTIPROCESSOR_CONFIGURATION_NOT_SUPPORTED,
-                                     KF_FXSR,
-                                     KiMXCsrMask,
-                                     MXCsrMask,
-                                     0);
-                    }
-                }
-
-                /* Now set the kernel mask */
+            /* Now set the kernel mask */
                 KiMXCsrMask &= MXCsrMask;
             }
         }
@@ -359,8 +359,8 @@ KiInitializePcr(IN ULONG ProcessorNumber,
     Pcr->MinorVersion = PCR_MINOR_VERSION;
 
     /* Set the PCRB Version */
-    Pcr->PrcbData.MajorVersion = 1;
-    Pcr->PrcbData.MinorVersion = 1;
+    Pcr->PrcbData.MajorVersion = PCR_MAJOR_VERSION;
+    Pcr->PrcbData.MinorVersion = PCR_MINOR_VERSION;
 
     /* Set the Build Type */
     Pcr->PrcbData.BuildType = 0;
@@ -393,10 +393,44 @@ KiInitializePcr(IN ULONG ProcessorNumber,
 }
 
 CODE_SEG("INIT")
+void
+NTAPI
+KiInitializeNxSupportDiscard(void)
+{
+    const PSTR Options = KeLoaderBlock->LoadOptions;
+
+    /* Set the default NX policy (opt-in) */
+    SharedUserData->NXSupportPolicy = NX_SUPPORT_POLICY_OPTIN;
+
+    if (strstr(Options, "NOEXECUTE"))
+    {
+        if (!strstr(Options, "NOEXECUTE=OPTIN"))
+        {
+            if (strstr(Options, "NOEXECUTE=ALWAYSON"))
+            {
+                SharedUserData->NXSupportPolicy = NX_SUPPORT_POLICY_ALWAYSON;
+            }
+            else if (strstr(Options, "NOEXECUTE=OPTOUT"))
+            {
+                SharedUserData->NXSupportPolicy = NX_SUPPORT_POLICY_OPTOUT;
+            }
+            else if (strstr(Options, "NOEXECUTE=ALWAYSOFF"))
+            {
+                SharedUserData->NXSupportPolicy = NX_SUPPORT_POLICY_ALWAYSOFF;
+            }
+        }
+    }
+    else if (strstr(Options, "EXECUTE"))
+    {
+        SharedUserData->NXSupportPolicy = NX_SUPPORT_POLICY_ALWAYSOFF;
+    }
+}
+
+CODE_SEG("INIT")
 VOID
 NTAPI
-KiInitializeKernel(IN PKPROCESS InitProcess,
-                   IN PKTHREAD InitThread,
+KiInitializeKernel(IN PEPROCESS InitProcess,
+                   IN PETHREAD InitThread,
                    IN PVOID IdleStack,
                    IN PKPRCB Prcb,
                    IN CCHAR Number,
@@ -424,34 +458,21 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     /* Get the processor features for the CPU */
     FeatureBits = KiGetFeatureBits();
 
-    /* Set the default NX policy (opt-in) */
-    SharedUserData->NXSupportPolicy = NX_SUPPORT_POLICY_OPTIN;
+    KiInitializeNxSupportDiscard();
 
-    /* Check if NPX is always on */
-    if (strstr(KeLoaderBlock->LoadOptions, "NOEXECUTE=ALWAYSON"))
+    switch (SharedUserData->NXSupportPolicy)
     {
-        /* Set it always on */
-        SharedUserData->NXSupportPolicy = NX_SUPPORT_POLICY_ALWAYSON;
-        FeatureBits |= KF_NX_ENABLED;
-    }
-    else if (strstr(KeLoaderBlock->LoadOptions, "NOEXECUTE=OPTOUT"))
-    {
-        /* Set it in opt-out mode */
-        SharedUserData->NXSupportPolicy = NX_SUPPORT_POLICY_OPTOUT;
-        FeatureBits |= KF_NX_ENABLED;
-    }
-    else if ((strstr(KeLoaderBlock->LoadOptions, "NOEXECUTE=OPTIN")) ||
-             (strstr(KeLoaderBlock->LoadOptions, "NOEXECUTE")))
-    {
-        /* Set the feature bits */
-        FeatureBits |= KF_NX_ENABLED;
-    }
-    else if ((strstr(KeLoaderBlock->LoadOptions, "NOEXECUTE=ALWAYSOFF")) ||
-             (strstr(KeLoaderBlock->LoadOptions, "EXECUTE")))
-    {
-        /* Set disabled mode */
-        SharedUserData->NXSupportPolicy = NX_SUPPORT_POLICY_ALWAYSOFF;
-        FeatureBits |= KF_NX_DISABLED;
+        case NX_SUPPORT_POLICY_ALWAYSON:
+        case NX_SUPPORT_POLICY_OPTIN:
+        case NX_SUPPORT_POLICY_OPTOUT:
+            FeatureBits |= KF_NX_ENABLED;
+            break;
+
+        case NX_SUPPORT_POLICY_ALWAYSOFF:
+            FeatureBits |= KF_NX_DISABLED;
+            break;
+
+        DEFAULT_UNREACHABLE;
     }
 
     /* Save feature bits */
@@ -516,12 +537,12 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
         InitializeListHead(&KiProcessListHead);
         PageDirectory[0] = 0;
         PageDirectory[1] = 0;
-        KeInitializeProcess(InitProcess,
+        KeInitializeProcess(&InitProcess->Pcb,
                             0,
                             0xFFFFFFFF,
                             PageDirectory,
                             FALSE);
-        InitProcess->QuantumReset = MAXCHAR;
+        InitProcess->Pcb.QuantumReset = MAXCHAR;
     }
     else
     {
@@ -530,20 +551,18 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     }
 
     /* Setup the Idle Thread */
-    KeInitializeThread(InitProcess,
-                       InitThread,
-                       NULL,
-                       NULL,
-                       NULL,
-                       NULL,
-                       NULL,
-                       IdleStack);
-    InitThread->NextProcessor = Number;
-    InitThread->Priority = HIGH_PRIORITY;
-    InitThread->State = Running;
-    InitThread->Affinity = 1 << Number;
-    InitThread->WaitIrql = DISPATCH_LEVEL;
-    InitProcess->ActiveProcessors = 1 << Number;
+    if (NT_SUCCESS(KeInitThread(&InitThread->Tcb, IdleStack, NULL, NULL, NULL, NULL, NULL, &InitProcess->Pcb)))
+    {
+        /* Start it */
+        KeStartThread(&InitThread->Tcb);
+    }
+
+    InitThread->Tcb.NextProcessor = Number;
+    InitThread->Tcb.Priority = HIGH_PRIORITY;
+    InitThread->Tcb.State = Running;
+    InitThread->Tcb.Affinity = 1 << Number;
+    InitThread->Tcb.WaitIrql = DISPATCH_LEVEL;
+    InitProcess->Pcb.ActiveProcessors = 1 << Number;
 
     /* HACK for MmUpdatePageDir */
     ((PETHREAD)InitThread)->ThreadsProcess = (PEPROCESS)InitProcess;
@@ -563,9 +582,9 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
         (KeFeatureBits & KF_RDTSC) ? TRUE: FALSE;
 
     /* Set up the thread-related fields in the PRCB */
-    Prcb->CurrentThread = InitThread;
+    Prcb->CurrentThread = &InitThread->Tcb;
     Prcb->NextThread = NULL;
-    Prcb->IdleThread = InitThread;
+    Prcb->IdleThread = &InitThread->Tcb;
 
     /* Initialize the Kernel Executive */
     ExpInitializeExecutive(Number, LoaderBlock);
@@ -582,6 +601,8 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
         Prcb->MaximumDpcQueueDepth = KiMaximumDpcQueueDepth;
         Prcb->MinimumDpcRate = KiMinimumDpcRate;
         Prcb->AdjustDpcThreshold = KiAdjustDpcThreshold;
+
+        KiVBoxPrint("KiInitializeKernel 11\n");
 
         /* Allocate the DPC Stack */
         DpcStack = MmCreateKernelStack(FALSE, 0);
@@ -603,7 +624,7 @@ KiInitializeKernel(IN PKPROCESS InitProcess,
     KeRaiseIrql(DISPATCH_LEVEL, &DummyIrql);
 
     /* Set the Idle Priority to 0. This will jump into Phase 1 */
-    KeSetPriorityThread(InitThread, 0);
+    KeSetPriorityThread(&InitThread->Tcb, 0);
 
     /* If there's no thread scheduled, put this CPU in the Idle summary */
     KiAcquirePrcbLock(Prcb);
@@ -656,31 +677,46 @@ KiGetMachineBootPointers(IN PKGDTENTRY *Gdt,
                               TssSelector.HighWord.Bytes.BaseHi << 24);
 }
 
+BOOLEAN
+NTAPI
+KeAreInterruptsEnabled(VOID)
+{
+    const unsigned int flags = __getcallerseflags();
+    // 9 - Interrupt Flag
+    return (flags >> 9) & 1;
+};
+
 CODE_SEG("INIT")
 VOID
 NTAPI
 KiSystemStartupBootStack(VOID)
 {
-    PKTHREAD Thread;
+    const PEPROCESS Process = &KiInitialProcess; //(PEPROCESS)KeLoaderBlock->Process;
+    PETHREAD Thread = (PETHREAD)KeLoaderBlock->Thread;
 
     /* Initialize the kernel for the current CPU */
-    KiInitializeKernel(&KiInitialProcess.Pcb,
-                       (PKTHREAD)KeLoaderBlock->Thread,
+    KiInitializeKernel(Process,
+                       Thread,
                        (PVOID)(KeLoaderBlock->KernelStack & ~3),
                        (PKPRCB)__readfsdword(KPCR_PRCB),
                        KeNumberProcessors - 1,
                        KeLoaderBlock);
 
     /* Set the priority of this thread to 0 */
-    Thread = KeGetCurrentThread();
-    Thread->Priority = 0;
+    KeGetCurrentThread()->Priority = 0;
 
     /* Force interrupts enabled and lower IRQL back to DISPATCH_LEVEL */
+#if 0
+    ASSERT(KeAreInterruptsEnabled());
+#else
     _enable();
+#endif
     KeLowerIrql(DISPATCH_LEVEL);
 
     /* Set the right wait IRQL */
-    Thread->WaitIrql = DISPATCH_LEVEL;
+    KeGetCurrentThread()->WaitIrql = DISPATCH_LEVEL;
+
+    KiVBoxPrint("KiSystemStartupBootStack before IDLE loop\n");
 
     /* Jump into the idle loop */
     KiIdleLoop();
@@ -708,6 +744,35 @@ KiMarkPageAsReadOnly(
     __invlpg(Address);
 }
 
+void
+NTAPI
+KiVBoxPrint(const char *s)
+{
+    UCHAR c;
+
+    while ((c = *s))
+    {
+        WRITE_PORT_UCHAR((PUCHAR)0x504, c);
+        s++;
+    }
+}
+
+void
+NTAPI
+KiVBoxPrintInteger(ULONG Value)
+{
+    CHAR Buffer[33];
+
+    if (NT_SUCCESS(RtlIntegerToChar(Value, 10, sizeof(Buffer), Buffer)))
+    {
+        KiVBoxPrint(Buffer);
+    }
+    else
+    {
+        KiVBoxPrint("<fail>");
+    }
+}
+
 CODE_SEG("INIT")
 VOID
 NTAPI
@@ -715,6 +780,9 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 {
     ULONG Cpu;
     PKTHREAD InitialThread;
+#if 0
+    PKPROCESS InitialProcess;
+#endif
     ULONG InitialStack;
     PKGDTENTRY Gdt;
     PKIDTENTRY Idt;
@@ -726,6 +794,8 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     /* Boot cycles timestamp */
     BootCycles = __rdtsc();
 
+    KiVBoxPrint("KiSystemStartup 1\n");
+
     /* Save the loader block and get the current CPU */
     KeLoaderBlock = LoaderBlock;
     Cpu = KeNumberProcessors;
@@ -733,16 +803,22 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     {
         /* If this is the boot CPU, set FS and the CPU Number*/
         Ke386SetFs(KGDT_R0_PCR);
-        __writefsdword(KPCR_PROCESSOR_NUMBER, Cpu);
+        __writefsbyte(KPCR_PRCB_DATA + FIELD_OFFSET(KPRCB, Number), Cpu);
 
         /* Set the initial stack and idle thread as well */
         LoaderBlock->KernelStack = (ULONG_PTR)P0BootStack;
         LoaderBlock->Thread = (ULONG_PTR)&KiInitialThread;
+#if 0
+        LoaderBlock->Process = (ULONG_PTR)&KiInitialProcess;
+#endif
     }
 
     /* Save the initial thread and stack */
     InitialStack = LoaderBlock->KernelStack;
     InitialThread = (PKTHREAD)LoaderBlock->Thread;
+#if 0
+    InitialProcess = (PKPROCESS)LoaderBlock->Process;
+#endif
 
     /* Clean the APC List Head */
     InitializeListHead(&InitialThread->ApcState.ApcListHead[KernelMode]);
@@ -759,23 +835,33 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     /* Setup the TSS descriptors and entries */
     Ki386InitializeTss(Tss, Idt, Gdt);
 
+    KiVBoxPrint("KiSystemStartup 1.4\n");
+
     /* Initialize the PCR */
-    RtlZeroMemory(Pcr, PAGE_SIZE);
+    RtlZeroMemory(Pcr, (sizeof(*Pcr) + PAGE_SIZE - 1UL) & (~(PAGE_SIZE-1UL)));
     KiInitializePcr(Cpu,
                     Pcr,
                     Idt,
                     Gdt,
                     Tss,
-                    InitialThread,
-                    (PVOID)KiDoubleFaultStack);
+                    InitialThread, (PVOID)KiDoubleFaultStack);
+
+    KiVBoxPrint("KiSystemStartup 1.5\n");
 
     /* Set us as the current process */
+#if 0
+    InitialThread->ApcState.Process = InitialProcess;
+#else
     InitialThread->ApcState.Process = &KiInitialProcess.Pcb;
+#endif
 
     /* Clear DR6/7 to cleanup bootloader debugging */
+    //KeGetPcr()->NtTib.Self = NULL;
     __writefsdword(KPCR_TEB, 0);
-    __writefsdword(KPCR_DR6, 0);
-    __writefsdword(KPCR_DR7, 0);
+    KeGetCurrentPrcb()->ProcessorState.SpecialRegisters.KernelDr6 = 0;
+    KeGetCurrentPrcb()->ProcessorState.SpecialRegisters.KernelDr7 = 0;
+
+    KiVBoxPrint("KiSystemStartup 1.6\n");
 
     /* Setup the IDT */
     KeInitExceptions();
@@ -783,6 +869,8 @@ KiSystemStartup(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     /* Load Ring 3 selectors for DS/ES */
     Ke386SetDs(KGDT_R3_DATA | RPL_MASK);
     Ke386SetEs(KGDT_R3_DATA | RPL_MASK);
+
+    KiVBoxPrint("KiSystemStartup 1.7\n");
 
     /* Save NMI and double fault traps */
     RtlCopyMemory(&NmiEntry, &Idt[2], sizeof(KIDTENTRY));
@@ -809,7 +897,8 @@ AppCpuInit:
     __writefsdword(KPCR_NUMBER, Cpu);
     __writefsdword(KPCR_SET_MEMBER, 1 << Cpu);
     __writefsdword(KPCR_SET_MEMBER_COPY, 1 << Cpu);
-    __writefsdword(KPCR_PRCB_SET_MEMBER, 1 << Cpu);
+    __writefsdword(KPCR_PRCB_DATA + FIELD_OFFSET(KPRCB, SetMember), 1 << Cpu);
+    //KeGetCurrentPrcb()->SetMember = 1 << Cpu;
 
     /* Initialize the Processor with HAL */
     HalInitializeProcessor(Cpu, KeLoaderBlock);
@@ -834,6 +923,8 @@ AppCpuInit:
 
     /* Raise to HIGH_LEVEL */
     KeRaiseIrql(HIGH_LEVEL, &DummyIrql);
+
+    KiVBoxPrint("KiSystemStartup 6\n");
 
     /* Switch to new kernel stack and start kernel bootstrapping */
     KiSwitchToBootStack(InitialStack & ~3);

@@ -13,8 +13,12 @@
 #include <ntoskrnl.h>
 #include <wmidata.h>
 #include <wmistr.h>
+
 #define NDEBUG
 #include <debug.h>
+
+#include <mm/ARM3/miarm.h>
+#include <intsafe.h>
 
 /* The maximum size of an environment value (in bytes) */
 #define MAX_ENVVAL_SIZE 1024
@@ -33,7 +37,7 @@ LIST_ENTRY ExpFirmwareTableProviderListHead;
 FORCEINLINE
 NTSTATUS
 ExpConvertLdrModuleToRtlModule(IN ULONG ModuleCount,
-                               IN PLDR_DATA_TABLE_ENTRY LdrEntry,
+                               IN PKLDR_DATA_TABLE_ENTRY LdrEntry,
                                OUT PRTL_PROCESS_MODULE_INFORMATION ModuleInfo)
 {
     PCHAR p;
@@ -97,7 +101,7 @@ ExpQueryModuleInformation(IN PLIST_ENTRY KernelModeList,
     NTSTATUS Status = STATUS_SUCCESS;
     ULONG RequiredLength;
     PRTL_PROCESS_MODULE_INFORMATION ModuleInfo;
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PKLDR_DATA_TABLE_ENTRY LdrEntry;
     ULONG ModuleCount = 0;
     PLIST_ENTRY NextEntry;
 
@@ -111,7 +115,7 @@ ExpQueryModuleInformation(IN PLIST_ENTRY KernelModeList,
     {
         /* Get the entry */
         LdrEntry = CONTAINING_RECORD(NextEntry,
-                                     LDR_DATA_TABLE_ENTRY,
+                                     KLDR_DATA_TABLE_ENTRY,
                                      InLoadOrderLinks);
 
         /* Update size and check if we can manage one more entry */
@@ -144,7 +148,7 @@ ExpQueryModuleInformation(IN PLIST_ENTRY KernelModeList,
         {
             /* Get the entry */
             LdrEntry = CONTAINING_RECORD(NextEntry,
-                                         LDR_DATA_TABLE_ENTRY,
+                                         KLDR_DATA_TABLE_ENTRY,
                                          InLoadOrderLinks);
 
             /* Update size and check if we can manage one more entry */
@@ -699,6 +703,21 @@ QSI_DEF(SystemPerformanceInformation)
     Spi->IoReadOperationCount = IoReadOperationCount;
     Spi->IoWriteOperationCount = IoWriteOperationCount;
     Spi->IoOtherOperationCount = IoOtherOperationCount;
+
+    Spi->PageFaultCount = 0;
+    Spi->CopyOnWriteCount = 0;
+    Spi->TransitionCount = 0;
+    Spi->CacheTransitionCount = 0;
+    Spi->DemandZeroCount = 0;
+    Spi->PageReadCount = 0;
+    Spi->PageReadIoCount = 0;
+    Spi->CacheReadCount = 0;
+    Spi->CacheIoCount = 0;
+    Spi->DirtyPagesWriteCount = 0;
+    Spi->DirtyWriteIoCount = 0;
+    Spi->MappedPagesWriteCount = 0;
+    Spi->MappedWriteIoCount = 0;
+
     for (i = 0; i < KeNumberProcessors; i ++)
     {
         Prcb = KiProcessorBlock[i];
@@ -710,6 +729,20 @@ QSI_DEF(SystemPerformanceInformation)
             Spi->IoReadOperationCount += Prcb->IoReadOperationCount;
             Spi->IoWriteOperationCount += Prcb->IoWriteOperationCount;
             Spi->IoOtherOperationCount += Prcb->IoOtherOperationCount;
+
+            Spi->PageFaultCount += Prcb->MmPageFaultCount;
+            Spi->CopyOnWriteCount += Prcb->MmCopyOnWriteCount;
+            Spi->TransitionCount += Prcb->MmTransitionCount;
+            Spi->CacheTransitionCount += Prcb->MmCacheTransitionCount;
+            Spi->DemandZeroCount += Prcb->MmDemandZeroCount;
+            Spi->PageReadCount += Prcb->MmPageReadCount;
+            Spi->PageReadIoCount += Prcb->MmPageReadIoCount;
+            Spi->CacheReadCount += Prcb->MmCacheReadCount;
+            Spi->CacheIoCount += Prcb->MmCacheIoCount;
+            Spi->DirtyPagesWriteCount += Prcb->MmDirtyPagesWriteCount;
+            Spi->DirtyWriteIoCount += Prcb->MmDirtyWriteIoCount;
+            Spi->MappedPagesWriteCount += Prcb->MmMappedPagesWriteCount;
+            Spi->MappedWriteIoCount += Prcb->MmMappedWriteIoCount;
         }
     }
 
@@ -728,20 +761,7 @@ QSI_DEF(SystemPerformanceInformation)
      */
     Spi->CommitLimit = MmNumberOfPhysicalPages + MiFreeSwapPages + MiUsedSwapPages;
 
-    Spi->PeakCommitment = 0; /* FIXME */
-    Spi->PageFaultCount = 0; /* FIXME */
-    Spi->CopyOnWriteCount = 0; /* FIXME */
-    Spi->TransitionCount = 0; /* FIXME */
-    Spi->CacheTransitionCount = 0; /* FIXME */
-    Spi->DemandZeroCount = 0; /* FIXME */
-    Spi->PageReadCount = 0; /* FIXME */
-    Spi->PageReadIoCount = 0; /* FIXME */
-    Spi->CacheReadCount = 0; /* FIXME */
-    Spi->CacheIoCount = 0; /* FIXME */
-    Spi->DirtyPagesWriteCount = 0; /* FIXME */
-    Spi->DirtyWriteIoCount = 0; /* FIXME */
-    Spi->MappedPagesWriteCount = 0; /* FIXME */
-    Spi->MappedWriteIoCount = 0; /* FIXME */
+    Spi->PeakCommitment = MmPeakCommitment;
 
     Spi->PagedPoolPages = 0;
     Spi->NonPagedPoolPages = 0;
@@ -763,7 +783,7 @@ QSI_DEF(SystemPerformanceInformation)
 
     Spi->ResidentSystemCodePage = 0; /* FIXME */
 
-    Spi->TotalSystemDriverPages = 0; /* FIXME */
+    Spi->TotalSystemDriverPages = MmTotalSystemDriverPages;
     Spi->Spare3Count = 0; /* FIXME */
 
     Spi->ResidentSystemCachePage = MiMemoryConsumers[MC_USER].PagesUsed; /* FIXME */
@@ -806,8 +826,8 @@ QSI_DEF(SystemPerformanceInformation)
     Spi->CcDataPages = CcDataPages;
 
     Spi->ContextSwitches = 0;
-    Spi->FirstLevelTbFills = 0;
-    Spi->SecondLevelTbFills = 0;
+    Spi->FirstLevelTbFills = 0; // pre-Vista only
+    Spi->SecondLevelTbFills = 0; // pre-Vista only
     Spi->SystemCalls = 0;
     for (i = 0; i < KeNumberProcessors; i ++)
     {
@@ -815,9 +835,12 @@ QSI_DEF(SystemPerformanceInformation)
         if (Prcb)
         {
             Spi->ContextSwitches += KeGetContextSwitches(Prcb);
+            Spi->SystemCalls += Prcb->KeSystemCalls;
+
+#if (NTDDI_VERSION < NTDDI_LONGHORN)
             Spi->FirstLevelTbFills += Prcb->KeFirstLevelTbFills;
             Spi->SecondLevelTbFills += Prcb->KeSecondLevelTbFills;
-            Spi->SystemCalls += Prcb->KeSystemCalls;
+#endif
         }
     }
 
@@ -921,7 +944,7 @@ QSI_DEF(SystemProcessInformation)
             KeEnterCriticalRegion();
             ExAcquirePushLockShared(&Process->ProcessLock);
 
-            if ((Process->ProcessExiting) &&
+            if (PspTestProcessExitingFlag(Process) &&
                 (Process->Pcb.Header.SignalState) &&
                 !(Process->ActiveThreads) &&
                 (IsListEmpty(&Process->Pcb.ThreadListHead)))
@@ -1762,7 +1785,6 @@ QSI_DEF(SystemExceptionInformation)
 {
     PSYSTEM_EXCEPTION_INFORMATION ExceptionInformation =
         (PSYSTEM_EXCEPTION_INFORMATION)Buffer;
-    PKPRCB Prcb;
     ULONG AlignmentFixupCount = 0, ExceptionDispatchCount = 0;
     ULONG FloatingEmulationCount = 0, ByteWordEmulationCount = 0;
     CHAR i;
@@ -1774,14 +1796,14 @@ QSI_DEF(SystemExceptionInformation)
     /* Sum up exception count information from all processors */
     for (i = 0; i < KeNumberProcessors; i++)
     {
-        Prcb = KiProcessorBlock[i];
+        PKPRCB Prcb = KiProcessorBlock[i];
         if (Prcb)
         {
             AlignmentFixupCount += Prcb->KeAlignmentFixupCount;
             ExceptionDispatchCount += Prcb->KeExceptionDispatchCount;
-#ifndef _M_ARM
+#if (NTDDI_VERSION < NTDDI_LONGHORN) && !defined(_M_ARM)
             FloatingEmulationCount += Prcb->KeFloatingEmulationCount;
-#endif // _M_ARM
+#endif
         }
     }
 
@@ -1899,7 +1921,7 @@ SSI_DEF(SystemExtendServiceTableInformation)
 {
     UNICODE_STRING ImageName;
     KPROCESSOR_MODE PreviousMode = KeGetPreviousMode();
-    PLDR_DATA_TABLE_ENTRY ModuleObject;
+    PKLDR_DATA_TABLE_ENTRY ModuleObject;
     NTSTATUS Status;
     PIMAGE_NT_HEADERS NtHeader;
     DRIVER_OBJECT Win32k;
@@ -2692,28 +2714,46 @@ QSI_DEF(SystemLogicalProcessorInformation)
     for (i = 0; i < KeNumberNodes; ++i)
     {
         /* Check we have enough room to return */
-        DataSize += sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
-        if (DataSize > Size)
-        {
-            Status = STATUS_INFO_LENGTH_MISMATCH;
-        }
-        else
-        {
-            /* Zero output and return */
-            RtlZeroMemory(CurrentInfo, sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-            CurrentInfo->ProcessorMask = KeActiveProcessors;
+            DataSize += sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+            if (DataSize > Size)
+            {
+                Status = STATUS_INFO_LENGTH_MISMATCH;
+            }
+            else
+            {
+                /* Zero output and return */
+                RtlZeroMemory(CurrentInfo, sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+                CurrentInfo->ProcessorMask = KeActiveProcessors;
 
-            /* NUMA node needs its ID */
-            CurrentInfo->Relationship = RelationNumaNode;
-            CurrentInfo->NumaNode.NodeNumber = i;
-            ++CurrentInfo;
+                /* NUMA node needs its ID */
+                CurrentInfo->Relationship = RelationNumaNode;
+                CurrentInfo->NumaNode.NodeNumber = i;
+                ++CurrentInfo;
+            }
         }
-    }
 
     *ReqSize = DataSize;
 
     return Status;
 }
+
+#if 0
+/* Class 73 - Logical processor information  */
+QSI_DEF(SystemLogicalProcessorInformation)
+{
+    PROCESSOR_NUMBER ProcNumber;
+
+    // todo: Win7+:
+    // Ideally this should be in user-mode KERNELBASE routine, calling RtlGetCurrentProcessorNumberEx.
+    // Then, using NtQSIEx and passing the Group USHORT as an input buffer.
+    NTSTATUS Status = NtGetCurrentProcessorNumberEx(&ProcNumber);
+;
+    if (!NT_SUCCESS(Status))
+        return Status;
+
+    return STATUS_NOT_IMPLEMENTED;
+}
+#endif
 
 /* Class 76 - System firmware table information  */
 QSI_DEF(SystemFirmwareTableInformation)
@@ -2815,6 +2855,45 @@ QSI_DEF(SystemFirmwareTableInformation)
     return Status;
 }
 
+/* Class 80 - System Memory Lists information  */
+QSI_DEF(SystemMemoryListInformation)
+{
+    const PSYSTEM_MEMORY_LIST_INFORMATION memoryLists = (PSYSTEM_MEMORY_LIST_INFORMATION)Buffer;
+    DPRINT("NtQuerySystemInformation - SystemMemoryListInformation\n");
+
+    /* Set initial required buffer size */
+    /* ModifiedPageCountPageFile was introduced somewhere after Windows 7,
+     * but apps can still require the old size. */
+    *ReqSize = sizeof(SYSTEM_MEMORY_LIST_INFORMATION);
+
+    /* Check user's buffer size */
+    if (Size < (*ReqSize - sizeof(SIZE_T)))
+    {
+        DPRINT1("NtQuerySystemInformation - SystemMemoryListInformation - size mismatch\n");
+        return STATUS_INFO_LENGTH_MISMATCH;
+    }
+
+    return MmQueryMemoryListInformation(memoryLists, Size);
+}
+
+SSI_DEF(SystemMemoryListInformation)
+{
+    /* Validate size (see QSI_DEF for notes regarding this comparison) */
+    if (Size < sizeof(SYSTEM_MEMORY_LIST_INFORMATION)-sizeof(SIZE_T))
+    {
+        /* Incorrect length, fail */
+        return STATUS_INFO_LENGTH_MISMATCH;
+    }
+
+    DPRINT1("NtSetSystemInformation - SystemMemoryListInformation not implemented\n");
+
+    /* 
+     * Supported by NT (e.g. https://www.codeproject.com/tips/858673/empty-standby-list-in-windows)
+     * Not implemented for now
+     */
+    return STATUS_NOT_IMPLEMENTED;
+}
+
 /* Query/Set Calls Table */
 typedef
 struct _QSSI_CALLS
@@ -2914,6 +2993,10 @@ CallQS [] =
     SI_XX(SystemWow64SharedInformation), /* FIXME: not implemented */
     SI_XX(SystemRegisterFirmwareTableInformationHandler), /* FIXME: not implemented */
     SI_QX(SystemFirmwareTableInformation),
+    SI_XX(SystemModuleInformationEx), /* FIXME: not implemented */
+    SI_XX(SystemVerifierTriageInformation), /* FIXME: not implemented */
+    SI_XX(SystemSuperfetchInformation), /* FIXME: not implemented */
+    SI_QS(SystemMemoryListInformation)
 };
 
 C_ASSERT(SystemBasicInformation == 0);
@@ -3057,7 +3140,35 @@ NTAPI
 NtGetCurrentProcessorNumber(VOID)
 {
     /* Just use Ke */
+    // todo (andrew.boyarshin): verify validity on Win7+ (Prcb?)
     return KeGetCurrentProcessorNumber();
+}
+
+NTSTATUS
+NTAPI
+NtGetCurrentProcessorNumberEx(PPROCESSOR_NUMBER ProcNumber)
+{
+    if (KeGetPreviousMode() != KernelMode)
+    {
+        _SEH2_TRY
+        {
+            ProbeForWrite(ProcNumber, sizeof(*ProcNumber), 1u);
+        }
+        _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+            _SEH2_YIELD(return _SEH2_GetExceptionCode());
+        }
+        _SEH2_END;
+    }
+
+#if 0
+    const PKPRCB Prcb = KeGetCurrentPrcb();
+    ProcNumber->Group = Prcb->Group;
+    ProcNumber->Number = Prcb->GroupIndex;
+#endif
+    ProcNumber->Reserved = 0;
+
+    return STATUS_SUCCESS;
 }
 
 #undef ExGetPreviousMode

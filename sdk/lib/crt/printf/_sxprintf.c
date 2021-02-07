@@ -20,6 +20,13 @@
 #define _tstreamout streamout
 #endif
 
+#ifdef vsnprintf
+  #undef vsnprintf
+#endif
+#ifdef snprintf
+  #undef snprintf
+#endif
+
 #define min(a,b) (((a) < (b)) ? (a) : (b))
 
 int __cdecl _tstreamout(FILE *stream, const TCHAR *format, va_list argptr);

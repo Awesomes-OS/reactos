@@ -61,9 +61,11 @@ KiAttachProcess(IN PKTHREAD Thread,
     /* Update Environment Pointers if needed*/
     if (SavedApcState == &Thread->SavedApcState)
     {
+#if (NTDDI_VERSION <= NTDDI_WIN8)
         Thread->ApcStatePointer[OriginalApcEnvironment] = &Thread->
                                                           SavedApcState;
         Thread->ApcStatePointer[AttachedApcEnvironment] = &Thread->ApcState;
+#endif
         Thread->ApcStateIndex = AttachedApcEnvironment;
     }
 
@@ -136,7 +138,7 @@ KeInitializeProcess(IN OUT PKPROCESS Process,
     Process->QuantumReset = 6;
     Process->DirectoryTableBase[0] = DirectoryTableBase[0];
     Process->DirectoryTableBase[1] = DirectoryTableBase[1];
-    Process->AutoAlignment = Enable;
+    KiAssignProcessAutoAlignmentFlag(Process, Enable);
 #if defined(_M_IX86)
     Process->IopmOffset = KiComputeIopmOffset(IO_ACCESS_MAP_NONE);
 #endif
@@ -314,16 +316,7 @@ KeSetAutoAlignmentProcess(IN PKPROCESS Process,
                           IN BOOLEAN Enable)
 {
     /* Set or reset the bit depending on what the enable flag says */
-    if (Enable)
-    {
-        return InterlockedBitTestAndSet(&Process->ProcessFlags,
-                                        KPSF_AUTO_ALIGNMENT_BIT);
-    }
-    else
-    {
-        return InterlockedBitTestAndReset(&Process->ProcessFlags,
-                                          KPSF_AUTO_ALIGNMENT_BIT);
-    }
+    return KiAssignProcessAutoAlignmentFlag(Process, Enable);
 }
 
 BOOLEAN
@@ -332,16 +325,7 @@ KeSetDisableBoostProcess(IN PKPROCESS Process,
                          IN BOOLEAN Disable)
 {
     /* Set or reset the bit depending on what the disable flag says */
-    if (Disable)
-    {
-        return InterlockedBitTestAndSet(&Process->ProcessFlags,
-                                        KPSF_DISABLE_BOOST_BIT);
-    }
-    else
-    {
-        return InterlockedBitTestAndReset(&Process->ProcessFlags,
-                                          KPSF_DISABLE_BOOST_BIT);
-    }
+    return KiAssignProcessDisableBoostFlag(Process, Disable);
 }
 
 KPRIORITY
@@ -964,4 +948,90 @@ KeRemoveSystemServiceTable(IN ULONG Index)
     /* Return success */
     return TRUE;
 }
+
+/*
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+KeGetExecuteOptions(IN PKPROCESS Process, OUT PKEXECUTE_OPTIONS ExecuteOptions)
+{
+    ASSERT_IRQL_EQUAL(PASSIVE_LEVEL);
+
+    *ExecuteOptions = Process->Flags;
+
+    return STATUS_SUCCESS;
+}
+
+/*
+ * @implemented
+ */
+NTSTATUS
+NTAPI
+KeSetExecuteOptions(IN PKPROCESS Process, IN KEXECUTE_OPTIONS ExecuteOptions)
+{
+    KLOCK_QUEUE_HANDLE ProcessLock;
+    NTSTATUS Status = STATUS_ACCESS_DENIED;
+
+    ASSERT_IRQL_EQUAL(PASSIVE_LEVEL);
+
+    /* Only accept valid flags */
+    if (ExecuteOptions.ExecuteOptionsNV & ~MEM_EXECUTE_OPTION_VALID_FLAGS)
+    {
+        /* Fail */
+        DPRINT1("Invalid no-execute options: 0x%X\n", ExecuteOptions.ExecuteOptionsNV);
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Change the NX state in the process lock */
+    KiAcquireProcessLockRaiseToSynch(Process, &ProcessLock);
+
+    /* Don't change anything if the permanent flag was set */
+    if (!Process->Flags.Permanent)
+    {
+        /* Start by assuming it's not disabled */
+        Process->Flags.ExecuteDisable = FALSE;
+
+        /* Now process each flag and turn the equivalent bit on */
+        if (ExecuteOptions.ExecuteDisable)
+        {
+            Process->Flags.ExecuteDisable = TRUE;
+            Process->Flags.ExecuteEnable = FALSE;
+        }
+
+        if (ExecuteOptions.ExecuteEnable)
+            Process->Flags.ExecuteEnable = TRUE;
+
+        if (ExecuteOptions.DisableThunkEmulation)
+            Process->Flags.DisableThunkEmulation = TRUE;
+
+        if (ExecuteOptions.Permanent)
+            Process->Flags.Permanent = TRUE;
+
+        if (ExecuteOptions.ExecuteDispatchEnable)
+            Process->Flags.ExecuteDispatchEnable = TRUE;
+
+        if (ExecuteOptions.ImageDispatchEnable)
+            Process->Flags.ImageDispatchEnable = TRUE;
+
+        if (ExecuteOptions.DisableExceptionChainValidation)
+            Process->Flags.DisableExceptionChainValidation = TRUE;
+
+        /* These are turned on by default if no-execution is also enabled */
+        if (Process->Flags.ExecuteEnable)
+        {
+            Process->Flags.ExecuteDispatchEnable = TRUE;
+            Process->Flags.ImageDispatchEnable = TRUE;
+        }
+
+        /* All good */
+        Status = STATUS_SUCCESS;
+    }
+
+    /* Release the lock and return status */
+    KiReleaseProcessLock(&ProcessLock);
+    return Status;
+}
+
+
 /* EOF */

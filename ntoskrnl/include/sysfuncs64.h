@@ -464,9 +464,9 @@ SVC_(QueryTimerResolution, 3)
 SVC_(QueryWnfStateData, 0) // FIXME
 SVC_(QueryWnfStateNameInformation, 0) // FIXME
 #endif
-#if (NTDDI_VERSION >= NTDDI_WIN7)
 SVC_(QueueApcThreadEx, 6)
-#endif
+SVC_(GetNextProcess, 5)
+SVC_(GetNextThread, 6)
 SVC_(RaiseException, 3)
 SVC_(RaiseHardError, 6)
 #if (NTDDI_VERSION >= NTDDI_VISTA)
@@ -641,5 +641,6 @@ SVC_(WaitLowEventPair, 1)
 #if (NTDDI_VERSION >= NTDDI_VISTA)
 SVC_(WorkerFactoryWorkerReady, 1)
 #endif
+SVC_(GetCurrentProcessorNumberEx, 1)
 
 

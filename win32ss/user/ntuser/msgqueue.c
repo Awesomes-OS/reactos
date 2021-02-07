@@ -1986,10 +1986,7 @@ filter_contains_hw_range( UINT first, UINT last )
 static inline BOOL is_mouse_message( UINT message )
 {
     return ( //( message >= WM_NCMOUSEFIRST && message <= WM_NCMOUSELAST )   || This seems to break tests...
-             ( message >= WM_MOUSEFIRST   && message <= WM_MOUSELAST )     ||
-             ( message >= WM_XBUTTONDOWN  && message <= WM_XBUTTONDBLCLK ) ||
-             ( message >= WM_MBUTTONDOWN  && message <= WM_MBUTTONDBLCLK ) ||
-             ( message >= WM_LBUTTONDOWN  && message <= WM_RBUTTONDBLCLK ) );
+             ( message >= WM_MOUSEFIRST   && message <= WM_MOUSELAST ) );
 }
 
 BOOL APIENTRY

@@ -76,16 +76,13 @@ extern "C" {
 #define MEM_EXECUTE_OPTION_PERMANENT                        0x8
 #define MEM_EXECUTE_OPTION_EXECUTE_DISPATCH_ENABLE          0x10
 #define MEM_EXECUTE_OPTION_IMAGE_DISPATCH_ENABLE            0x20
-#define MEM_EXECUTE_OPTION_VALID_FLAGS                      0x3F
+#define MEM_EXECUTE_OPTION_DISABLE_EXCEPTION_CHAIN_VALIDATION 0x40
+#define MEM_EXECUTE_OPTION_VALID_FLAGS                      0x7F
 
 #ifndef NTOS_MODE_USER
 //
 // Virtual Memory Flags
 //
-#define MEM_WRITE_WATCH                                     0x200000
-#define MEM_PHYSICAL                                        0x400000
-#define MEM_ROTATE                                          0x800000
-#define MEM_IMAGE                                           SEC_IMAGE
 #define MEM_DOS_LIM                                         0x40000000
 
 //
@@ -988,7 +985,7 @@ typedef struct _MM_DRIVER_VERIFIER_DATA
 typedef struct _DRIVER_SPECIFIED_VERIFIER_THUNKS
 {
     LIST_ENTRY ListEntry;
-    struct _LDR_DATA_TABLE_ENTRY *DataTableEntry;
+    struct _KLDR_DATA_TABLE_ENTRY *DataTableEntry;
     ULONG NumberOfThunks;
 } DRIVER_SPECIFIED_VERIFIER_THUNKS, *PDRIVER_SPECIFIED_VERIFIER_THUNKS;
 

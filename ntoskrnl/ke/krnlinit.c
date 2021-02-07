@@ -32,7 +32,7 @@ PLOADER_PARAMETER_BLOCK KeLoaderBlock;
 PKPRCB KiProcessorBlock[MAXIMUM_PROCESSORS];
 
 /* Number of processors */
-CCHAR KeNumberProcessors = 0;
+volatile CCHAR KeNumberProcessors = 0;
 
 /* NUMA Node Support */
 KNODE KiNode0;
@@ -301,5 +301,14 @@ KeInitSystem(VOID)
 
     /* Initialize non-portable parts of the kernel */
     KiInitMachineDependent();
+
+    const ULONG MHz = KiProcessorBlock[0]->MHz;
+    const ULONG BaseQuantumValue = MHz * KeMaximumIncrement / 10;
+
+    KiShortExecutionCycles = BaseQuantumValue / 240;
+    KiCyclesPerClockQuantum = BaseQuantumValue / 3;
+    KiDirectQuantumTarget = BaseQuantumValue / 3;
+    KiLockQuantumTarget = 3 * KiCyclesPerClockQuantum;
+
     return TRUE;
 }

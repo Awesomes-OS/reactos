@@ -12,6 +12,7 @@
 #include "srv.h"
 
 #include <ndk/kefuncs.h>
+#include <ndk/ldrfuncs.h>
 
 #define NDEBUG
 #include <debug.h>

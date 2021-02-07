@@ -30,6 +30,7 @@
 #include <ndk/setypes.h>
 #include <ndk/umfuncs.h>
 #include <ndk/kefuncs.h>
+#include <ndk/ldrfuncs.h>
 
 #include <ntstrsafe.h>
 

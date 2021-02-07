@@ -718,7 +718,7 @@ FsRtlCheckLockForWriteAccess(IN PFILE_LOCK FileLock,
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     COMBINED_LOCK_ELEMENT ToFind;
     PCOMBINED_LOCK_ELEMENT Found;
-    PEPROCESS Process = Irp->Tail.Overlay.Thread->ThreadsProcess;
+    PEPROCESS Process = IoGetRequestorProcess(Irp);
     DPRINT("CheckLockForWriteAccess(%wZ, Offset %08x%08x, Length %x)\n", 
            &IoStack->FileObject->FileName,
            IoStack->Parameters.Write.ByteOffset.HighPart,

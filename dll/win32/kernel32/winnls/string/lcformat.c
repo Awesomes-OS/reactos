@@ -929,7 +929,6 @@ INT WINAPI GetDateFormatA( LCID lcid, DWORD dwFlags, const SYSTEMTIME* lpTime,
                                 lpFormat, lpDateStr, cchOut);
 }
 
-#if _WIN32_WINNT >= 0x600
 /******************************************************************************
  * GetDateFormatEx [KERNEL32.@]
  *
@@ -969,7 +968,6 @@ INT WINAPI GetDateFormatEx(LPCWSTR localename, DWORD flags,
                                 flags | DATE_DATEVARSONLY, date, format,
                                 outbuf, bufsize);
 }
-#endif /* _WIN32_WINNT >= 0x600 */
 
 /******************************************************************************
  * GetDateFormatW	[KERNEL32.@]
@@ -1037,7 +1035,6 @@ INT WINAPI GetTimeFormatA(LCID lcid, DWORD dwFlags, const SYSTEMTIME* lpTime,
                                 lpFormat, lpTimeStr, cchOut);
 }
 
-#if _WIN32_WINNT >= 0x600
 /******************************************************************************
  * GetTimeFormatEx [KERNEL32.@]
  *
@@ -1069,7 +1066,6 @@ INT WINAPI GetTimeFormatEx(LPCWSTR localename, DWORD flags,
                                 flags | TIME_TIMEVARSONLY, time, format,
                                 outbuf, bufsize);
 }
-#endif /* _WIN32_WINNT >= 0x600 */
 
 /******************************************************************************
  *		GetTimeFormatW	[KERNEL32.@]
@@ -1431,7 +1427,6 @@ error:
   return 0;
 }
 
-#if _WIN32_WINNT >= 0x600
 /**************************************************************************
  *              GetNumberFormatEx	(KERNEL32.@)
  */
@@ -1450,7 +1445,6 @@ INT WINAPI GetNumberFormatEx(LPCWSTR name, DWORD flags,
 
   return GetNumberFormatW(lcid, flags, value, format, number, numout);
 }
-#endif /* _WIN32_WINNT >= 0x600 */
 
 /**************************************************************************
  *              GetCurrencyFormatA	(KERNEL32.@)
@@ -2029,7 +2023,6 @@ BOOL WINAPI EnumDateFormatsW(DATEFMT_ENUMPROCW proc, LCID lcid, DWORD flags)
     return NLS_EnumDateFormats(&ctxt);
 }
 
-#if _WIN32_WINNT >= 0x600
 /**************************************************************************
  *              EnumDateFormatsExEx	(KERNEL32.@)
  */
@@ -2046,7 +2039,6 @@ BOOL WINAPI EnumDateFormatsExEx(DATEFMT_ENUMPROCEXEX proc, const WCHAR *locale, 
 
     return NLS_EnumDateFormats(&ctxt);
 }
-#endif /* _WIN32_WINNT >= 0x600 */
 
 struct enumtimeformats_context {
     enum enum_callback_type type;  /* callback kind */
@@ -2153,7 +2145,6 @@ BOOL WINAPI EnumTimeFormatsW(TIMEFMT_ENUMPROCW proc, LCID lcid, DWORD flags)
     return NLS_EnumTimeFormats(&ctxt);
 }
 
-#if _WIN32_WINNT >= 0x600
 /**************************************************************************
  *              EnumTimeFormatsEx	(KERNEL32.@)
  */
@@ -2170,7 +2161,6 @@ BOOL WINAPI EnumTimeFormatsEx(TIMEFMT_ENUMPROCEX proc, const WCHAR *locale, DWOR
 
     return NLS_EnumTimeFormats(&ctxt);
 }
-#endif /* _WIN32_WINNT >= 0x600 */
 
 struct enumcalendar_context {
     enum enum_callback_type type;  /* callback kind */
@@ -2401,7 +2391,6 @@ BOOL WINAPI EnumCalendarInfoExW( CALINFO_ENUMPROCEXW calinfoproc,LCID locale,
   return NLS_EnumCalendarInfo(&ctxt);
 }
 
-#if _WIN32_WINNT >= 0x600
 /******************************************************************************
  *		EnumCalendarInfoExEx	[KERNEL32.@]
  */
@@ -2421,7 +2410,6 @@ BOOL WINAPI EnumCalendarInfoExEx( CALINFO_ENUMPROCEXEX calinfoproc, LPCWSTR loca
   ctxt.unicode = TRUE;
   return NLS_EnumCalendarInfo(&ctxt);
 }
-#endif /* _WIN32_WINNT >= 0x600 */
 
 /*********************************************************************
  *	GetCalendarInfoA				(KERNEL32.@)

@@ -85,7 +85,7 @@ MmAddVerifierThunks(IN PVOID ThunkBuffer,
     PDRIVER_VERIFIER_THUNK_PAIRS ThunkTable;
     ULONG ThunkCount;
     PDRIVER_SPECIFIED_VERIFIER_THUNKS DriverThunks;
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PKLDR_DATA_TABLE_ENTRY LdrEntry;
     PVOID ModuleBase, ModuleEnd;
     ULONG i;
     NTSTATUS Status = STATUS_SUCCESS;
@@ -211,18 +211,18 @@ LOGICAL
 NTAPI
 MmIsDriverVerifying(IN PDRIVER_OBJECT DriverObject)
 {
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PKLDR_DATA_TABLE_ENTRY LdrEntry;
 
     //
     // Get the loader entry
     //
-    LdrEntry = (PLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection;
+    LdrEntry = (PKLDR_DATA_TABLE_ENTRY)DriverObject->DriverSection;
     if (!LdrEntry) return FALSE;
 
     //
     // Check if we're verifying or not
     //
-    return (LdrEntry->Flags & LDRP_IMAGE_VERIFYING) ? TRUE: FALSE;
+    return LdrEntry->DriverVerifying ? TRUE : FALSE;
 }
 
 /*

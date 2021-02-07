@@ -29,227 +29,14 @@ Author:
 #include <extypes.h>
 #include "in6addr.h"
 #include "inaddr.h"
+#include "rtlfuncs.inl"
+#include "rtlfuncs2.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #ifdef NTOS_MODE_USER
-
-//
-// List Functions
-//
-FORCEINLINE
-VOID
-InitializeListHead(
-    _Out_ PLIST_ENTRY ListHead
-)
-{
-    ListHead->Flink = ListHead->Blink = ListHead;
-}
-
-FORCEINLINE
-VOID
-InsertHeadList(
-    _Inout_ PLIST_ENTRY ListHead,
-    _Inout_ PLIST_ENTRY Entry
-)
-{
-    PLIST_ENTRY OldFlink;
-    OldFlink = ListHead->Flink;
-    Entry->Flink = OldFlink;
-    Entry->Blink = ListHead;
-    OldFlink->Blink = Entry;
-    ListHead->Flink = Entry;
-}
-
-FORCEINLINE
-VOID
-InsertTailList(
-    _Inout_ PLIST_ENTRY ListHead,
-    _Inout_ PLIST_ENTRY Entry
-)
-{
-    PLIST_ENTRY OldBlink;
-    OldBlink = ListHead->Blink;
-    Entry->Flink = ListHead;
-    Entry->Blink = OldBlink;
-    OldBlink->Flink = Entry;
-    ListHead->Blink = Entry;
-}
-
-_Must_inspect_result_
-FORCEINLINE
-BOOLEAN
-IsListEmpty(
-    _In_ const LIST_ENTRY * ListHead
-)
-{
-    return (BOOLEAN)(ListHead->Flink == ListHead);
-}
-
-FORCEINLINE
-PSINGLE_LIST_ENTRY
-PopEntryList(
-    _Inout_ PSINGLE_LIST_ENTRY ListHead
-)
-{
-    PSINGLE_LIST_ENTRY FirstEntry;
-    FirstEntry = ListHead->Next;
-    if (FirstEntry != NULL) {
-        ListHead->Next = FirstEntry->Next;
-    }
-
-    return FirstEntry;
-}
-
-FORCEINLINE
-VOID
-PushEntryList(
-    _Inout_ PSINGLE_LIST_ENTRY ListHead,
-    _Inout_ PSINGLE_LIST_ENTRY Entry
-)
-{
-    Entry->Next = ListHead->Next;
-    ListHead->Next = Entry;
-}
-
-FORCEINLINE
-BOOLEAN
-RemoveEntryList(
-    _In_ PLIST_ENTRY Entry)
-{
-    PLIST_ENTRY OldFlink;
-    PLIST_ENTRY OldBlink;
-
-    OldFlink = Entry->Flink;
-    OldBlink = Entry->Blink;
-    OldFlink->Blink = OldBlink;
-    OldBlink->Flink = OldFlink;
-    return (BOOLEAN)(OldFlink == OldBlink);
-}
-
-FORCEINLINE
-PLIST_ENTRY
-RemoveHeadList(
-    _Inout_ PLIST_ENTRY ListHead)
-{
-    PLIST_ENTRY Flink;
-    PLIST_ENTRY Entry;
-
-    Entry = ListHead->Flink;
-    Flink = Entry->Flink;
-    ListHead->Flink = Flink;
-    Flink->Blink = ListHead;
-    return Entry;
-}
-
-FORCEINLINE
-PLIST_ENTRY
-RemoveTailList(
-    _Inout_ PLIST_ENTRY ListHead)
-{
-    PLIST_ENTRY Blink;
-    PLIST_ENTRY Entry;
-
-    Entry = ListHead->Blink;
-    Blink = Entry->Blink;
-    ListHead->Blink = Blink;
-    Blink->Flink = ListHead;
-    return Entry;
-}
-
-//
-// Unicode string macros
-//
-_At_(UnicodeString->Buffer, _Post_equal_to_(Buffer))
-_At_(UnicodeString->Length, _Post_equal_to_(0))
-_At_(UnicodeString->MaximumLength, _Post_equal_to_(BufferSize))
-FORCEINLINE
-VOID
-RtlInitEmptyUnicodeString(
-    _Out_ PUNICODE_STRING UnicodeString,
-    _When_(BufferSize != 0, _Notnull_) _Writable_bytes_(BufferSize) __drv_aliasesMem PWCHAR Buffer,
-    _In_ USHORT BufferSize)
-{
-    UnicodeString->Length = 0;
-    UnicodeString->MaximumLength = BufferSize;
-    UnicodeString->Buffer = Buffer;
-}
-
-_At_(AnsiString->Buffer, _Post_equal_to_(Buffer))
-_At_(AnsiString->Length, _Post_equal_to_(0))
-_At_(AnsiString->MaximumLength, _Post_equal_to_(BufferSize))
-FORCEINLINE
-VOID
-RtlInitEmptyAnsiString(
-    _Out_ PANSI_STRING AnsiString,
-    _When_(BufferSize != 0, _Notnull_) _Writable_bytes_(BufferSize) __drv_aliasesMem PCHAR Buffer,
-    _In_ USHORT BufferSize)
-{
-    AnsiString->Length = 0;
-    AnsiString->MaximumLength = BufferSize;
-    AnsiString->Buffer = Buffer;
-}
-
-//
-// LUID Macros
-//
-#define RtlEqualLuid(L1, L2) (((L1)->HighPart == (L2)->HighPart) && \
-                              ((L1)->LowPart  == (L2)->LowPart))
-FORCEINLINE
-LUID
-NTAPI_INLINE
-RtlConvertUlongToLuid(
-    _In_ ULONG Ulong)
-{
-    LUID TempLuid;
-
-    TempLuid.LowPart = Ulong;
-    TempLuid.HighPart = 0;
-    return TempLuid;
-}
-
-//
-// ASSERT Macros
-//
-#ifndef ASSERT
-#if DBG
-
-#define ASSERT( exp ) \
-    ((void)((!(exp)) ? \
-        (RtlAssert( (PVOID)#exp, (PVOID)__FILE__, __LINE__, NULL ),FALSE) : \
-        TRUE))
-
-#define ASSERTMSG( msg, exp ) \
-    ((void)((!(exp)) ? \
-        (RtlAssert( (PVOID)#exp, (PVOID)__FILE__, __LINE__, (PCHAR)msg ),FALSE) : \
-        TRUE))
-
-#else
-
-#define ASSERT( exp )         ((void) 0)
-#define ASSERTMSG( msg, exp ) ((void) 0)
-
-#endif
-#endif
-
-#ifdef NTOS_KERNEL_RUNTIME
-
-//
-// Executing RTL functions at DISPATCH_LEVEL or higher will result in a
-// bugcheck.
-//
-#define RTL_PAGED_CODE PAGED_CODE
-
-#else
-
-//
-// This macro does nothing in user mode
-//
-#define RTL_PAGED_CODE()
-
-#endif
 
 //
 // RTL Splay Tree Functions
@@ -413,55 +200,6 @@ NTAPI
 RtlRealPredecessor(
     _In_ PRTL_SPLAY_LINKS Links
 );
-
-#define RtlIsLeftChild(Links) \
-    (RtlLeftChild(RtlParent(Links)) == (PRTL_SPLAY_LINKS)(Links))
-
-#define RtlIsRightChild(Links) \
-    (RtlRightChild(RtlParent(Links)) == (PRTL_SPLAY_LINKS)(Links))
-
-#define RtlRightChild(Links) \
-    ((PRTL_SPLAY_LINKS)(Links))->RightChild
-
-#define RtlIsRoot(Links) \
-    (RtlParent(Links) == (PRTL_SPLAY_LINKS)(Links))
-
-#define RtlLeftChild(Links) \
-    ((PRTL_SPLAY_LINKS)(Links))->LeftChild
-
-#define RtlParent(Links) \
-    ((PRTL_SPLAY_LINKS)(Links))->Parent
-
-// FIXME: use inline function
-
-#define RtlInitializeSplayLinks(Links)                  \
-    {                                                   \
-        PRTL_SPLAY_LINKS _SplayLinks;                   \
-        _SplayLinks = (PRTL_SPLAY_LINKS)(Links);        \
-        _SplayLinks->Parent = _SplayLinks;              \
-        _SplayLinks->LeftChild = NULL;                  \
-        _SplayLinks->RightChild = NULL;                 \
-    }
-
-#define RtlInsertAsLeftChild(ParentLinks,ChildLinks)    \
-    {                                                   \
-        PRTL_SPLAY_LINKS _SplayParent;                  \
-        PRTL_SPLAY_LINKS _SplayChild;                   \
-        _SplayParent = (PRTL_SPLAY_LINKS)(ParentLinks); \
-        _SplayChild = (PRTL_SPLAY_LINKS)(ChildLinks);   \
-        _SplayParent->LeftChild = _SplayChild;          \
-        _SplayChild->Parent = _SplayParent;             \
-    }
-
-#define RtlInsertAsRightChild(ParentLinks,ChildLinks)   \
-    {                                                   \
-        PRTL_SPLAY_LINKS _SplayParent;                  \
-        PRTL_SPLAY_LINKS _SplayChild;                   \
-        _SplayParent = (PRTL_SPLAY_LINKS)(ParentLinks); \
-        _SplayChild = (PRTL_SPLAY_LINKS)(ChildLinks);   \
-        _SplayParent->RightChild = _SplayChild;         \
-        _SplayChild->Parent = _SplayParent;             \
-    }
 
 //
 // RTL AVL Tree Functions
@@ -648,95 +386,6 @@ RtlSetUnhandledExceptionFilter(
     _In_ PRTLP_UNHANDLED_EXCEPTION_FILTER TopLevelExceptionFilter
 );
 
-NTSYSAPI
-LONG
-NTAPI
-RtlUnhandledExceptionFilter(
-    _In_ struct _EXCEPTION_POINTERS* ExceptionInfo
-);
-
-__analysis_noreturn
-NTSYSAPI
-VOID
-NTAPI
-RtlAssert(
-    _In_ PVOID FailedAssertion,
-    _In_ PVOID FileName,
-    _In_ ULONG LineNumber,
-    _In_opt_z_ PCHAR Message
-);
-
-NTSYSAPI
-PVOID
-NTAPI
-RtlEncodePointer(
-    _In_ PVOID Pointer
-);
-
-NTSYSAPI
-PVOID
-NTAPI
-RtlDecodePointer(
-    _In_ PVOID Pointer
-);
-
-NTSYSAPI
-PVOID
-NTAPI
-RtlEncodeSystemPointer(
-    _In_ PVOID Pointer
-);
-
-NTSYSAPI
-PVOID
-NTAPI
-RtlDecodeSystemPointer(
-    _In_ PVOID Pointer
-);
-
-NTSYSAPI
-NTSTATUS
-NTAPI
-RtlGetLastNtStatus(
-    VOID
-);
-
-NTSYSAPI
-ULONG
-NTAPI
-RtlGetLastWin32Error(
-    VOID
-);
-
-NTSYSAPI
-VOID
-NTAPI
-RtlSetLastWin32Error(
-    _In_ ULONG LastError
-);
-
-NTSYSAPI
-VOID
-NTAPI
-RtlSetLastWin32ErrorAndNtStatusFromNtStatus(
-    _In_ NTSTATUS Status
-);
-
-NTSYSAPI
-NTSTATUS
-NTAPI
-RtlSetThreadErrorMode(
-    _In_ ULONG NewMode,
-    _Out_opt_ PULONG OldMode
-);
-
-NTSYSAPI
-ULONG
-NTAPI
-RtlGetThreadErrorMode(
-    VOID
-);
-
 #endif /* NTOS_MODE_USER */
 
 NTSYSAPI
@@ -752,32 +401,6 @@ NTAPI
 RtlDispatchException(
     _In_ PEXCEPTION_RECORD ExceptionRecord,
     _In_ PCONTEXT Context
-);
-
-_IRQL_requires_max_(APC_LEVEL)
-_When_(Status < 0, _Out_range_(>, 0))
-_When_(Status >= 0, _Out_range_(==, 0))
-NTSYSAPI
-ULONG
-NTAPI
-RtlNtStatusToDosError(
-    _In_ NTSTATUS Status
-);
-
-_When_(Status < 0, _Out_range_(>, 0))
-_When_(Status >= 0, _Out_range_(==, 0))
-NTSYSAPI
-ULONG
-NTAPI
-RtlNtStatusToDosErrorNoTeb(
-    _In_ NTSTATUS Status
-);
-
-NTSYSAPI
-NTSTATUS
-NTAPI
-RtlMapSecurityErrorToNtStatus(
-    _In_ ULONG SecurityError
 );
 
 NTSYSAPI
@@ -1066,6 +689,16 @@ RtlWalkHeap(
 );
 
 #define RtlGetProcessHeap() (NtCurrentPeb()->ProcessHeap)
+
+NTSYSAPI
+void
+NTAPI
+RtlpBreakPointHeap(_In_opt_ PVOID BadAddress);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlpCheckHeapSignature(_In_ HANDLE HeapHandle, _In_opt_ PCSTR Caller);
 
 #endif // NTOS_MODE_USER
 
@@ -1825,16 +1458,6 @@ ULONG
 NTAPI
 RtlxUnicodeStringToAnsiSize(IN PCUNICODE_STRING UnicodeString);
 
-#ifdef NTOS_MODE_USER
-
-#define RtlUnicodeStringToAnsiSize(STRING) (                  \
-    NLS_MB_CODE_PAGE_TAG ?                                    \
-    RtlxUnicodeStringToAnsiSize(STRING) :                     \
-    ((STRING)->Length + sizeof(UNICODE_NULL)) / sizeof(WCHAR) \
-)
-
-#endif
-
 NTSYSAPI
 NTSTATUS
 NTAPI
@@ -1894,20 +1517,6 @@ NTSYSAPI
 ULONG
 NTAPI
 RtlxUnicodeStringToOemSize(IN PCUNICODE_STRING UnicodeString);
-
-#ifdef NTOS_MODE_USER
-
-#define RtlUnicodeStringToOemSize(STRING) (                             \
-    NLS_MB_OEM_CODE_PAGE_TAG ?                                          \
-    RtlxUnicodeStringToOemSize(STRING) :                                \
-    ((STRING)->Length + sizeof(UNICODE_NULL)) / sizeof(WCHAR)           \
-)
-
-#define RtlUnicodeStringToCountedOemSize(STRING) (                      \
-    (ULONG)(RtlUnicodeStringToOemSize(STRING) - sizeof(ANSI_NULL))      \
-)
-
-#endif
 
 NTSYSAPI
 NTSTATUS
@@ -1983,20 +1592,6 @@ RtlOemToUnicodeN(
     _In_ ULONG BytesInOemString
 );
 
-#ifdef NTOS_MODE_USER
-
-#define RtlOemStringToUnicodeSize(STRING) (                             \
-    NLS_MB_OEM_CODE_PAGE_TAG ?                                          \
-    RtlxOemStringToUnicodeSize(STRING) :                                \
-    ((STRING)->Length + sizeof(ANSI_NULL)) * sizeof(WCHAR)              \
-)
-
-#define RtlOemStringToCountedUnicodeSize(STRING) (                      \
-    (ULONG)(RtlOemStringToUnicodeSize(STRING) - sizeof(UNICODE_NULL))   \
-)
-
-#endif
-
 //
 // Ansi->Unicode String Functions
 //
@@ -2022,16 +1617,6 @@ NTAPI
 RtlxAnsiStringToUnicodeSize(
     PCANSI_STRING AnsiString
 );
-
-#ifdef NTOS_MODE_USER
-
-#define RtlAnsiStringToUnicodeSize(STRING) (                        \
-    NLS_MB_CODE_PAGE_TAG ?                                          \
-    RtlxAnsiStringToUnicodeSize(STRING) :                           \
-    ((STRING)->Length + sizeof(ANSI_NULL)) * sizeof(WCHAR)          \
-)
-
-#endif
 
 NTSYSAPI
 BOOLEAN
@@ -2189,10 +1774,6 @@ RtlCompareMemoryUlong(
 #define RtlEqualMemory(Destination, Source, Length) \
     (!memcmp(Destination, Source, Length))
 #endif
-
-#define RtlCopyBytes RtlCopyMemory
-#define RtlFillBytes RtlFillMemory
-#define RtlZeroBytes RtlZeroMemory
 
 #endif
 
@@ -2628,7 +2209,7 @@ RtlCreateUserProcess(
     _Out_ PRTL_USER_PROCESS_INFORMATION ProcessInfo
 );
 
-#if (NTDDI_VERSION >= NTDDI_WIN7)
+#if 0 && (NTDDI_VERSION >= NTDDI_WIN7)
 NTSYSAPI
 NTSTATUS
 NTAPI
@@ -2674,11 +2255,12 @@ NTAPI
 RtlDestroyProcessParameters(
     _In_ PRTL_USER_PROCESS_PARAMETERS ProcessParameters);
 
+DECLSPEC_NORETURN
 NTSYSAPI
 VOID
 NTAPI
 RtlExitUserThread(
-    _In_ NTSTATUS Status);
+    _In_ NTSTATUS ExitStatus);
 
 NTSYSAPI
 VOID
@@ -2766,6 +2348,12 @@ RtlGetCurrentProcessorNumber(
     VOID
 );
 
+NTSYSAPI
+void
+NTAPI
+RtlGetCurrentProcessorNumberEx(
+    _Inout_ PPROCESSOR_NUMBER ProcNumber
+);
 
 //
 // Thread Pool Functions
@@ -2858,6 +2446,29 @@ RtlDoesFileExists_U(
 );
 
 NTSYSAPI
+BOOLEAN
+NTAPI
+RtlDoesFileExists_UEx(
+    _In_ PCWSTR FileName,
+    _In_ BOOLEAN SucceedIfBusy
+);
+
+NTSYSAPI
+BOOLEAN
+NTAPI
+RtlDoesFileExists_UstrEx(
+    _In_ PCUNICODE_STRING FileName,
+    _In_ BOOLEAN SucceedIfBusy
+);
+
+NTSYSAPI
+RTL_PATH_TYPE
+NTAPI
+RtlDetermineDosPathNameType_Ustr(
+    _In_ PCUNICODE_STRING PathString
+);
+
+NTSYSAPI
 RTL_PATH_TYPE
 NTAPI
 RtlDetermineDosPathNameType_U(
@@ -2902,6 +2513,17 @@ RtlDosPathNameToNtPathName_U(
 );
 
 
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlDosPathNameToNtPathName_U_WithStatus(
+    _In_opt_z_ PCWSTR DosPathName,
+    _Out_ PUNICODE_STRING NtPathName,
+    _Out_opt_ PCWSTR *NtFileNamePart,
+    _Out_opt_ PRTL_RELATIVE_NAME_U DirectoryInfo
+);
+
+
 #define RTL_UNCHANGED_UNK_PATH  1
 #define RTL_CONVERTED_UNC_PATH  2
 #define RTL_CONVERTED_NT_PATH   3
@@ -2917,7 +2539,6 @@ RtlNtPathNameToDosPathName(
     _Out_opt_ PULONG Unknown
 );
 
-
 NTSYSAPI
 BOOLEAN
 NTAPI
@@ -2926,6 +2547,19 @@ RtlDosPathNameToRelativeNtPathName_U(
     _Out_ PUNICODE_STRING NtName,
     _Out_ PCWSTR *PartName,
     _Out_ PRTL_RELATIVE_NAME_U RelativeName
+);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlpDosPathNameToRelativeNtPathName(
+    _In_ RTLP_DosPathNameToRelativeNtPathName_FLAGS Flags,
+    _In_ PCUNICODE_STRING DosName,
+    _Inout_opt_ PUNICODE_STRING StaticBuffer,
+    _Inout_opt_ PUNICODE_STRING DynamicBuffer,
+    _Out_opt_ PUNICODE_STRING* NtName,
+    _Out_opt_ PCWSTR* NtFileNamePart,
+    _Out_opt_ PRTL_RELATIVE_NAME_U RelativeName
 );
 
 _At_(Destination->Buffer, _Out_bytecap_(Destination->MaximumLength))
@@ -2957,7 +2591,6 @@ RtlGetFullPathName_U(
     _Out_opt_ PWSTR *ShortName
 );
 
-#if (NTDDI_VERSION >= NTDDI_WIN7)
 NTSYSAPI
 NTSTATUS
 NTAPI
@@ -2966,20 +2599,32 @@ RtlGetFullPathName_UEx(
     _In_ ULONG BufferLength,
     _Out_ PWSTR Buffer,
     _Out_opt_ PWSTR *FilePart,
-    _Out_opt_ RTL_PATH_TYPE *InputPathType
-    );
-#endif
+    _Out_opt_ ULONG *ResultLength
+);
 
+NTSYSAPI
+ULONG
+NTAPI
+RtlGetFullPathName_Ustr(
+    _In_ PUNICODE_STRING FileName,
+    _In_ ULONG Size,
+    _Out_z_bytecap_(Size) PWSTR Buffer,
+    _Out_opt_ PCWSTR *ShortName,
+    _Out_opt_ PBOOLEAN InvalidName,
+    _Out_ PRTLP_PATH_INFO PathInfo
+);
+
+NTSYSAPI
 NTSTATUS
 NTAPI
 RtlGetFullPathName_UstrEx(
     _In_ PUNICODE_STRING FileName,
-    _In_opt_ PUNICODE_STRING StaticString,
-    _In_opt_ PUNICODE_STRING DynamicString,
+    _Inout_opt_ PUNICODE_STRING StaticString,
+    _Out_opt_ PUNICODE_STRING DynamicString,
     _Out_opt_ PUNICODE_STRING *StringUsed,
     _Out_opt_ PSIZE_T FilePartSize,
     _Out_opt_ PBOOLEAN NameInvalid,
-    _Out_ RTL_PATH_TYPE* PathType,
+    _Out_ PRTLP_PATH_INFO PathType,
     _Out_opt_ PSIZE_T LengthNeeded
 );
 
@@ -3053,80 +2698,6 @@ RtlSetEnvironmentVariable(
     _In_z_ PWSTR *Environment,
     _In_ PUNICODE_STRING Name,
     _In_ PUNICODE_STRING Value
-);
-
-//
-// Critical Section/Resource Functions
-//
-NTSYSAPI
-NTSTATUS
-NTAPI
-RtlDeleteCriticalSection (
-    _In_ PRTL_CRITICAL_SECTION CriticalSection
-);
-
-NTSYSAPI
-NTSTATUS
-NTAPI
-RtlEnterCriticalSection(
-    _In_ PRTL_CRITICAL_SECTION CriticalSection
-);
-
-NTSYSAPI
-NTSTATUS
-NTAPI
-RtlInitializeCriticalSection(
-    _In_ PRTL_CRITICAL_SECTION CriticalSection
-);
-
-NTSYSAPI
-NTSTATUS
-NTAPI
-RtlInitializeCriticalSectionAndSpinCount(
-    _In_ PRTL_CRITICAL_SECTION CriticalSection,
-    _In_ ULONG SpinCount
-);
-
-NTSYSAPI
-ULONG
-NTAPI
-RtlIsCriticalSectionLocked(
-    _In_ PRTL_CRITICAL_SECTION CriticalSection
-);
-
-NTSYSAPI
-ULONG
-NTAPI
-RtlIsCriticalSectionLockedByThread(
-    _In_ PRTL_CRITICAL_SECTION CriticalSection
-);
-
-NTSYSAPI
-NTSTATUS
-NTAPI
-RtlLeaveCriticalSection(
-    _In_ PRTL_CRITICAL_SECTION CriticalSection
-);
-
-NTSYSAPI
-BOOLEAN
-NTAPI
-RtlTryEnterCriticalSection(
-    _In_ PRTL_CRITICAL_SECTION CriticalSection
-);
-
-NTSYSAPI
-VOID
-NTAPI
-RtlpUnWaitCriticalSection(
-    _In_ PRTL_CRITICAL_SECTION CriticalSection
-);
-
-NTSYSAPI
-NTSTATUS
-NTAPI
-RtlpWaitForCriticalSection(
-    _In_ PRTL_CRITICAL_SECTION CriticalSection
 );
 
 NTSYSAPI
@@ -3485,20 +3056,6 @@ RtlTestBit(
     _In_range_(<, BitMapHeader->SizeOfBitMap) ULONG BitNumber
 );
 
-#if defined(_M_AMD64)
-_Must_inspect_result_
-FORCEINLINE
-BOOLEAN
-RtlCheckBit(
-  _In_ PRTL_BITMAP BitMapHeader,
-  _In_range_(<, BitMapHeader->SizeOfBitMap) ULONG BitPosition)
-{
-  return BitTest64((LONG64 CONST*)BitMapHeader->Buffer, (LONG64)BitPosition);
-}
-#else
-#define RtlCheckBit(BMH,BP) (((((PLONG)(BMH)->Buffer)[(BP)/32]) >> ((BP)%32)) & 0x1)
-#endif /* defined(_M_AMD64) */
-
 #endif // NTOS_MODE_USER
 
 
@@ -3692,38 +3249,6 @@ RtlGetNextRange(
 //
 // Debug Functions
 //
-ULONG
-__cdecl
-DbgPrint(
-    _In_z_ _Printf_format_string_ PCSTR Format,
-    ...
-);
-
-NTSYSAPI
-ULONG
-__cdecl
-DbgPrintEx(
-    _In_ ULONG ComponentId,
-    _In_ ULONG Level,
-    _In_z_ _Printf_format_string_ PCSTR Format,
-    ...
-);
-
-NTSYSAPI
-ULONG
-NTAPI
-DbgPrompt(
-    _In_z_ PCCH Prompt,
-    _Out_writes_bytes_(MaximumResponseLength) PCH Response,
-    _In_ ULONG MaximumResponseLength
-);
-
-#undef DbgBreakPoint
-VOID
-NTAPI
-DbgBreakPoint(
-    VOID
-);
 
 VOID
 NTAPI
@@ -3862,6 +3387,17 @@ NTSYSAPI
 ULONG
 NTAPI
 RtlGetNtGlobalFlags(VOID);
+
+NTSYSAPI
+NTSTATUS
+NTAPI
+RtlImageDirectoryEntryToDataEx(
+    _In_ PVOID BaseAddress,
+    _In_ BOOLEAN MappedAsImage,
+    _In_ USHORT Directory,
+    _Out_ PULONG Size,
+    _Out_ PVOID *Section
+);
 
 _Success_(return!=NULL)
 NTSYSAPI
@@ -4028,10 +3564,10 @@ RtlDosApplyFileIsolationRedirection_Ustr(
     _In_ PUNICODE_STRING Extension,
     _Inout_ PUNICODE_STRING StaticString,
     _Inout_ PUNICODE_STRING DynamicString,
-    _Inout_ PUNICODE_STRING *NewName,
-    _In_ PULONG NewFlags,
-    _In_ PSIZE_T FileNameSize,
-    _In_ PSIZE_T RequiredLength
+    _Inout_opt_ PUNICODE_STRING *NewName,
+    _In_opt_ PULONG NewFlags,
+    _In_opt_ PSIZE_T FileNameSize,
+    _In_opt_ PSIZE_T RequiredLength
 );
 
 NTSYSAPI

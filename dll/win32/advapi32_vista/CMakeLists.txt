@@ -6,6 +6,7 @@ add_definitions(-D_ADVAPI32_)
 spec2def(advapi32_vista.dll advapi32_vista.spec ADD_IMPORTLIB)
 
 list(APPEND SOURCE
+    eventlog.c
     DllMain.c
     RegDeleteTree.c
     RegSetKeyValue.c

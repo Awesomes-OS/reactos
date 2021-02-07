@@ -39,10 +39,6 @@ static unsigned char charmax = CHAR_MAX;
 
 unsigned char _mbctype[257] = { 0 };
 
-/* MT */
-#define LOCK_LOCALE   _mlock(_SETLOCALE_LOCK);
-#define UNLOCK_LOCALE _munlock(_SETLOCALE_LOCK);
-
 #define MSVCRT_LEADBYTE  0x8000
 #define MSVCRT_C1_DEFINED 0x200
 
@@ -370,6 +366,22 @@ MSVCRT_pthreadmbcinfo get_mbcinfo(void) {
     return data->mbcinfo;
 }
 
+/*********************************************************************
+ *      _lock_locales (UCRTBASE.@)
+ */
+void CDECL _lock_locales(void)
+{
+    _mlock(_SETLOCALE_LOCK);
+}
+
+/*********************************************************************
+ *      _unlock_locales (UCRTBASE.@)
+ */
+void CDECL _unlock_locales(void)
+{
+    _munlock(_SETLOCALE_LOCK);
+}
+
 /* INTERNAL: constructs string returned by setlocale */
 static inline char* construct_lc_all(MSVCRT_pthreadlocinfo locinfo) {
     static char current_lc_all[MAX_LOCALE_LENGTH];
@@ -400,15 +412,35 @@ static inline char* construct_lc_all(MSVCRT_pthreadlocinfo locinfo) {
 /*********************************************************************
  *		wsetlocale (MSVCRT.@)
  */
-wchar_t* CDECL _wsetlocale(int category, const wchar_t* locale)
+wchar_t* CDECL _wsetlocale(int category, const wchar_t* wlocale)
 {
-  static wchar_t fake[] = {
-    'E','n','g','l','i','s','h','_','U','n','i','t','e','d',' ',
-    'S','t','a','t','e','s','.','1','2','5','2',0 };
+    static wchar_t current_lc_all[MAX_LOCALE_LENGTH];
 
-  FIXME("%d %s\n", category, debugstr_w(locale));
+    char *locale = NULL;
+    const char *ret;
+    size_t len;
 
-  return fake;
+    if(wlocale) {
+        len = wcstombs(NULL, wlocale, 0);
+        if(len == -1)
+            return NULL;
+
+        locale = MSVCRT_malloc(++len);
+        if(!locale)
+            return NULL;
+
+        wcstombs(locale, wlocale, len);
+    }
+
+    _lock_locales();
+    ret = setlocale(category, locale);
+    MSVCRT_free(locale);
+
+    if(ret && mbstowcs(current_lc_all, ret, MAX_LOCALE_LENGTH)==-1)
+        ret = NULL;
+
+    _unlock_locales();
+    return ret ? current_lc_all : NULL;
 }
 
 /*********************************************************************
@@ -1295,7 +1327,7 @@ char* CDECL setlocale(int category, const char* locale)
         return NULL;
     }
 
-    LOCK_LOCALE;
+    _lock_locales();
 
     switch(category) {
         case MSVCRT_LC_ALL:
@@ -1400,7 +1432,7 @@ char* CDECL setlocale(int category, const char* locale)
     }
 
     MSVCRT__free_locale(loc);
-    UNLOCK_LOCALE;
+    _unlock_locales();
 
     if(locinfo == MSVCRT_locale->locinfo) {
         int i;
@@ -1497,11 +1529,14 @@ void __init_global_locale()
 {
     unsigned i;
 
-    LOCK_LOCALE;
+    _lock_locales();
     /* Someone created it before us */
     if(global_locale)
         return;
     global_locale = MSVCRT__create_locale(0, "C");
+    _unlock_locales();
+    if(!global_locale)
+        return;
 
     __lc_codepage = MSVCRT_locale->locinfo->lc_codepage;
     MSVCRT___lc_collate_cp = MSVCRT_locale->locinfo->lc_collate_cp;
@@ -1509,7 +1544,6 @@ void __init_global_locale()
     for(i=LC_MIN; i<=LC_MAX; i++)
         MSVCRT___lc_handle[i] = MSVCRT_locale->locinfo->lc_handle[i];
     _setmbcp(_MB_CP_ANSI);
-    UNLOCK_LOCALE;
 }
 
 /*

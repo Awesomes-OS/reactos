@@ -1,0 +1,78 @@
+namespace Ki
+{
+
+struct KTHREAD Thread
+{
+    enum Thread KTF ThreadFlags
+    {
+        Auto Alignment
+        Disable Boost
+        System Thread
+    }
+}
+
+struct KPROCESS Process
+{
+    enum Process KPSF ProcessFlags
+    {
+        Auto Alignment
+        Disable Boost
+        Disable Quantum
+    }
+}
+
+}
+
+namespace Psp
+{
+
+struct ETHREAD Thread
+{
+    enum Cross_Thread CT CrossThreadFlags
+    {
+        Terminated
+        Dead Thread
+        Hide From Debugger
+        Active Impersonation Info
+        Hard Errors Are Disabled
+        Break On Termination
+        Skip Creation Msg
+        Skip Termination Msg
+    }
+}
+
+struct EPROCESS Process
+{
+    enum Process PSF Flags
+    {
+        Create Reported
+        No Debug Inherit
+        Process Exiting
+        Process Delete
+        Wow64 Split Pages
+        Vm Deleted
+        Outswap Enabled
+        Outswapped
+        Fork Failed
+        Wow64 Va Space 4gb
+        Address Space Initialized : 2
+        Set Timer Resolution
+        Break On Termination
+        Session Creation Underway
+        Write Watch
+        Process In Session
+        Override Address Space
+        Has Address Space
+        Launch Prefetched
+        Inject Inpage Errors
+        Vm Top Down
+        Image Notify Done
+        Pde Update Needed
+        Vdm Allowed
+        Swap Allowed
+        Create Failed
+        Default Io Priority : 3
+    }
+}
+
+}

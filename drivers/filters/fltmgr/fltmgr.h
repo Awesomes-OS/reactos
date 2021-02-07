@@ -4,6 +4,8 @@
 #include <ntifs.h>
 #include <ndk/obfuncs.h>
 #include <ndk/exfuncs.h>
+#include <ndk/rtltypes.h>
+#include <ndk/rtlfuncs2.h>
 #include <fltkernel.h>
 #include <pseh/pseh2.h>
 

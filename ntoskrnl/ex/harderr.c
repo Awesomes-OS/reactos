@@ -141,7 +141,7 @@ ExpRaiseHardError(IN NTSTATUS ErrorStatus,
     }
 
     /* Check if hard errors are not disabled */
-    if (!Thread->HardErrorsAreDisabled)
+    if (!PspTestThreadHardErrorsAreDisabledFlag(Thread))
     {
         /* Check if we can't do errors anymore, and this is serious */
         if (!ExReadyForErrors && NT_ERROR(ErrorStatus))
@@ -181,13 +181,13 @@ ExpRaiseHardError(IN NTSTATUS ErrorStatus,
     }
 
     /* If hard errors are disabled, do nothing */
-    if (Thread->HardErrorsAreDisabled) PortHandle = NULL;
+    if (PspTestThreadHardErrorsAreDisabledFlag(Thread)) PortHandle = NULL;
 
     /*
      * If this is not the system thread, check whether hard errors are
      * disabled for this thread on user-mode side, and if so, do nothing.
      */
-    if (!Thread->SystemThread && (PortHandle != NULL))
+    if (PortHandle && !KiTestThreadSystemThreadFlag(&Thread->Tcb))
     {
         /* Check if we have a TEB */
         PTEB Teb = PsGetCurrentThread()->Tcb.Teb;

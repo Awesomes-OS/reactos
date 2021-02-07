@@ -32,6 +32,8 @@ ENDM
 .data
 ASSUME CS:nothing
 
+EXTERN _KeI386FastSystemCallReturn:DWORD
+
 .align 16
 
 PUBLIC _KiIdt

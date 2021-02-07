@@ -39,12 +39,6 @@
 #define ETH_LENGTH_OF_ADDRESS       6
 #define DoPrint(fmt, ...) printf(fmt##"\n", __VA_ARGS__)
 #define DPrintf(a,b) DoPrint b
-#define RtlOffsetToPointer(B,O)  ((PCHAR)( ((PCHAR)(B)) + ((ULONG_PTR)(O))  ))
-
-#include "ethernetutils.h"
-#endif //+OFFLOAD_UNIT_TEST
-
-#if !defined(OFFLOAD_UNIT_TEST)
 
 #if !defined(RtlOffsetToPointer)
 #define RtlOffsetToPointer(Base,Offset)  ((PCHAR)(((PCHAR)(Base))+((ULONG_PTR)(Offset))))
@@ -54,6 +48,10 @@
 #define RtlPointerToOffset(Base,Pointer)  ((ULONG)(((PCHAR)(Pointer))-((PCHAR)(Base))))
 #endif
 
+#include "ethernetutils.h"
+#endif //+OFFLOAD_UNIT_TEST
+
+#if !defined(OFFLOAD_UNIT_TEST)
 
 #include <ndis.h>
 #include "osdep.h"

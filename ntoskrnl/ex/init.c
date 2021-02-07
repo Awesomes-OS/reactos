@@ -795,7 +795,7 @@ ExpLoadBootSymbols(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
     PLIST_ENTRY NextEntry;
     ULONG Count, Length;
     PWCHAR Name;
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PKLDR_DATA_TABLE_ENTRY LdrEntry;
     CHAR NameBuffer[256];
     STRING SymbolString;
     NTSTATUS Status;
@@ -809,7 +809,7 @@ ExpLoadBootSymbols(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
         {
             /* Get the entry */
             LdrEntry = CONTAINING_RECORD(NextEntry,
-                                         LDR_DATA_TABLE_ENTRY,
+                                         KLDR_DATA_TABLE_ENTRY,
                                          InLoadOrderLinks);
             if (LdrEntry->FullDllName.Buffer[0] == L'\\')
             {
@@ -925,12 +925,14 @@ ExpInitializeExecutive(IN ULONG Cpu,
     NTSTATUS Status;
     PCHAR CommandLine, PerfMem;
     ULONG PerfMemUsed;
-    PLDR_DATA_TABLE_ENTRY NtosEntry;
+    PKLDR_DATA_TABLE_ENTRY NtosEntry;
     PMESSAGE_RESOURCE_ENTRY MsgEntry;
     ANSI_STRING CSDString;
     size_t Remaining = 0;
     PCHAR RcEnd = NULL;
     CHAR VersionBuffer[65];
+
+    KiVBoxPrint("ExpInitializeExecutive 1\n");
 
     /* Validate Loader */
     if (!ExpIsLoaderValid(LoaderBlock))
@@ -943,8 +945,12 @@ ExpInitializeExecutive(IN ULONG Cpu,
                      LoaderBlock->Extension->MinorVersion);
     }
 
+    KiVBoxPrint("ExpInitializeExecutive 2\n");
+
     /* Initialize PRCB pool lookaside pointers */
     ExInitPoolLookasidePointers();
+
+    KiVBoxPrint("ExpInitializeExecutive 3\n");
 
     /* Check if this is an application CPU */
     if (Cpu)
@@ -959,6 +965,8 @@ ExpInitializeExecutive(IN ULONG Cpu,
         /* We're done */
         return;
     }
+
+    KiVBoxPrint("ExpInitializeExecutive 4\n");
 
     /* Assume no text-mode or remote boot */
     ExpInTextModeSetup = FALSE;
@@ -981,6 +989,8 @@ ExpInitializeExecutive(IN ULONG Cpu,
             ASSERT(!_memicmp(LoaderBlock->ArcBootDeviceName, "net(0)", 6));
         }
     }
+
+    KiVBoxPrint("ExpInitializeExecutive 5\n");
 
     /* Set phase to 0 */
     ExpInitializationPhase = 0;
@@ -1024,6 +1034,8 @@ ExpInitializeExecutive(IN ULONG Cpu,
         }
     }
 
+    KiVBoxPrint("ExpInitializeExecutive 6\n");
+
     /* Setup NLS Base and offsets */
     NlsData = LoaderBlock->NlsData;
     ExpNlsTableBase = NlsData->AnsiCodePageData;
@@ -1043,12 +1055,16 @@ ExpInitializeExecutive(IN ULONG Cpu,
                      &ExpNlsTableInfo);
     RtlResetRtlTranslations(&ExpNlsTableInfo);
 
+    KiVBoxPrint("ExpInitializeExecutive 7\n");
+
     /* Now initialize the HAL */
     if (!HalInitSystem(ExpInitializationPhase, LoaderBlock))
     {
         /* HAL failed to initialize, bugcheck */
         KeBugCheck(HAL_INITIALIZATION_FAILED);
     }
+
+    KiVBoxPrint("ExpInitializeExecutive 8\n");
 
     /* Make sure interrupts are active now */
     _enable();
@@ -1074,12 +1090,16 @@ ExpInitializeExecutive(IN ULONG Cpu,
                               SharedUserData->NtSystemRoot,
                               sizeof(SharedUserData->NtSystemRoot));
 
+    KiVBoxPrint("ExpInitializeExecutive 9\n");
+
     /* Now fill it in */
     Status = RtlAnsiStringToUnicodeString(&NtSystemRoot, &AnsiPath, FALSE);
     if (!NT_SUCCESS(Status)) KeBugCheck(SESSION3_INITIALIZATION_FAILED);
 
     /* Setup bugcheck messages */
     KiInitializeBugCheck();
+
+    KiVBoxPrint("ExpInitializeExecutive 10\n");
 
     /* Setup initial system settings */
     CmGetSystemControlValues(LoaderBlock->RegistryBase, CmControlVector);
@@ -1094,14 +1114,22 @@ ExpInitializeExecutive(IN ULONG Cpu,
     /* Add loaded CmNtGlobalFlag value */
     NtGlobalFlag |= CmNtGlobalFlag;
 
+    KiVBoxPrint("ExpInitializeExecutive 11\n");
+
     /* Initialize the executive at phase 0 */
     if (!ExInitSystem()) KeBugCheck(PHASE0_INITIALIZATION_FAILED);
+
+    KiVBoxPrint("ExpInitializeExecutive 12\n");
 
     /* Initialize the memory manager at phase 0 */
     if (!MmArmInitSystem(0, LoaderBlock)) KeBugCheck(PHASE0_INITIALIZATION_FAILED);
 
+    KiVBoxPrint("ExpInitializeExecutive 13\n");
+
     /* Load boot symbols */
     ExpLoadBootSymbols(LoaderBlock);
+
+    KiVBoxPrint("ExpInitializeExecutive 14\n");
 
     /* Check if we should break after symbol load */
     if (KdBreakAfterSymbolLoad) DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
@@ -1112,6 +1140,8 @@ ExpInitializeExecutive(IN ULONG Cpu,
         /* Setup headless terminal settings */
         HeadlessInit(LoaderBlock);
     }
+
+    KiVBoxPrint("ExpInitializeExecutive 15\n");
 
     /* Set system ranges */
 #ifdef _M_AMD64
@@ -1125,9 +1155,11 @@ ExpInitializeExecutive(IN ULONG Cpu,
     /* Make a copy of the NLS Tables */
     ExpInitNls(LoaderBlock);
 
+    KiVBoxPrint("ExpInitializeExecutive 16\n");
+
     /* Get the kernel's load entry */
     NtosEntry = CONTAINING_RECORD(LoaderBlock->LoadOrderListHead.Flink,
-                                  LDR_DATA_TABLE_ENTRY,
+                                  KLDR_DATA_TABLE_ENTRY,
                                   InLoadOrderLinks);
 
     /* Check if this is a service pack */
@@ -1198,6 +1230,8 @@ ExpInitializeExecutive(IN ULONG Cpu,
         CmCSDVersionString.MaximumLength = sizeof(Buffer) - (USHORT)Remaining;
     }
 
+    KiVBoxPrint("ExpInitializeExecutive 17\n");
+
     /* Check if we have an RC number */
     if ((CmNtCSDVersion & 0xFFFF0000) && (CmNtCSDReleaseType == 1))
     {
@@ -1236,6 +1270,8 @@ ExpInitializeExecutive(IN ULONG Cpu,
         }
     }
 
+    KiVBoxPrint("ExpInitializeExecutive 18\n");
+
     /* Now setup the final string */
     RtlInitAnsiString(&CSDString, Buffer);
     Status = RtlAnsiStringToUnicodeString(&CmCSDVersionString,
@@ -1259,6 +1295,8 @@ ExpInitializeExecutive(IN ULONG Cpu,
         KeBugCheckEx(PHASE0_INITIALIZATION_FAILED, Status, 0, 0, 0);
     }
 
+    KiVBoxPrint("ExpInitializeExecutive 19\n");
+
     /* Build the final version string */
     RtlCreateUnicodeStringFromAsciiz(&CmVersionString, VersionBuffer);
 
@@ -1278,8 +1316,12 @@ ExpInitializeExecutive(IN ULONG Cpu,
                 "FLG_ENABLE_EXCEPTION_LOGGING flag ignored.\n");
     }
 
+    KiVBoxPrint("ExpInitializeExecutive 20\n");
+
     /* Initialize the Handle Table */
     ExpInitializeHandleTables();
+
+    KiVBoxPrint("ExpInitializeExecutive 21\n");
 
 #if DBG
     /* On checked builds, allocate the system call count table */
@@ -1300,20 +1342,32 @@ ExpInitializeExecutive(IN ULONG Cpu,
     }
 #endif
 
+    KiVBoxPrint("ExpInitializeExecutive 22\n");
+
     /* Create the Basic Object Manager Types to allow new Object Types */
     if (!ObInitSystem()) KeBugCheck(OBJECT_INITIALIZATION_FAILED);
+
+    KiVBoxPrint("ExpInitializeExecutive 23\n");
 
     /* Load basic Security for other Managers */
     if (!SeInitSystem()) KeBugCheck(SECURITY_INITIALIZATION_FAILED);
 
+    KiVBoxPrint("ExpInitializeExecutive 24\n");
+
     /* Initialize the Process Manager */
     if (!PsInitSystem(LoaderBlock)) KeBugCheck(PROCESS_INITIALIZATION_FAILED);
+
+    KiVBoxPrint("ExpInitializeExecutive 25\n");
 
     /* Initialize the PnP Manager */
     if (!PpInitSystem()) KeBugCheck(PP0_INITIALIZATION_FAILED);
 
+    KiVBoxPrint("ExpInitializeExecutive 26\n");
+
     /* Initialize the User-Mode Debugging Subsystem */
     DbgkInitialize();
+
+    KiVBoxPrint("ExpInitializeExecutive 27\n");
 
     /* Calculate the tick count multiplier */
     ExpTickCountMultiplier = ExComputeTickCountMultiplier(KeMaximumIncrement);
@@ -1326,6 +1380,8 @@ ExpInitializeExecutive(IN ULONG Cpu,
     /* Set the machine type */
     SharedUserData->ImageNumberLow = IMAGE_FILE_MACHINE_NATIVE;
     SharedUserData->ImageNumberHigh = IMAGE_FILE_MACHINE_NATIVE;
+
+    KiVBoxPrint("ExpInitializeExecutive EXIT\n");
 }
 
 VOID
@@ -1342,7 +1398,7 @@ Phase1InitializationDiscard(IN PVOID Context)
     TIME_FIELDS TimeFields;
     LARGE_INTEGER SystemBootTime, UniversalBootTime, OldTime, Timeout;
     BOOLEAN SosEnabled, NoGuiBoot, ResetBias = FALSE, AlternateShell = FALSE;
-    PLDR_DATA_TABLE_ENTRY NtosEntry;
+    PKLDR_DATA_TABLE_ENTRY NtosEntry;
     PMESSAGE_RESOURCE_ENTRY MsgEntry;
     PCHAR CommandLine, Y2KHackRequired, SafeBoot, Environment;
     PCHAR StringBuffer, EndBuffer, BeginBuffer, MpString = "";
@@ -1416,7 +1472,7 @@ Phase1InitializationDiscard(IN PVOID Context)
 
     /* Get the kernel's load entry */
     NtosEntry = CONTAINING_RECORD(LoaderBlock->LoadOrderListHead.Flink,
-                                  LDR_DATA_TABLE_ENTRY,
+                                  KLDR_DATA_TABLE_ENTRY,
                                   InLoadOrderLinks);
 
     /* Find the banner message */

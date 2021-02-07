@@ -152,11 +152,6 @@ if(MSVC_IDE AND (NOT DEFINED USE_FOLDER_STRUCTURE))
     set(USE_FOLDER_STRUCTURE TRUE)
 endif()
 
-if(RUNTIME_CHECKS)
-    add_definitions(-D__RUNTIME_CHECKS__)
-    add_compile_options(/RTC1)
-endif()
-
 add_link_options(/MANIFEST:NO /INCREMENTAL:NO /SAFESEH:NO /NODEFAULTLIB /RELEASE ${_hotpatch_link_flag} /IGNORE:4039)
 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "")
@@ -194,7 +189,7 @@ else()
     else()
         set(CMAKE_ASM_COMPILE_OBJECT
             "cl ${cl_includes_flag} /nologo /X /I${REACTOS_SOURCE_DIR}/sdk/include/asm /I${REACTOS_BINARY_DIR}/sdk/include/asm <INCLUDES> <FLAGS> <DEFINES> /D__ASM__ /D_USE_ML /EP /c <SOURCE> > <OBJECT>.tmp"
-            "<CMAKE_ASM_COMPILER> /nologo /Cp /Fo<OBJECT> /c /Ta <OBJECT>.tmp")
+            "<CMAKE_ASM_COMPILER> /nologo <INCLUDES> /Cp /Fo<OBJECT> /c /Ta <OBJECT>.tmp")
     endif()
 endif()
 
@@ -258,7 +253,9 @@ function(set_module_type_toolchain MODULE TYPE)
         add_target_link_flags(${MODULE} "/DRIVER:WDM /SECTION:INIT,ERWD")
     endif()
 
-    if(RUNTIME_CHECKS)
+    if(RUNTIME_CHECKS AND (NOT CPP_USE_MSSTL))
+        add_compile_definitions(__RUNTIME_CHECKS__)
+        add_compile_options(/RTC1)
         target_link_libraries(${MODULE} runtmchk)
     endif()
 
@@ -534,14 +531,13 @@ function(add_linker_script _target _linker_script_file)
         # Generate at compile-time a linker response file and append it
         # to the linker command-line.
         add_custom_command(
-            # OUTPUT ${_generated_file}
-            TARGET ${_target} PRE_LINK # PRE_BUILD
+            OUTPUT ${_generated_file}
             COMMAND ${CMAKE_C_COMPILER} /nologo ${_no_std_includes_flag} /D__LINKER__ /EP /c "${_file_full_path}" > "${_generated_file}"
             DEPENDS ${_file_full_path}
             VERBATIM)
         set_source_files_properties(${_generated_file} PROPERTIES GENERATED TRUE)
-        # add_custom_target("${_target}_${_file_name}" ALL DEPENDS ${_generated_file})
-        # add_dependencies(${_target} "${_target}_${_file_name}")
+        add_custom_target("${_target}_${_file_name}" ALL DEPENDS ${_generated_file})
+        add_dependencies(${_target} "${_target}_${_file_name}")
         add_target_link_flags(${_target} "@${_generated_file}")
         add_target_property(${_target} LINK_DEPENDS ${_file_full_path})
     endif()
@@ -551,7 +547,7 @@ endfunction()
 # disable RTTI unless said so
 add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:$<IF:$<BOOL:$<TARGET_PROPERTY:WITH_CXX_RTTI>>,/GR,/GR->>")
 # disable exceptions unless said so
-add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:$<IF:$<BOOL:$<TARGET_PROPERTY:WITH_CXX_EXCEPTIONS>>,/EHsc,/EHs-c->>")
+add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:$<IF:$<BOOL:$<TARGET_PROPERTY:WITH_CXX_EXCEPTIONS>>,$<IF:$<BOOL:$<TARGET_PROPERTY:WITH_CXX_STRUCTURED_EXCEPTIONS>>,/EHa,/EHsc>,/EHs-c->>")
 
 # Create our interface libraries wrapping the needed library for this compiler
 add_library(cppstl INTERFACE)
@@ -560,3 +556,15 @@ target_link_libraries(cppstl INTERFACE cpprt stlport oldnames)
 set_target_properties(cppstl PROPERTIES INTERFACE_WITH_CXX_STL TRUE)
 # add_library(cpprt INTERFACE)
 # Our runtime library is already called cpprt
+
+function(aliasobj map_files)
+    string(REPLACE ";" " " map_files_args "${map_files}")
+    set(obj_file "${CMAKE_CURRENT_BINARY_DIR}/aliasobj_output.obj")
+
+    # Generate exports def and C stubs file for the DLL
+    add_custom_command(
+        OUTPUT ${obj_file}
+        COMMAND native-aliasobj ${obj_file} ${map_files_args}
+        DEPENDS ${map_files} native-aliasobj
+    )
+endfunction()

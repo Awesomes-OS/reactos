@@ -356,7 +356,7 @@ FindBitmapResource(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
     UNICODE_STRING UpString = RTL_CONSTANT_STRING(L"ntoskrnl.exe");
     UNICODE_STRING MpString = RTL_CONSTANT_STRING(L"ntkrnlmp.exe");
     PLIST_ENTRY NextEntry, ListHead;
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PKLDR_DATA_TABLE_ENTRY LdrEntry;
     PIMAGE_RESOURCE_DATA_ENTRY ResourceDataEntry;
     LDR_RESOURCE_INFO ResourceInfo;
     NTSTATUS Status;
@@ -369,7 +369,7 @@ FindBitmapResource(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
     {
         /* Get the entry */
         LdrEntry = CONTAINING_RECORD(NextEntry,
-                                     LDR_DATA_TABLE_ENTRY,
+                                     KLDR_DATA_TABLE_ENTRY,
                                      InLoadOrderLinks);
 
         /* Check for a match */

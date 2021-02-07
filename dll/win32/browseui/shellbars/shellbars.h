@@ -27,6 +27,8 @@ WINE_DEFAULT_DEBUG_CHANNEL(browseui);
 
 #include "../resource.h"
 
+#include <ndk/rtlfuncs2.h>
+
 #include "CBandSite.h"
 #include "CBandSiteMenu.h"
 #include "CISFBand.h"

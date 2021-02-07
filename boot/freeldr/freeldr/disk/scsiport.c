@@ -3,7 +3,7 @@
  * LICENSE:         GPL - See COPYING in the top level directory
  * FILE:            boot/freeldr/freeldr/disk/scsiport.c
  * PURPOSE:         Interface for SCSI Emulation
- * PROGRAMMERS:     Hervé Poussineau  <hpoussin@reactos.org>
+ * PROGRAMMERS:     Hervï¿½ Poussineau  <hpoussin@reactos.org>
  */
 
 /* INCLUDES *******************************************************************/
@@ -1622,7 +1622,7 @@ LoadBootDeviceDriver(VOID)
     LIST_ENTRY ModuleListHead;
     PIMAGE_IMPORT_DESCRIPTOR ImportTable;
     ULONG ImportTableSize;
-    PLDR_DATA_TABLE_ENTRY BootDdDTE, FreeldrDTE;
+    PKLDR_DATA_TABLE_ENTRY BootDdDTE, FreeldrDTE;
     CHAR NtBootDdPath[MAX_PATH];
     PVOID ImageBase = NULL;
     ULONG (NTAPI *EntryPoint)(IN PVOID DriverObject, IN PVOID RegistryPath);

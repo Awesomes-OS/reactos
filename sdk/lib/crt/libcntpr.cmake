@@ -1,66 +1,178 @@
 
 list(APPEND LIBCNTPR_SOURCE
+    float/chgsign.c
+    float/copysign.c
+    float/fpclass.c
     float/isnan.c
+    float/nafter.c
+    float/scalb.c
+
     math/abs.c
     math/div.c
+    math/frexp.c
     math/labs.c
     math/rand_nt.c
+
+    # mbstring/_setmbcp.c
+    mbstring/hanzen.c
+    mbstring/ischira.c
+    mbstring/iskana.c
+    mbstring/iskmoji.c
+    mbstring/iskpun.c
+    mbstring/islead.c
+    mbstring/islwr.c
+    mbstring/ismbal.c
+    mbstring/ismbaln.c
+    mbstring/ismbc.c
+    mbstring/ismbgra.c
+    mbstring/ismbkaln.c
+    # mbstring/ismblead.c
+    mbstring/ismbpri.c
+    mbstring/ismbpun.c
+    mbstring/ismbtrl.c
+    mbstring/isuppr.c
+    mbstring/jistojms.c
+    mbstring/jmstojis.c
+    mbstring/mbbtype.c
+    mbstring/mbccpy.c
+    # mbstring/mbclen.c
+    mbstring/mbscat.c
+    mbstring/mbschr.c
+    mbstring/mbscmp.c
+    mbstring/mbscoll.c
+    mbstring/mbscpy.c
+    mbstring/mbscspn.c
+    mbstring/mbsdec.c
+    mbstring/mbsdup.c
+    mbstring/mbsicmp.c
+    mbstring/mbsicoll.c
+    mbstring/mbsinc.c
+    mbstring/mbslen.c
+    mbstring/mbslwr.c
+    mbstring/mbsncat.c
+    mbstring/mbsnccnt.c
+    mbstring/mbsncmp.c
+    mbstring/mbsncoll.c
+    mbstring/mbsncpy.c
+    mbstring/mbsnextc.c
+    mbstring/mbsnicmp.c
+    mbstring/mbsnicoll.c
+    mbstring/mbsninc.c
+    mbstring/mbsnset.c
+    mbstring/mbspbrk.c
+    mbstring/mbsrchr.c
+    mbstring/mbsrev.c
+    mbstring/mbsset.c
+    mbstring/mbsspn.c
+    mbstring/mbsspnp.c
+    mbstring/mbsstr.c
+    mbstring/mbstok.c
     mbstring/mbstrlen.c
+    mbstring/mbsupr.c
+
     mem/memccpy.c
     mem/memcmp.c
     mem/memicmp.c
     misc/fltused.c
+
+    printf/_cprintf.c
+    printf/_cwprintf.c
+    printf/_scprintf.c
+    printf/_scwprintf.c
     printf/_snprintf.c
+    printf/_snprintf_s.c
     printf/_snwprintf.c
+    printf/_snwprintf_s.c
     printf/_vcprintf.c
+    printf/_vcwprintf.c
+    printf/_vscprintf.c
     printf/_vscwprintf.c
     printf/_vsnprintf.c
+    printf/_vsnprintf_s.c
     printf/_vsnwprintf.c
+    printf/_vsnwprintf_s.c
+    printf/_vsprintf_p.c
+    printf/fprintf_s.c
+    printf/fwprintf.c
+    printf/fwprintf_s.c
+    printf/printf.c
+    printf/printf_s.c
     printf/sprintf.c
+    printf/sprintf_s.c
     printf/streamout.c
     printf/swprintf.c
+    printf/swprintf_s.c
+    printf/vfprintf_s.c
+    printf/vfwprintf.c
+    printf/vfwprintf_s.c
     printf/vprintf.c
+    printf/vprintf_s.c
     printf/vsprintf.c
+    printf/vsprintf_s.c
+    printf/vsnprintf.c
+    printf/vsnprintf_s.c
     printf/vswprintf.c
+    printf/vswprintf_s.c
+    printf/vwprintf.c
+    printf/vwprintf_s.c
+    printf/wprintf.c
+    printf/wprintf_s.c
     printf/wstreamout.c
+
     search/bsearch.c
     search/lfind.c
     stdlib/qsort.c
+
+    string/_mbsnlen.c
+    string/_mbstrnlen.c
+    string/_splitpath_s.c
     string/_splitpath.c
+    string/_wcslwr_s.c
+    string/_wsplitpath_s.c
     string/_wsplitpath.c
-    string/ctype.c
-    string/iswctype.c
-    string/is_wctype.c
-    string/scanf.c
-    string/strcspn.c
-    string/stricmp.c
-    string/strnicmp.c
-    string/strlwr.c
-    string/strrev.c
-    string/strset.c
-    string/strstr.c
-    string/strupr.c
-    string/strpbrk.c
-    string/strspn.c
-    string/atoi64.c
+    string/atof.c
     string/atoi.c
+    string/atoi64.c
     string/atol.c
+    string/ctype.c
+    string/is_wctype.c
+    string/iswctype.c
     string/itoa.c
     string/itow.c
     string/mbstowcs_nt.c
+    string/mbstowcs_s.c
+    string/scanf.c
+    string/strcoll.c
+    string/strcspn.c
+    string/strdup.c
+    string/stricmp.c
+    string/string.c
+    string/strlwr.c
+    string/strncoll.c
+    string/strnicmp.c
+    string/strpbrk.c
+    string/strrev.c
+    string/strset.c
+    string/strspn.c
+    string/strstr.c
+    string/strtod.c
     string/strtoi64.c
+    string/strtok_s.c
     string/strtol.c
     string/strtoul.c
     string/strtoull.c
+    string/strupr.c
     string/wcs.c
     string/wcstol.c
     string/wcstombs_nt.c
+    string/wcstombs_s.c
     string/wcstoul.c
     string/wctype.c
-    string/wtoi64.c
-    string/wtoi.c
-    string/wtol.c
     string/winesup.c
+    string/wtof.c
+    string/wtoi.c
+    string/wtoi64.c
+    string/wtol.c
     wstring/wcsicmp.c
     wstring/wcslwr.c
     wstring/wcsnicmp.c

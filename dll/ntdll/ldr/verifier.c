@@ -8,12 +8,13 @@
 
 
 #include <ntdll.h>
+#include <ldrp.h>
+#include <reactos/ldrp.h>
 #include <reactos/verifier.h>
 
 #define NDEBUG
 #include <debug.h>
 
-extern PLDR_DATA_TABLE_ENTRY LdrpImageEntry;
 ULONG AVrfpVerifierFlags = 0;
 WCHAR AVrfpVerifierDllsString[256] = { 0 };
 ULONG AVrfpDebug = 0;
@@ -135,7 +136,7 @@ AVrfpSnapDllImports(IN PLDR_DATA_TABLE_ENTRY LdrEntry)
     ImportDescriptor = RtlImageDirectoryEntryToData(DllBase, TRUE, IMAGE_DIRECTORY_ENTRY_IMPORT, &Size);
     if (!ImportDescriptor)
     {
-        //SHIMENG_INFO("Skipping module 0x%p \"%wZ\" due to no iat found\n", LdrEntry->DllBase, &LdrEntry->BaseDllName);
+        //SHIMENG_INFO("Skipping module 0x" LDR_HEXPTR_FMT " \"%wZ\" due to no iat found\n", LdrEntry->DllBase, &LdrEntry->BaseDllName);
         return;
     }
 
@@ -198,7 +199,7 @@ AVrfpSnapDllImports(IN PLDR_DATA_TABLE_ENTRY LdrEntry)
                         }
                         FirstThunk->u1.Function = (SIZE_T)ThunkDescriptor->ThunkNewAddress;
                         if (AVrfpDebug & RTL_VRF_DBG_SHOWSNAPS)
-                            DbgPrint("AVRF: Snapped (%wZ: %s) with (%wZ: %p).\n",
+                            DbgPrint("AVRF: Snapped (%wZ: %s) with (%wZ: " LDR_HEXPTR_FMT ").\n",
                                         &LdrEntry->BaseDllName,
                                         ThunkDescriptor->ThunkName,
                                         &Provider->DllName,
@@ -267,7 +268,7 @@ AvrfpResolveThunks(IN PLDR_DATA_TABLE_ENTRY LdrEntry)
 
                     RtlInitAnsiString(&ThunkName, ThunkDescriptor->ThunkName);
                     /* We cannot call the public api, because that would run init routines! */
-                    if (NT_SUCCESS(LdrpGetProcedureAddress(LdrEntry->DllBase, &ThunkName, 0, &ThunkDescriptor->ThunkOldAddress, FALSE)))
+                    if (NT_SUCCESS(LdrpGetProcedureAddress(LdrEntry->DllBase, ThunkDescriptor->ThunkName, 0, &ThunkDescriptor->ThunkOldAddress)))
                     {
                         if (AVrfpDebug & RTL_VRF_DBG_SHOWFOUNDEXPORTS)
                             DbgPrint("AVRF: (%wZ) %Z export found.\n", &LdrEntry->BaseDllName, &ThunkName);
@@ -524,7 +525,7 @@ AVrfpLoadAndInitializeProvider(PVERIFIER_PROVIDER Provider)
         return STATUS_PROCEDURE_NOT_FOUND;
     }
 
-    _SEH2_TRY
+    __try
     {
         if (LdrpCallInitRoutine(Provider->EntryPoint,
                                 Provider->BaseAddress,
@@ -555,7 +556,7 @@ AVrfpLoadAndInitializeProvider(PVERIFIER_PROVIDER Provider)
             }
             else
             {
-                DbgPrint("AVRF: provider %wZ passed an invalid descriptor @ %p\n", &Provider->DllName, Descriptor);
+                DbgPrint("AVRF: provider %wZ passed an invalid descriptor @ " LDR_HEXPTR_FMT "\n", &Provider->DllName, Descriptor);
                 Status = STATUS_INVALID_PARAMETER_4;
             }
         }
@@ -565,18 +566,17 @@ AVrfpLoadAndInitializeProvider(PVERIFIER_PROVIDER Provider)
             Status = STATUS_DLL_INIT_FAILED;
         }
     }
-    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        Status = _SEH2_GetExceptionCode();
+        Status = GetExceptionCode();
     }
-    _SEH2_END;
 
     if (!NT_SUCCESS(Status))
         return Status;
 
 
     if (AVrfpDebug & RTL_VRF_DBG_LISTPROVIDERS)
-        DbgPrint("AVRF: initialized provider %wZ (descriptor @ %p)\n", &Provider->DllName, Descriptor);
+        DbgPrint("AVRF: initialized provider %wZ (descriptor @ " LDR_HEXPTR_FMT ")\n", &Provider->DllName, Descriptor);
 
     /* Done loading providers, allow dll notifications */
     AVrfpInitialized = TRUE;
@@ -585,7 +585,7 @@ AVrfpLoadAndInitializeProvider(PVERIFIER_PROVIDER Provider)
     AVrfpResnapInitialModules();
 
     /* Manually call with DLL_PROCESS_ATTACH, since the process is not done initializing */
-    _SEH2_TRY
+    __try
     {
         if (!LdrpCallInitRoutine(Provider->EntryPoint,
                                  Provider->BaseAddress,
@@ -597,11 +597,10 @@ AVrfpLoadAndInitializeProvider(PVERIFIER_PROVIDER Provider)
         }
 
     }
-    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    __except(EXCEPTION_EXECUTE_HANDLER)
     {
-        Status = _SEH2_GetExceptionCode();
+        Status = GetExceptionCode();
     }
-    _SEH2_END;
 
     return Status;
 }

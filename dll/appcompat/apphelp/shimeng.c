@@ -962,7 +962,7 @@ VOID SeiHookImports(PLDR_DATA_TABLE_ENTRY LdrEntry)
         return;
     }
 
-    if (LdrEntry->Flags & LDRP_COMPAT_DATABASE_PROCESSED)
+    if (LdrEntry->CompatDatabaseProcessed)
     {
         SHIMENG_INFO("Skipping module 0x%p \"%wZ\" because it was already processed\n", LdrEntry->DllBase, &LdrEntry->BaseDllName);
         return;
@@ -1051,7 +1051,7 @@ VOID SeiHookImports(PLDR_DATA_TABLE_ENTRY LdrEntry)
     }
 
     /* Mark this module as processed. */
-    LdrEntry->Flags |= LDRP_COMPAT_DATABASE_PROCESSED;
+    LdrEntry->CompatDatabaseProcessed = TRUE;
 }
 
 
@@ -1112,14 +1112,15 @@ VOID SeiSetEntryProcessed(PPEB Peb)
             RtlEqualUnicodeString(&LdrEntry->BaseDllName, &Verifier, TRUE) ||
             RtlEqualUnicodeString(&LdrEntry->BaseDllName, &g_LoadingShimDll, TRUE) ||
             SE_IsShimDll(LdrEntry->DllBase) ||
-            (LdrEntry->Flags & LDRP_ENTRY_PROCESSED))
+            LdrEntry->EntryProcessed)
         {
             SHIMENG_WARN("Don't mess with 0x%p '%wZ'\n", LdrEntry->DllBase, &LdrEntry->BaseDllName);
         }
         else
         {
             SHIMENG_WARN("Touching        0x%p '%wZ'\n", LdrEntry->DllBase, &LdrEntry->BaseDllName);
-            LdrEntry->Flags |= (LDRP_ENTRY_PROCESSED | LDRP_SHIMENG_SUPPRESSED_ENTRY);
+            LdrEntry->EntryProcessed = TRUE;
+            LdrEntry->ReactOSShimSuppress = TRUE;
         }
     }
 
@@ -1163,14 +1164,15 @@ VOID SeiResetEntryProcessed(PPEB Peb)
             RtlEqualUnicodeString(&LdrEntry->BaseDllName, &Ntdll, TRUE) ||
             RtlEqualUnicodeString(&LdrEntry->BaseDllName, &Kernel32, TRUE) ||
             RtlEqualUnicodeString(&LdrEntry->BaseDllName, &Verifier, TRUE) ||
-            !(LdrEntry->Flags & LDRP_SHIMENG_SUPPRESSED_ENTRY))
+            !LdrEntry->ReactOSShimSuppress)
         {
             SHIMENG_WARN("Don't mess with 0x%p '%wZ'\n", LdrEntry->DllBase, &LdrEntry->BaseDllName);
         }
         else
         {
             SHIMENG_WARN("Resetting       0x%p '%wZ'\n", LdrEntry->DllBase, &LdrEntry->BaseDllName);
-            LdrEntry->Flags &= ~(LDRP_ENTRY_PROCESSED | LDRP_SHIMENG_SUPPRESSED_ENTRY);
+            LdrEntry->EntryProcessed = FALSE;
+            LdrEntry->ReactOSShimSuppress = FALSE;
         }
     }
 }

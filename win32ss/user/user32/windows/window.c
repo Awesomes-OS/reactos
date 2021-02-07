@@ -1864,6 +1864,8 @@ int WINAPI
 InternalGetWindowText(HWND hWnd, LPWSTR lpString, int nMaxCount)
 {
     INT Ret = NtUserInternalGetWindowText(hWnd, lpString, nMaxCount);
+    if (!nMaxCount)
+        FIXME("InternalGetWindowText called with nMaxCount == 0");
     if (Ret == 0 && lpString)
         *lpString = L'\0';
     return Ret;

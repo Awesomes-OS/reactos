@@ -179,15 +179,26 @@ ULONG
 NTAPI
 MmGetSessionId(IN PEPROCESS Process)
 {
+#if 0
+    ULONG SessionId = MmGetSessionIdEx(Process);
+
+    if (SessionId == (ULONG)-1)
+        SessionId = 0;
+
+    return SessionId;
+#else
     PMM_SESSION_SPACE SessionGlobal;
 
     /* The session leader is always session zero */
-    if (Process->Vm.Flags.SessionLeader == 1) return 0;
+    if (Process->Vm.Flags.SessionLeader == 1)
+        return 0;
 
     /* Otherwise, get the session global, and read the session ID from it */
     SessionGlobal = (PMM_SESSION_SPACE)Process->Session;
-    if (!SessionGlobal) return 0;
+    if (!SessionGlobal)
+        return 0;
     return SessionGlobal->SessionId;
+#endif
 }
 
 ULONG
@@ -196,10 +207,16 @@ MmGetSessionIdEx(IN PEPROCESS Process)
 {
     PMM_SESSION_SPACE SessionGlobal;
 
+#if 0
+    if (Process->Vm.Flags.SessionLeader == 1)
+        return -1;
+#else
     /* The session leader is always session zero */
-    if (Process->Vm.Flags.SessionLeader == 1) return 0;
+    if (Process->Vm.Flags.SessionLeader == 1)
+        return 0;
+#endif
 
-    /* Otherwise, get the session global, and read the session ID from it */
+    /* Get the session global, and read the session ID from it */
     SessionGlobal = (PMM_SESSION_SPACE)Process->Session;
     if (!SessionGlobal) return -1;
     return SessionGlobal->SessionId;
@@ -344,9 +361,9 @@ MiDereferenceSession(VOID)
     ULONG ReferenceCount, SessionId;
 
     /* Sanity checks */
-    ASSERT(PsGetCurrentProcess()->ProcessInSession ||
+    ASSERT(PspTestProcessInSessionFlag(PsGetCurrentProcess()) ||
            ((MmSessionSpace->u.Flags.Initialized == 0) &&
-            (PsGetCurrentProcess()->Vm.Flags.SessionLeader == 1) &&
+         (PsGetCurrentProcess()->Vm.Flags.SessionLeader == 1) &&
             (MmSessionSpace->ReferenceCount == 1)));
 
     /* The session bit must be set */
@@ -388,7 +405,7 @@ MiDereferenceSession(VOID)
     }
 
     /* Reset the current process' session flag */
-    RtlInterlockedClearBits(&Process->Flags, PSF_PROCESS_IN_SESSION_BIT);
+    PspClearProcessInSessionFlagAssert(Process);
 }
 
 VOID
@@ -399,8 +416,7 @@ MiSessionRemoveProcess(VOID)
     KIRQL OldIrql;
 
     /* If the process isn't already in a session, or if it's the leader... */
-    if (!(CurrentProcess->Flags & PSF_PROCESS_IN_SESSION_BIT) ||
-        (CurrentProcess->Vm.Flags.SessionLeader))
+    if (!PspTestProcessInSessionFlag(CurrentProcess) || (CurrentProcess->Vm.Flags.SessionLeader))
     {
         /* Then there's nothing to do */
         return;
@@ -430,7 +446,7 @@ MiSessionAddProcess(IN PEPROCESS NewProcess)
     KIRQL OldIrql;
 
     /* The current process must already be in a session */
-    if (!(PsGetCurrentProcess()->Flags & PSF_PROCESS_IN_SESSION_BIT)) return;
+    if (!PspTestProcessInSessionFlag(PsGetCurrentProcess())) return;
 
     /* Sanity check */
     ASSERT(MmIsAddressValid(MmSessionSpace) == TRUE);
@@ -457,7 +473,7 @@ MiSessionAddProcess(IN PEPROCESS NewProcess)
     MiReleaseExpansionLock(OldIrql);
 
     /* Set the flag */
-    PspSetProcessFlag(NewProcess, PSF_PROCESS_IN_SESSION_BIT);
+    PspSetProcessInSessionFlagAssert(NewProcess);
 }
 
 NTSTATUS
@@ -603,7 +619,7 @@ NTAPI
 MiSessionCreateInternal(OUT PULONG SessionId)
 {
     PEPROCESS Process = PsGetCurrentProcess();
-    ULONG NewFlags, Flags, i, Color;
+    ULONG i, Color;
 #if (_MI_PAGING_LEVELS < 3)
     ULONG Size;
 #endif // (_MI_PAGING_LEVELS < 3)
@@ -624,29 +640,15 @@ MiSessionCreateInternal(OUT PULONG SessionId)
     ASSERT(MmIsAddressValid(MmSessionSpace) == FALSE);
 
     /* Loop so we can set the session-is-creating flag */
-    Flags = Process->Flags;
-    while (TRUE)
+    if (PspSetProcessSessionCreationUnderwayFlag(Process))
     {
-        /* Check if it's already set */
-        if (Flags & PSF_SESSION_CREATION_UNDERWAY_BIT)
-        {
-            /* Bail out */
-            DPRINT1("Lost session race\n");
-            return STATUS_ALREADY_COMMITTED;
-        }
-
-        /* Now try to set it */
-        NewFlags = InterlockedCompareExchange((PLONG)&Process->Flags,
-                                              Flags | PSF_SESSION_CREATION_UNDERWAY_BIT,
-                                              Flags);
-        if (NewFlags == Flags) break;
-
-        /* It changed, try again */
-        Flags = NewFlags;
+        /* Bail out */
+        DPRINT1("Lost session race\n");
+        return STATUS_ALREADY_COMMITTED;
     }
 
     /* Now we should own the flag */
-    ASSERT(Process->Flags & PSF_SESSION_CREATION_UNDERWAY_BIT);
+    ASSERT(PspTestProcessSessionCreationUnderwayFlag(Process));
 
 #if (_MI_PAGING_LEVELS < 3)
     /*
@@ -813,8 +815,7 @@ MiSessionCreateInternal(OUT PULONG SessionId)
     InitializeListHead(&SessionGlobal->ProcessList);
 
     /* We're done, clear the flag */
-    ASSERT(Process->Flags & PSF_SESSION_CREATION_UNDERWAY_BIT);
-    PspClearProcessFlag(Process, PSF_SESSION_CREATION_UNDERWAY_BIT);
+    PspClearProcessSessionCreationUnderwayFlagAssert(Process);
 
     /* Insert the process into the session  */
     ASSERT(Process->Session == NULL);
@@ -835,7 +836,7 @@ MmSessionCreate(OUT PULONG SessionId)
     NTSTATUS Status;
 
     /* Fail if the process is already in a session */
-    if (Process->Flags & PSF_PROCESS_IN_SESSION_BIT)
+    if (PspTestProcessInSessionFlag(Process))
     {
         DPRINT1("Process already in session\n");
         return STATUS_ALREADY_COMMITTED;
@@ -881,7 +882,7 @@ MmSessionCreate(OUT PULONG SessionId)
 
     /* Set and assert the flags, and return */
     MmSessionSpace->u.Flags.Initialized = 1;
-    PspSetProcessFlag(Process, PSF_PROCESS_IN_SESSION_BIT);
+    PspSetProcessInSessionFlagAssert(Process);
     ASSERT(MiSessionLeaderExists == 1);
     return Status;
 }
@@ -893,7 +894,7 @@ MmSessionDelete(IN ULONG SessionId)
     PEPROCESS Process = PsGetCurrentProcess();
 
     /* Process must be in a session */
-    if (!(Process->Flags & PSF_PROCESS_IN_SESSION_BIT))
+    if (!PspTestProcessInSessionFlag(Process))
     {
         DPRINT1("Not in a session!\n");
         return STATUS_UNABLE_TO_FREE_VM;

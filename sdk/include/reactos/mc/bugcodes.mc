@@ -1373,6 +1373,14 @@ The faulty driver currently on the kernel stack must be replaced
 with a working version.
 .
 
+MessageId=0xC7
+Severity=Success
+Facility=System
+SymbolicName=TIMER_OR_DPC_INVALID
+Language=English
+Kernel timer or Delayed Procedure Call is invalid.
+.
+
 MessageId=0xC8
 Severity=Success
 Facility=System
@@ -1708,6 +1716,14 @@ Facility=System
 SymbolicName=BUGCODE_USB_DRIVER
 Language=English
 A fatal error occurred in the USB driver stack.
+.
+
+MessageId=0x121
+Severity=Success
+Facility=System
+SymbolicName=DRIVER_VIOLATION
+Language=English
+A driver has caused a contract violation.
 .
 
 MessageId=0x139

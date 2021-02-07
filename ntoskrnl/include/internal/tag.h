@@ -81,6 +81,7 @@
 
 /* formerly located in io/irq.c */
 #define TAG_KINTERRUPT   'RSIK'
+#define TAG_KINTERRUPT_HOLDER   'HSIK'
 
 /* formerly located in io/mdl.c */
 #define TAG_MDL    ' LDM'
@@ -138,6 +139,7 @@
 /* formerly located in mm/section.c */
 #define TAG_MM_SECTION_SEGMENT   'SSMM'
 #define TAG_SECTION_PAGE_TABLE   'TPSM'
+#define TAG_MM_LDR_DATA_TABLE_ENTRY 'bDmM'
 
 /* formerly located in ob/symlink.c */
 #define TAG_OBJECT_TYPE         'TjbO'

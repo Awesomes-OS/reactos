@@ -1,8 +1,3 @@
-
-add_subdirectory(nt_0600)
-
-spec2def(ntdll.dll def/ntdll.spec ADD_IMPORTLIB)
-
 # Embed RTC libs
 if (STACK_PROTECTOR)
     target_sources(libntdll PRIVATE $<TARGET_OBJECTS:gcc_ssp_nt>)
@@ -11,7 +6,19 @@ endif()
 add_definitions(
     -D__NTDLL__
     -D_NTOSKRNL_
-    -DCRTDLL)
+    -D_NTSYSTEM_
+    -D_NTDLLBUILD_
+    -DCRTDLL
+)
+
+if(DBG)
+    add_definitions(-D_DEBUG)
+endif()
+
+add_subdirectory(ldr)
+
+spec2def(ntdll.dll def/ntdll.spec ADD_IMPORTLIB)
+aliasobj(${CMAKE_CURRENT_LIST_DIR}/def/ntdll-uvcrt.txt)
 
 include_directories(
     BEFORE include
@@ -22,15 +29,15 @@ list(APPEND SOURCE
     csr/capture.c
     csr/connect.c
     dbg/dbgui.c
-    ldr/ldrapi.c
-    ldr/ldrinit.c
-    ldr/ldrpe.c
-    ldr/ldrutils.c
-    ldr/verifier.c
+    etw/eventlog.c
+    etw/trace.c
     rtl/libsupp.c
+    rtl/process.c
+    rtl/thread.c
     rtl/uilist.c
     rtl/version.c
-    etw/trace.c)
+    threadpool/threadpool.c
+)
 
 if(ARCH STREQUAL "i386")
     list(APPEND ASM_SOURCE dispatch/i386/dispatch.S)
@@ -52,6 +59,7 @@ add_library(ntdll MODULE
     ${ntdll_asm}
     ${PCH_SKIP_SOURCE}
     def/ntdll.rc
+    ${CMAKE_CURRENT_BINARY_DIR}/aliasobj_output.obj
     ${CMAKE_CURRENT_BINARY_DIR}/ntdll.def)
 
 set_module_type(ntdll win32dll ENTRYPOINT 0)
@@ -64,12 +72,14 @@ if(MSVC)
     add_target_link_flags(ntdll "/RELEASE")
 endif()
 
-target_link_libraries(ntdll rtl ntdllsys libcntpr uuid ${PSEH_LIB})
-
 if (STACK_PROTECTOR)
     target_sources(ntdll PRIVATE $<TARGET_OBJECTS:gcc_ssp_nt>)
 endif()
 
+# target_link_libraries(ntdll ntdll_ldr rtl ntdllsys libcntpr uuid ${PSEH_LIB})
+# target_link_libraries(ntdll ntdll_ldr stl-static-ehsc rtl ntdllsys libuvcrt::libuvcrt uuid legacy_stdio_definitions.lib legacy_stdio_wide_specifiers.lib)
+# target_link_libraries(ntdll ntdll_ldr libcxx_static libcrtex rtl ntdllsys libcntpr uuid ${PSEH_LIB})
+target_link_libraries(ntdll ntdll_ldr stl-static-ehsc libcrtex rtl ntdllsys libcntpr uuid ${PSEH_LIB})
 add_pch(ntdll include/ntdll.h "${PCH_SKIP_SOURCE}")
 add_dependencies(ntdll ntstatus asm)
 add_cd_file(TARGET ntdll DESTINATION reactos/system32 NO_CAB FOR all)

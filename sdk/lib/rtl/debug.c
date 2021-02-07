@@ -47,6 +47,83 @@ DebugPrompt(IN PSTRING Output,
 
 /* FUNCTIONS ****************************************************************/
 
+/*
+ * Private fork
+ */
+void
+NTAPI
+DbgOutput(PCCH String)
+{
+    NTSTATUS Status;
+    STRING DebugString;
+    CHAR Buffer[512];
+
+    /* For user mode, don't recursively DbgPrint */
+    if (RtlpSetInDbgPrint()) return;
+
+    /* Guard against incorrect pointers */
+    _SEH2_TRY
+    {
+        /* Do the strncpy */
+        strncpy(Buffer, String, sizeof Buffer);
+    }
+    _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+    {
+        /* In user-mode, clear the InDbgPrint Flag */
+        RtlpClearInDbgPrint();
+        /* Fail */
+        _SEH2_YIELD(return);
+    }
+    _SEH2_END;
+
+    /* Build the string */
+    if (!NT_SUCCESS(RtlUIntPtrToUShort(strlen(Buffer), &DebugString.Length)))
+    {
+        /* In user-mode, clear the InDbgPrint Flag */
+        RtlpClearInDbgPrint();
+        return;
+    }
+
+    DebugString.Buffer = Buffer;
+
+    /* First, let the debugger know as well */
+    if (RtlpCheckForActiveDebugger())
+    {
+        EXCEPTION_RECORD ExceptionRecord;
+
+        /* Fill out an exception record */
+        ExceptionRecord.ExceptionCode = DBG_PRINTEXCEPTION_C;
+        ExceptionRecord.ExceptionRecord = NULL;
+        ExceptionRecord.NumberParameters = 2;
+        ExceptionRecord.ExceptionFlags = 0;
+        ExceptionRecord.ExceptionInformation[0] = DebugString.Length + 1;
+        ExceptionRecord.ExceptionInformation[1] = (ULONG_PTR)DebugString.Buffer;
+
+        /* Raise the exception */
+        RtlRaiseException(&ExceptionRecord);
+
+        /* In user-mode, clear the InDbgPrint Flag */
+        RtlpClearInDbgPrint();
+        return;
+    }
+
+    /* Call the Debug Print routine */
+    Status = DebugPrint(&DebugString, -1, DPFLTR_ERROR_LEVEL);
+
+    /* Check if this was with Control-C */
+    {
+        /* Check if we got a breakpoint */
+        if (Status == STATUS_BREAKPOINT)
+        {
+            /* Breakpoint */
+            DbgBreakPointWithStatus(DBG_STATUS_CONTROL_C);
+        }
+    }
+
+    /* In user-mode, clear the InDbgPrint Flag */
+    RtlpClearInDbgPrint();
+}
+
 ULONG
 NTAPI
 vDbgPrintExWithPrefixInternal(IN PCCH Prefix,
@@ -421,4 +498,11 @@ RtlGetFrame(VOID)
 {
     /* Return the frame that's currently active */
     return NtCurrentTeb()->ActiveFrame;
+}
+
+BOOLEAN
+NTAPI
+RtlIsAnyDebuggerPresent(void)
+{
+    return NtCurrentPeb()->BeingDebugged || SharedUserData->KdDebuggerEnabled;
 }

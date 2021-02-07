@@ -150,18 +150,6 @@ MmLocateMemoryAreaByRegion(
     return MemoryArea;
 }
 
-VOID
-NTAPI
-MiInsertVad(IN PMMVAD Vad,
-            IN PMM_AVL_TABLE VadRoot);
-
-ULONG
-NTAPI
-MiMakeProtectionMask(
-    IN ULONG Protect
-);
-
-
 static VOID
 MmInsertMemoryArea(
     PMMSUPPORT AddressSpace,
@@ -538,7 +526,7 @@ MiRosCleanupMemoryArea(
     /* We must be called from MmCleanupAddressSpace and nowhere else!
        Make sure things are as expected... */
     ASSERT(Process == PsGetCurrentProcess());
-    ASSERT(Process->VmDeleted == TRUE);
+    ASSERT(PspTestProcessVmDeletedFlag(Process));
     ASSERT(((PsGetCurrentThread()->ThreadsProcess == Process) &&
             (Process->ActiveThreads == 1)) ||
            (Process->ActiveThreads == 0));
@@ -548,7 +536,7 @@ MiRosCleanupMemoryArea(
 
     if (MemoryArea->Type == MEMORY_AREA_SECTION_VIEW)
     {
-        Status = MiRosUnmapViewOfSection(Process, BaseAddress, Process->ProcessExiting);
+        Status = MiRosUnmapViewOfSection(Process, BaseAddress, PspTestProcessExitingFlag(Process));
     }
 #ifdef NEWCC
     else if (MemoryArea->Type == MEMORY_AREA_CACHE)

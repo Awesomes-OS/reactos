@@ -118,6 +118,7 @@ KiExitTrapDebugChecks(IN PKTRAP_FRAME TrapFrame,
         DbgPrint("Exiting with an invalid trap frame? (No MAGIC in trap frame)\n");
         KiDumpTrapFrame(TrapFrame);
         __debugbreak();
+        TrapFrame->DbgArgMark = 0xBADB0D00;
     }
 
     /* Make sure we're not in user-mode or something */
@@ -242,6 +243,7 @@ VOID
 );
 
 extern PFAST_SYSTEM_CALL_EXIT KiFastCallExitHandler;
+extern ULONG_PTR KeI386FastSystemCallReturn;
 
 //
 // Save user mode debug registers and restore kernel values

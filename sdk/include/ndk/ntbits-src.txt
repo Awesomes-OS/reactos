@@ -1,0 +1,12 @@
+namespace Psp
+{
+
+struct PEB Peb
+{
+    enum Cross_Process CPF CrossProcessFlags
+    {
+        Process Initializing
+    }
+}
+
+}

@@ -97,7 +97,7 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
         /* Check if the priority is low enough to qualify for boosting */
         if ((Thread->Priority <= Thread->AdjustIncrement) &&
             (Thread->Priority < (LOW_REALTIME_PRIORITY - 3)) &&
-            !(Thread->DisableBoost))
+            !KiTestThreadDisableBoostFlag(Thread))
         {
             /* Calculate the new priority based on the adjust increment */
             OldPriority = min(Thread->AdjustIncrement + 1,
@@ -164,7 +164,7 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
             }
 
             /* Now check if we have no decrement and boosts are enabled */
-            if (!(Thread->PriorityDecrement) && !(Thread->DisableBoost))
+            if (!(Thread->PriorityDecrement) && !KiTestThreadDisableBoostFlag(Thread))
             {
                 /* Make sure we have an increment */
                 ASSERT(Thread->AdjustIncrement >= 0);
@@ -268,7 +268,9 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
 
             /* Set it in deferred ready mode */
             NextThread->State = DeferredReady;
+#if (NTDDI_VERSION < NTDDI_WINBLUE)
             NextThread->DeferredProcessor = Prcb->Number;
+#endif
             KiReleasePrcbLock(Prcb);
             KiDeferredReadyThread(NextThread);
             return;
@@ -302,6 +304,9 @@ KiDeferredReadyThread(IN PKTHREAD Thread)
 
     /* Sanity check */
     ASSERT((OldPriority >= 0) && (OldPriority <= HIGH_PRIORITY));
+#if 0
+    ASSERT(Thread != Prcb->IdleThread);
+#endif
 
     /* Set this thread as ready */
     Thread->State = Ready;
@@ -375,6 +380,7 @@ KiSwapThread(IN PKTHREAD CurrentThread,
     }
     else
     {
+        // todo (andrew.boyarshin): KiSearchForNewThread with IDLE summary
         /* Try to find a ready thread */
         NextThread = KiSelectReadyThread(0, Prcb);
         if (NextThread)
@@ -461,7 +467,6 @@ NTAPI
 KiAdjustQuantumThread(IN PKTHREAD Thread)
 {
     PKPRCB Prcb = KeGetCurrentPrcb();
-    PKTHREAD NextThread;
 
     /* Acquire thread and PRCB lock */
     KiAcquireThreadLock(Thread);
@@ -483,6 +488,8 @@ KiAdjustQuantumThread(IN PKTHREAD Thread)
             /* Check if there's no next thread scheduled */
             if (!Prcb->NextThread)
             {
+                PKTHREAD NextThread;
+
                 /* Select a ready thread and check if we found one */
                 NextThread = KiSelectReadyThread(Thread->Priority, Prcb);
                 if (NextThread)
@@ -503,6 +510,7 @@ KiAdjustQuantumThread(IN PKTHREAD Thread)
     /* Release locks */
     KiReleasePrcbLock(Prcb);
     KiReleaseThreadLock(Thread);
+
     KiExitDispatcher(Thread->WaitIrql);
 }
 
@@ -816,3 +824,13 @@ NtYieldExecution(VOID)
     KeLowerIrql(OldIrql);
     return Status;
 }
+
+VOID
+NTAPI
+KiUpdateThreadPriority(IN PKPRCB Prcb, IN PKTHREAD Thread, IN SCHAR Priority)
+{
+    UNREFERENCED_PARAMETER(Prcb);
+
+    Thread->Priority = Priority;
+}
+

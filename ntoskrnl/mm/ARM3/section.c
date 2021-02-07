@@ -841,7 +841,7 @@ MiUnmapViewOfSection(IN PEPROCESS Process,
     if ((MemoryArea) && (MemoryArea->Type != MEMORY_AREA_OWNED_BY_ARM3))
     {
         /* Call Mm API */
-        NTSTATUS Status = MiRosUnmapViewOfSection(Process, BaseAddress, Process->ProcessExiting);
+        NTSTATUS Status = MiRosUnmapViewOfSection(Process, BaseAddress, PspTestProcessExitingFlag(Process));
         if (!Flags) MmUnlockAddressSpace(&Process->Vm);
         return Status;
     }
@@ -855,7 +855,7 @@ MiUnmapViewOfSection(IN PEPROCESS Process,
     }
 
     /* Check if the process is already dead */
-    if (Process->VmDeleted)
+    if (PspTestProcessVmDeletedFlag(Process))
     {
         /* Fail the call */
         DPRINT1("Process died!\n");
@@ -1191,7 +1191,7 @@ MiLoadUserSymbols(IN PCONTROL_AREA ControlArea,
     PLIST_ENTRY NextEntry;
     PUNICODE_STRING FileName;
     PIMAGE_NT_HEADERS NtHeaders;
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PKLDR_DATA_TABLE_ENTRY LdrEntry;
 
     FileName = &ControlArea->FilePointer->FileName;
     if (FileName->Length == 0)
@@ -1210,12 +1210,13 @@ MiLoadUserSymbols(IN PCONTROL_AREA ControlArea,
     {
         /* Get the entry */
         LdrEntry = CONTAINING_RECORD(NextEntry,
-                                     LDR_DATA_TABLE_ENTRY,
+                                     KLDR_DATA_TABLE_ENTRY,
                                      InLoadOrderLinks);
 
         /* If already in the list, increase load count */
         if (LdrEntry->DllBase == BaseAddress)
         {
+            // todo: andrew.boyarshin: assert non-NULL
             ++LdrEntry->LoadCount;
             break;
         }
@@ -1224,11 +1225,12 @@ MiLoadUserSymbols(IN PCONTROL_AREA ControlArea,
     /* Not in the list, we'll add it */
     if (NextEntry == &MmLoadedUserImageList)
     {
+        const SIZE_T NumberOfBytes = FileName->Length + sizeof(UNICODE_NULL) + sizeof(KLDR_DATA_TABLE_ENTRY);
         /* Allocate our element, taking to the name string and its null char */
-        LdrEntry = ExAllocatePoolWithTag(NonPagedPool, FileName->Length + sizeof(UNICODE_NULL) + sizeof(*LdrEntry), 'bDmM');
+        LdrEntry = ExAllocatePoolWithTag(NonPagedPool, NumberOfBytes, TAG_MM_LDR_DATA_TABLE_ENTRY);
         if (LdrEntry)
         {
-            memset(LdrEntry, 0, FileName->Length + sizeof(UNICODE_NULL) + sizeof(*LdrEntry));
+            memset(LdrEntry, 0, NumberOfBytes);
 
             _SEH2_TRY
             {
@@ -1237,12 +1239,12 @@ MiLoadUserSymbols(IN PCONTROL_AREA ControlArea,
                 if (NtHeaders)
                 {
                     LdrEntry->SizeOfImage = NtHeaders->OptionalHeader.SizeOfImage;
-                    LdrEntry->CheckSum = NtHeaders->OptionalHeader.CheckSum;
+                    //LdrEntry->CheckSum = NtHeaders->OptionalHeader.CheckSum;
                 }
             }
             _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
             {
-                ExFreePoolWithTag(LdrEntry, 'bDmM');
+                ExFreePoolWithTag(LdrEntry, TAG_MM_LDR_DATA_TABLE_ENTRY);
                 ExReleaseResourceLite(&PsLoadedModuleResource);
                 KeLeaveCriticalRegion();
                 _SEH2_YIELD(return);
@@ -3054,7 +3056,7 @@ MmMapViewInSessionSpace(IN PVOID Section,
     }
 
     /* Process must be in a session */
-    if (PsGetCurrentProcess()->ProcessInSession == FALSE)
+    if (!PspTestProcessInSessionFlag(PsGetCurrentProcess()))
     {
         DPRINT1("Process is not in session\n");
         return STATUS_NOT_MAPPED_VIEW;
@@ -3086,7 +3088,7 @@ MmUnmapViewInSessionSpace(IN PVOID MappedBase)
     }
 
     /* Process must be in a session */
-    if (PsGetCurrentProcess()->ProcessInSession == FALSE)
+    if (!PspTestProcessInSessionFlag(PsGetCurrentProcess()))
     {
         DPRINT1("Proess is not in session\n");
         return STATUS_NOT_MAPPED_VIEW;
@@ -3172,7 +3174,7 @@ MmCommitSessionMappedView(IN PVOID MappedBase,
     ASSERT(ViewSize != 0);
 
     /* Process must be in a session */
-    if (PsGetCurrentProcess()->ProcessInSession == FALSE)
+    if (!PspTestProcessInSessionFlag(PsGetCurrentProcess()))
     {
         DPRINT1("Process is not in session\n");
         return STATUS_NOT_MAPPED_VIEW;
@@ -3646,7 +3648,7 @@ NtMapViewOfSection(IN HANDLE SectionHandle,
     /* Allow only valid allocation types */
     if (AllocationType & ~ValidAllocationType)
     {
-        DPRINT1("Invalid allocation type\n");
+        DPRINT1("Invalid allocation type: 0x%lX\n", (AllocationType & ~ValidAllocationType));
         return STATUS_INVALID_PARAMETER_9;
     }
 

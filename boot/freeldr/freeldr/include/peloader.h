@@ -30,16 +30,16 @@ PeLdrAllocateDataTableEntry(
     IN PCCH BaseDllName,
     IN PCCH FullDllName,
     IN PVOID BasePA,
-    OUT PLDR_DATA_TABLE_ENTRY *NewEntry);
+    OUT PKLDR_DATA_TABLE_ENTRY *NewEntry);
 
 BOOLEAN
 PeLdrScanImportDescriptorTable(
     IN OUT PLIST_ENTRY ModuleListHead,
     IN PCCH DirectoryPath,
-    IN PLDR_DATA_TABLE_ENTRY ScanDTE);
+    IN PKLDR_DATA_TABLE_ENTRY ScanDTE);
 
 BOOLEAN
 PeLdrCheckForLoadedDll(
     IN OUT PLIST_ENTRY ModuleListHead,
     IN PCH DllName,
-    OUT PLDR_DATA_TABLE_ENTRY *LoadedEntry);
+    OUT PKLDR_DATA_TABLE_ENTRY *LoadedEntry);

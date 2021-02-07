@@ -294,3 +294,7 @@ NtWaitForKeyedEvent 4
 NtQueryPortInformationProcess 0
 NtGetCurrentProcessorNumber 0
 NtWaitForMultipleObjects32 5
+NtQueueApcThreadEx 6
+NtGetNextProcess 5
+NtGetNextThread 6
+NtGetCurrentProcessorNumberEx 1

@@ -59,8 +59,15 @@ add_library(advapi32 MODULE
     ${CMAKE_CURRENT_BINARY_DIR}/advapi32.def)
 
 set_module_type(advapi32 win32dll UNICODE ENTRYPOINT DllMain 12)
+
+if (NOT NTDLL_WORK)
 target_link_libraries(advapi32 cryptlib wine ${PSEH_LIB})
 add_delay_importlibs(advapi32 secur32)
 add_importlibs(advapi32 advapi32_vista rpcrt4 kernel32 ntdll)
+else()
+target_link_libraries(advapi32 cryptlib wine ${PSEH_LIB})
+add_importlibs(advapi32 advapi32_vista kernel32 ntdll)
+endif()
+
 add_pch(advapi32 advapi32.h "${PCH_SKIP_SOURCE}")
 add_cd_file(TARGET advapi32 DESTINATION reactos/system32 FOR all)

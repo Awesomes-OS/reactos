@@ -14,6 +14,8 @@
 
 #define MODULE_INVOLVED_IN_ARM3
 #include "miarm.h"
+
+#include <reactos/ldrp.h>
 #undef MmSystemRangeStart
 
 /* GLOBALS ********************************************************************/
@@ -2040,6 +2042,31 @@ MiDbgDumpMemoryDescriptors(VOID)
     DPRINT1("Total: %08lX (%lu MB)\n", (ULONG)TotalPages, (ULONG)(TotalPages * PAGE_SIZE) / 1024 / 1024);
 }
 
+PVOID
+NTAPI
+LdrpSysLdrHeapAlloc(
+    IN ULONG Flags OPTIONAL,
+    IN SIZE_T Size)
+{
+    PVOID ptr = ExAllocatePoolWithTag(NonPagedPool, Size, TAG_MODULE_OBJECT);
+    if (ptr && (Flags & HEAP_ZERO_MEMORY))
+    {
+        RtlZeroMemory(ptr, Size);
+    }
+
+    return ptr;
+}
+
+BOOLEAN
+NTAPI
+LdrpSysLdrHeapFree(
+    IN ULONG Flags OPTIONAL,
+    IN PVOID BaseAddress)
+{
+    ExFreePoolWithTag(BaseAddress, TAG_MODULE_OBJECT);
+    return TRUE;
+}
+
 CODE_SEG("INIT")
 BOOLEAN
 NTAPI
@@ -2056,6 +2083,9 @@ MmArmInitSystem(IN ULONG Phase,
     PMMPTE PointerPte, TestPte;
     MMPTE TempPte;
 #endif
+
+    LdrpHeapAllocProc = &LdrpSysLdrHeapAlloc;
+    LdrpHeapFreeProc = &LdrpSysLdrHeapFree;
 
     /* Dump memory descriptors */
     if (MiDbgEnableMdDump) MiDbgDumpMemoryDescriptors();

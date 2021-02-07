@@ -58,18 +58,27 @@ DbgkpSuspendProcess(VOID)
 {
     PAGED_CODE();
 
-    /* Make sure this isn't a deleted process */
-    if (!PsGetCurrentProcess()->ProcessDelete)
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+    KeEnterCriticalRegion();
+
+    if (PsFreezeProcess(PsGetCurrentProcess(), FALSE))
     {
-        /* Freeze all the threads */
-        KeFreezeAllThreads();
         return TRUE;
     }
-    else
-    {
-        /* No suspend was done */
+
+    KeLeaveCriticalRegion();
+
+    return FALSE;
+#else
+    /* Make sure this isn't a deleted process */
+    if (PspTestProcessDeleteFlag(PsGetCurrentProcess()))
         return FALSE;
-    }
+
+    /* Freeze all the threads */
+    KeFreezeAllThreads();
+
+    return TRUE;
+#endif
 }
 
 VOID
@@ -78,8 +87,15 @@ DbgkpResumeProcess(VOID)
 {
     PAGED_CODE();
 
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+    /* Thaw all the threads */
+    PsThawProcess(PsGetCurrentProcess(), FALSE);
+
+    KeLeaveCriticalRegion();
+#else
     /* Thaw all the threads */
     KeThawAllThreads();
+#endif
 }
 
 VOID
@@ -88,7 +104,7 @@ DbgkCreateThread(IN PETHREAD Thread,
                  IN PVOID StartAddress)
 {
     PEPROCESS Process = PsGetCurrentProcess();
-    ULONG ProcessFlags;
+    BOOLEAN CreateReported, ProcessImageNotifyDone;
     IMAGE_INFO ImageInfo;
     PIMAGE_NT_HEADERS NtHeader;
     POBJECT_NAME_INFORMATION ModuleName;
@@ -108,12 +124,11 @@ DbgkCreateThread(IN PETHREAD Thread,
     ASSERT(Thread == PsGetCurrentThread());
 
     /* Try ORing in the create reported and image notify flags */
-    ProcessFlags = PspSetProcessFlag(Process,
-                                     PSF_CREATE_REPORTED_BIT |
-                                     PSF_IMAGE_NOTIFY_DONE_BIT);
+    CreateReported = PspSetProcessCreateReportedFlag(Process);
+    ProcessImageNotifyDone = PspSetProcessImageNotifyDoneFlag(Process);
 
     /* Check if we were the first to set them or if another thread raced us */
-    if (!(ProcessFlags & PSF_IMAGE_NOTIFY_DONE_BIT) && (PsImageNotifyEnabled))
+    if (!ProcessImageNotifyDone && (PsImageNotifyEnabled))
     {
         /* It hasn't.. set up the image info for the process */
         ImageInfo.Properties = 0;
@@ -178,7 +193,7 @@ DbgkCreateThread(IN PETHREAD Thread,
     if (!DebugPort) return;
 
     /* Check if create was not already reported */
-    if (!(ProcessFlags & PSF_CREATE_REPORTED_BIT))
+    if (!CreateReported)
     {
         /* Setup the information structure for the new thread */
         CreateProcess->InitialThread.SubSystemKey = 0;
@@ -309,10 +324,10 @@ DbgkExitProcess(IN NTSTATUS ExitStatus)
     PETHREAD Thread = PsGetCurrentThread();
     PAGED_CODE();
 
-    /* Check if this thread is hidden, doesn't have a debug port, or died */
-    if ((Thread->HideFromDebugger) ||
+    /* Check if this thread is hidden/initializing, doesn't have a debug port */
+    if (PspTestThreadHideFromDebuggerFlag(Thread) ||
         !(Process->DebugPort) ||
-        (Thread->DeadThread))
+        PspTestThreadDeadThreadFlag(Thread))
     {
         /* Don't notify the debugger */
         return;
@@ -346,10 +361,10 @@ DbgkExitThread(IN NTSTATUS ExitStatus)
     BOOLEAN Suspended;
     PAGED_CODE();
 
-    /* Check if this thread is hidden, doesn't have a debug port, or died */
-    if ((Thread->HideFromDebugger) ||
+    /* Check if this thread is hidden/initializing, doesn't have a debug port */
+    if (PspTestThreadHideFromDebuggerFlag(Thread) ||
         !(Process->DebugPort) ||
-        (Thread->DeadThread))
+        PspTestThreadDeadThreadFlag(Thread))
     {
         /* Don't notify the debugger */
         return;
@@ -393,7 +408,7 @@ DbgkMapViewOfSection(IN PVOID Section,
 
     /* Check if this thread is kernel, hidden or doesn't have a debug port */
     if ((ExGetPreviousMode() == KernelMode) ||
-        (Thread->HideFromDebugger) ||
+        PspTestThreadHideFromDebuggerFlag(Thread) ||
         !(Process->DebugPort))
     {
         /* Don't notify the debugger */
@@ -443,7 +458,7 @@ DbgkUnMapViewOfSection(IN PVOID BaseAddress)
 
     /* Check if this thread is kernel, hidden or doesn't have a debug port */
     if ((ExGetPreviousMode() == KernelMode) ||
-        (Thread->HideFromDebugger) ||
+        PspTestThreadHideFromDebuggerFlag(Thread) ||
         !(Process->DebugPort))
     {
         /* Don't notify the debugger */

@@ -167,8 +167,7 @@ BOOL
 WINAPI
 IsProcessorFeaturePresent(IN DWORD ProcessorFeature)
 {
-    if (ProcessorFeature >= PROCESSOR_FEATURE_MAX) return FALSE;
-    return ((BOOL)SharedUserData->ProcessorFeatures[ProcessorFeature]);
+    return RtlIsProcessorFeaturePresent(ProcessorFeature);
 }
 
 /*
@@ -294,8 +293,8 @@ GetNumaHighestNodeNumber(OUT PULONG HighestNodeNumber)
  */
 BOOL
 WINAPI
-GetNumaNodeProcessorMask(IN UCHAR Node,
-                         OUT PULONGLONG ProcessorMask)
+GetNumaNodeProcessorMaskEx(IN UCHAR Node,
+                           OUT PGROUP_AFFINITY GroupAffinity)
 {
     NTSTATUS Status;
     SYSTEM_NUMA_INFORMATION NumaInformation;
@@ -303,9 +302,9 @@ GetNumaNodeProcessorMask(IN UCHAR Node,
 
     /* Query NUMA information */
     Status = NtQuerySystemInformation(SystemNumaProcessorMap,
-                                      &NumaInformation,
-                                      sizeof(NumaInformation),
-                                      &Length);
+        &NumaInformation,
+        sizeof(NumaInformation),
+        &Length);
     if (!NT_SUCCESS(Status))
     {
         BaseSetLastNTError(Status);
@@ -320,7 +319,7 @@ GetNumaNodeProcessorMask(IN UCHAR Node,
     }
 
     /* Return mask for that node */
-    *ProcessorMask = NumaInformation.ActiveProcessorsAffinityMask[Node];
+    GroupAffinity->Mask = NumaInformation.ActiveProcessorsAffinityMask[Node];
     return TRUE;
 }
 
@@ -329,17 +328,42 @@ GetNumaNodeProcessorMask(IN UCHAR Node,
  */
 BOOL
 WINAPI
-GetNumaProcessorNode(IN UCHAR Processor,
-                     OUT PUCHAR NodeNumber)
+GetNumaNodeProcessorMask(IN UCHAR Node,
+                         OUT PULONGLONG ProcessorMask)
+{
+    GROUP_AFFINITY GroupAffinity = {0};
+    PROCESSOR_NUMBER Number = {0};
+
+    if (!GetNumaNodeProcessorMaskEx(Node, &GroupAffinity))
+    {
+        return FALSE;
+    }
+
+    RtlGetCurrentProcessorNumberEx(&Number);
+
+    *ProcessorMask = GroupAffinity.Group == Number.Group ? GroupAffinity.Mask : 0;
+
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+GetNumaProcessorNodeEx(IN PPROCESSOR_NUMBER Processor,
+                       OUT PUSHORT NodeNumber)
 {
     NTSTATUS Status;
-    SYSTEM_NUMA_INFORMATION NumaInformation;
+    SYSTEM_NUMA_INFORMATION NumaInformation = { 0 };
     ULONG Length;
-    ULONG Node;
-    ULONGLONG Proc;
+    ULONG Node = 0;
+    const ULONGLONG Proc = 1ULL << Processor->Number;
+    GROUP_AFFINITY Affinity = {0};
+    const PGROUP_AFFINITY AffinityArray = &Affinity;
 
-    /* Can't handle processor number >= 32 */
-    if (Processor >= MAXIMUM_PROCESSORS)
+    /* Verify given PROCESSOR_NUMBER */
+    if (Processor->Group >= MAX_PROC_GROUPS || Processor->Number >= MAXIMUM_PROC_PER_GROUP || Processor->Reserved)
     {
         *NodeNumber = -1;
         SetLastError(ERROR_INVALID_PARAMETER);
@@ -359,11 +383,10 @@ GetNumaProcessorNode(IN UCHAR Processor,
     }
 
     /* Find ourselves */
-    Node = 0;
-    Proc = 1ULL << Processor;
-    while ((Proc & NumaInformation.ActiveProcessorsAffinityMask[Node]) == 0ULL)
+    while (AffinityArray[Node].Group != Processor->Group || !(AffinityArray[Node].Mask & Proc))
     {
         ++Node;
+
         /* Out of options */
         if (Node > NumaInformation.HighestNodeNumber)
         {
@@ -376,6 +399,40 @@ GetNumaProcessorNode(IN UCHAR Processor,
     /* Return found node */
     *NodeNumber = Node;
     return TRUE;
+}
+
+/*
+ * @implemented
+ */
+BOOL
+WINAPI
+GetNumaProcessorNode(IN UCHAR Processor,
+                     OUT PUCHAR NodeNumber)
+{
+    BOOL Status = FALSE;
+    PROCESSOR_NUMBER ProcessorNumber = { 0 };
+
+    /* Can't handle processor number >= MAXIMUM_PROC_PER_GROUP */
+    if (Processor < MAXIMUM_PROC_PER_GROUP)
+    {
+        USHORT ResultNodeNumber;
+
+        RtlGetCurrentProcessorNumberEx(&ProcessorNumber);
+        ProcessorNumber.Number = Processor;
+
+        /* Query NUMA information */
+        Status = GetNumaProcessorNodeEx(&ProcessorNumber, &ResultNodeNumber);
+
+        /* Return found node */
+        *NodeNumber = ResultNodeNumber;
+    }
+    else
+    {
+        *NodeNumber = -1;
+        RtlSetLastWin32Error(ERROR_INVALID_PARAMETER);
+    }
+
+    return Status;
 }
 
 /*

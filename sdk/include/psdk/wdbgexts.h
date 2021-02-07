@@ -306,11 +306,20 @@ typedef struct _KDDEBUGGER_DATA64
     USHORT Gdt64R3CmTeb;
     GCC_ULONG64 IopNumTriageDumpDataBlocks;
     GCC_ULONG64 IopTriageDumpDataBlocks;
-#if 0 // Longhorn/Vista and later
+#if (NTDDI_VERSION >= NTDDI_LONGHORN) // Longhorn/Vista and later
     GCC_ULONG64 VfCrashDataBlock;
     GCC_ULONG64 MmBadPagesDetected;
     GCC_ULONG64 MmZeroedPageSingleBitErrorsDetected;
 #endif
+#if (NTDDI_VERSION >= NTDDI_WIN7) // Don't know the complete story
+    GCC_ULONG64 EtwpDebuggerData;
+    GCC_ULONG64 Unknown0;
+    GCC_ULONG64 Unknown1;
+    GCC_ULONG64 Unknown2;
+    GCC_ULONG64 Unknown3;
+    GCC_ULONG64 Unknown4;
+#endif
+    // Windows 8.1 cut
 } KDDEBUGGER_DATA64, *PKDDEBUGGER_DATA64;
 
 #endif

@@ -181,8 +181,8 @@ ProcessLoop:
                          (ULONG_PTR)WorkItem);
         }
 
-        /* Make sure it returned with Impersionation Disabled */
-        if (Thread->ActiveImpersonationInfo)
+        /* Make sure it returned with Impersonation Disabled */
+        if (PspTestThreadActiveImpersonationInfoFlag(Thread))
         {
             /* It didn't, bugcheck! */
             KeBugCheckEx(IMPERSONATING_WORKER_THREAD,

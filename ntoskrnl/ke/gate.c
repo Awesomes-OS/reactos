@@ -93,7 +93,7 @@ KeWaitForGate(IN PKGATE Gate,
             Thread->WaitMode = WaitMode;
             Thread->WaitReason = WaitReason;
             Thread->WaitIrql = ApcLock.OldIrql;
-            Thread->State = GateWait;
+            Thread->State = GateWaitObsolete;
             Thread->GateObject = Gate;
 
             /* Insert into the Wait List */

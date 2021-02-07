@@ -14,6 +14,8 @@
 /* System Headers */
 #include <ntifs.h>
 #include <ndk/obfuncs.h>
+#include <ndk/rtltypes.h>
+#include <ndk/rtlfuncs2.h>
 #include <pseh/pseh2.h>
 //#define UNIMPLEMENTED
 //#define DPRINT1 DbgPrint

@@ -1,0 +1,128 @@
+remove_definitions(/Dinline=__inline)
+add_definitions(
+    -D_NO_CRT_STDIO_INLINE
+    -DFMT_STATIC_THOUSANDS_SEPARATOR
+)
+
+add_compile_options(-std:c++latest -Zc:strictStrings- -Zc:preprocessor)
+
+include_directories(BEFORE ${REACTOS_SOURCE_DIR}/sdk/include/c++/stl)
+include_directories(BEFORE
+    ${CMAKE_CURRENT_LIST_DIR}/../include
+    ${REACTOS_SOURCE_DIR}/sdk/include/reactos/subsys
+    ${REACTOS_SOURCE_DIR}/sdk/include/vcruntime
+    ${REACTOS_SOURCE_DIR}/sdk/include/ucrt
+)
+
+list(APPEND SOURCE
+    fmt/chrono.h
+    fmt/color.h
+    fmt/compile.h
+    fmt/core.h
+    fmt/format.cpp
+    fmt/format.h
+    fmt/format-inl.h
+    fmt/locale.h
+    fmt/os.h
+    fmt/ostream.h
+    fmt/posix.h
+    fmt/printf.h
+    fmt/ranges.h
+    ldrapi.cpp
+    ldrcor.cpp
+    ldrfind.cpp
+    LdrGetDllHandleEx.cpp
+    LdrGetProcedureAddressForCaller.cpp
+    LdrImageDirectoryEntryToLoadConfig.cpp
+    ldrinit.cpp
+    ldrlock.cpp
+    ldrmap.cpp
+    LdrpAllocatePlaceHolder.cpp
+    LdrpApplyFileNameRedirection.cpp
+    LdrpBuildForwarderLink.cpp
+    LdrpCompleteMapModule.cpp
+    LdrpCondenseGraph.cpp
+    LdrpCreateDllSection.cpp
+    LdrpDecrementNodeLoadCount.cpp
+    LdrpDependencyExist.cpp
+    LdrpDereferenceModule.cpp
+    LdrpDestroyNode.cpp
+    LdrpDoPostSnapWork.cpp
+    LdrpDrainWorkQueue.cpp
+    LdrpFastpthReloadedDll.cpp
+    LdrpFindDllActivationContext.cpp
+    LdrpFindExistingModule.cpp
+    LdrpFindKnownDll.cpp
+    LdrpFindLoadedDll.cpp
+    LdrpFindLoadedDllByAddress.cpp
+    LdrpFindLoadedDllByHandle.cpp
+    LdrpFindLoadedDllByName.cpp
+    LdrpFindLoadedDllByMapping.cpp
+    LdrpFindLoadedDllByMappingFile.cpp
+    LdrpFindOrPrepareLoadingModule.cpp
+    LdrpFreeLoadContext.cpp
+    LdrpFreeLoadContextOfNode.cpp
+    LdrpFreeReplacedModule.cpp
+    LdrpGetDelayloadExportDll.cpp
+    LdrpGetFullPath.cpp
+    LdrpGetImportDescriptorForSnap.cpp
+    LdrpGetNtPathFromDosPath.cpp
+    LdrpGetProcedureAddress.cpp
+    LdrpGetShimEngineInterface.cpp
+    LdrpHandlePendingModuleReplaced.cpp
+    LdrpHandleReplacedModule.cpp
+    LdrpHandleTlsData.cpp
+    LdrpIncrementModuleLoadCount.cpp
+    LdrpInitializeGraphRecurse.cpp
+    LdrpInitializeNode.cpp
+    LdrpInsertDataTableEntry.cpp
+    LdrpIsExtensionPresent.cpp
+    LdrpLoadContextReplaceModule.cpp
+    LdrpLoadDependentModule.cpp
+    LdrpLoadDll.cpp
+    LdrpLoadDllInternal.cpp
+    LdrpLoadForwardedDll.cpp
+    LdrpLoadKnownDll.cpp
+    LdrpMapAndSnapDependency.cpp
+    LdrpMapDllFullPath.cpp
+    LdrpMapDllNtFileName.cpp
+    LdrpMapDllSearchPath.cpp
+    LdrpMapDllWithSectionHandle.cpp
+    LdrpMinimalMapModule.cpp
+    LdrpNameToOrdinal.cpp
+    LdrpNotifyLoadOfGraph.cpp
+    LdrpParseForwarderDescription.cpp
+    LdrpPinModule.cpp
+    LdrpPrepareImportAddressTableForSnap.cpp
+    LdrpPrepareModuleForExecution.cpp
+    LdrpPreprocessDllName.cpp
+    LdrpProcessMappedModule.cpp
+    LdrpProcessWork.cpp
+    LdrpProtectAndRelocateImage.cpp
+    LdrpQueueWork.cpp
+    LdrpRecordModuleDependency.cpp
+    LdrpRelocateImage.cpp
+    LdrpReportSnapError.cpp
+    LdrpResolveDllName.cpp
+    LdrpResolveForwarder.cpp
+    LdrpResolveProcedureAddress.cpp
+    LdrpRunInitializeRoutine.cpp
+    LdrpSearchPath.cpp
+    LdrpSetProtection.cpp
+    LdrpSignalModuleMapped.cpp
+    LdrpSnapModule.cpp
+    LdrpTrimTrailingDots.cpp
+    LdrpUnloadNode.cpp
+    LdrpUnmapModule.cpp
+    ldrshim.cpp
+    ldrsnap.cpp
+    ldrstring.cpp
+    ldrtls.cpp
+    ldrutils.cpp
+    tracing.cpp
+    tracing.hpp
+    verifier.c
+)
+
+add_library(ntdll_ldr OBJECT ${SOURCE})
+set_target_cpp_properties(ntdll_ldr WITH_STRUCTURED_EXCEPTIONS WITH_RTTI)

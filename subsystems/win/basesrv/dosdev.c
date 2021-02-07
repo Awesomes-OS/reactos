@@ -9,6 +9,7 @@
 /* INCLUDES *******************************************************************/
 
 #include "basesrv.h"
+#include <ndk/ldrfuncs.h>
 
 #define NDEBUG
 #include <debug.h>

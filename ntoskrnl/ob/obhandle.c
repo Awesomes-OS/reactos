@@ -805,8 +805,8 @@ ObpCloseHandleTableEntry(IN PHANDLE_TABLE HandleTable,
 *--*/
 NTSTATUS
 NTAPI
-ObpIncrementHandleCount(IN PVOID Object,
-                        IN PACCESS_STATE AccessState OPTIONAL,
+ObpIncrementHandleCountEx(IN PVOID Object,
+                        IN PACCESS_MASK AccessMask,
                         IN KPROCESSOR_MODE AccessMode,
                         IN ULONG HandleAttributes,
                         IN PEPROCESS Process,
@@ -824,6 +824,10 @@ ObpIncrementHandleCount(IN PVOID Object,
     ULONG Total;
     POBJECT_HEADER_NAME_INFO NameInfo;
     PAGED_CODE();
+
+#if 0
+    ASSERT(AccessMask);
+#endif
 
     /* Get the object header and type */
     ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
@@ -853,7 +857,8 @@ ObpIncrementHandleCount(IN PVOID Object,
 
     /* Charge quota and remove the creator info flag */
     Status = ObpChargeQuotaForObject(ObjectHeader, ObjectType, &NewObject);
-    if (!NT_SUCCESS(Status)) return Status;
+    if (!NT_SUCCESS(Status))
+        goto Quickie;
 
     /* Check if the open is exclusive */
     if (HandleAttributes & OBJ_EXCLUSIVE)
@@ -915,47 +920,6 @@ ObpIncrementHandleCount(IN PVOID Object,
         goto Quickie;
     }
 
-    /* Check if we're opening an existing handle */
-    if ((OpenReason == ObOpenHandle) ||
-        ((OpenReason == ObDuplicateHandle) && (AccessState)))
-    {
-        /* Validate the caller's access to this object */
-        if (!ObCheckObjectAccess(Object,
-                                 AccessState,
-                                 TRUE,
-                                 ProbeMode,
-                                 &Status))
-        {
-            /* Access was denied, so fail */
-            goto Quickie;
-        }
-    }
-    else if (OpenReason == ObCreateHandle)
-    {
-        /* Convert MAXIMUM_ALLOWED to GENERIC_ALL */
-        if (AccessState->RemainingDesiredAccess & MAXIMUM_ALLOWED)
-        {
-            /* Mask out MAXIMUM_ALLOWED and stick GENERIC_ALL instead */
-            AccessState->RemainingDesiredAccess &= ~MAXIMUM_ALLOWED;
-            AccessState->RemainingDesiredAccess |= GENERIC_ALL;
-        }
-
-        /* Check if we have to map the GENERIC mask */
-        if (AccessState->RemainingDesiredAccess & GENERIC_ACCESS)
-        {
-            /* Map it to the correct access masks */
-            RtlMapGenericMask(&AccessState->RemainingDesiredAccess,
-                              &ObjectType->TypeInfo.GenericMapping);
-        }
-
-        /* Check if the caller is trying to access system security */
-        if (AccessState->RemainingDesiredAccess & ACCESS_SYSTEM_SECURITY)
-        {
-            /* FIXME: TODO */
-            DPRINT1("ACCESS_SYSTEM_SECURITY not validated!\n");
-        }
-    }
-
     /* Check if this is an exclusive handle */
     if (Exclusive)
     {
@@ -993,12 +957,10 @@ ObpIncrementHandleCount(IN PVOID Object,
         /* Call it */
         ObpCalloutStart(&CalloutIrql);
         Status = ObjectType->TypeInfo.OpenProcedure(OpenReason,
+                                                    AccessMode,
                                                     Process,
                                                     Object,
-                                                    AccessState ?
-                                                    AccessState->
-                                                    PreviouslyGrantedAccess :
-                                                    0,
+                                                    AccessMask,
                                                     ProcessHandleCount);
         ObpCalloutEnd(CalloutIrql, "Open", ObjectType, Object);
 
@@ -1051,6 +1013,100 @@ ObpIncrementHandleCount(IN PVOID Object,
 Quickie:
     /* Release lock and return */
     ObpReleaseObjectLock(ObjectHeader);
+    return Status;
+}
+
+NTSTATUS
+NTAPI
+ObpIncrementHandleCount(IN PVOID Object,
+    IN PACCESS_STATE AccessState,
+    IN KPROCESSOR_MODE AccessMode,
+    IN ULONG HandleAttributes,
+    IN PEPROCESS Process,
+    IN OB_OPEN_REASON OpenReason)
+{
+    NTSTATUS Status;
+    KPROCESSOR_MODE ProbeMode;
+    PAGED_CODE();
+
+    ASSERT(AccessState);
+
+    /* Check if caller is forcing user mode */
+    if (HandleAttributes & OBJ_FORCE_ACCESS_CHECK)
+    {
+        /* Force it */
+        ProbeMode = UserMode;
+    }
+    else
+    {
+        /* Keep original setting */
+        ProbeMode = AccessMode;
+    }
+
+    /* Get the object header and type */
+    POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
+    POBJECT_TYPE ObjectType = ObjectHeader->Type;
+
+    /* Lock the object */
+    ObpAcquireObjectLock(ObjectHeader);
+
+    /* Check if we're opening an existing handle */
+    if (OpenReason != ObCreateHandle)
+    {
+        /* Validate the caller's access to this object */
+        if (!ObCheckObjectAccess(Object,
+            AccessState,
+            TRUE,
+            ProbeMode,
+            &Status))
+        {
+            /* Release lock and return */
+            ObpReleaseObjectLock(ObjectHeader);
+            return Status;
+        }
+    }
+    else
+    {
+        /* Convert MAXIMUM_ALLOWED to GENERIC_ALL */
+        if (AccessState->RemainingDesiredAccess & MAXIMUM_ALLOWED)
+        {
+            /* Mask out MAXIMUM_ALLOWED and stick GENERIC_ALL instead */
+            AccessState->RemainingDesiredAccess &= ~MAXIMUM_ALLOWED;
+            AccessState->RemainingDesiredAccess |= GENERIC_ALL;
+        }
+
+        /* Check if we have to map the GENERIC mask */
+        if (AccessState->RemainingDesiredAccess & GENERIC_ACCESS)
+        {
+            /* Map it to the correct access masks */
+            RtlMapGenericMask(&AccessState->RemainingDesiredAccess,
+                &ObjectType->TypeInfo.GenericMapping);
+        }
+
+        if (AccessState->RemainingDesiredAccess & PROCESS_QUERY_INFORMATION)
+        {
+            AccessState->RemainingDesiredAccess |= PROCESS_QUERY_LIMITED_INFORMATION;
+        }
+
+        /* Check if the caller is trying to access system security */
+        if (AccessState->RemainingDesiredAccess & ACCESS_SYSTEM_SECURITY)
+        {
+            /* FIXME: TODO */
+            DPRINT1("ACCESS_SYSTEM_SECURITY not validated!\n");
+        }
+    }
+
+    /* Release lock (ObpIncrementHandleCountEx will acquire a new one) */
+    ObpReleaseObjectLock(ObjectHeader);
+
+    Status = ObpIncrementHandleCountEx(
+        Object,
+        &AccessState->PreviouslyGrantedAccess,
+        AccessMode,
+        HandleAttributes,
+        Process,
+        OpenReason);
+
     return Status;
 }
 
@@ -1220,9 +1276,10 @@ ObpIncrementUnnamedHandleCount(IN PVOID Object,
         /* Call it */
         ObpCalloutStart(&CalloutIrql);
         Status = ObjectType->TypeInfo.OpenProcedure(ObCreateHandle,
+                                                    AccessMode,
                                                     Process,
                                                     Object,
-                                                    *DesiredAccess,
+                                                    DesiredAccess,
                                                     ProcessHandleCount);
         ObpCalloutEnd(CalloutIrql, "Open", ObjectType, Object);
 
@@ -1961,7 +2018,6 @@ ObpDuplicateHandleCallback(IN PEPROCESS Process,
 {
     POBJECT_HEADER ObjectHeader;
     BOOLEAN Ret = FALSE;
-    ACCESS_STATE AccessState;
     NTSTATUS Status;
     PAGED_CODE();
 
@@ -1979,11 +2035,11 @@ ObpDuplicateHandleCallback(IN PEPROCESS Process,
         ExUnlockHandleTableEntry(HandleTable, OldEntry);
 
         /* Setup the access state */
-        AccessState.PreviouslyGrantedAccess = HandleTableEntry->GrantedAccess;
+        ACCESS_MASK accessMask = HandleTableEntry->GrantedAccess;
 
         /* Call the shared routine for incrementing handles */
-        Status = ObpIncrementHandleCount(&ObjectHeader->Body,
-                                         &AccessState,
+        Status = ObpIncrementHandleCountEx(&ObjectHeader->Body,
+                                         &accessMask,
                                          KernelMode,
                                          HandleTableEntry->ObAttributes & OBJ_HANDLE_ATTRIBUTES,
                                          Process,
@@ -2372,7 +2428,6 @@ ObDuplicateObject(IN PEPROCESS SourceProcess,
     /* Set the target access, always propagate ACCESS_SYSTEM_SECURITY */
     TargetAccess = DesiredAccess & (ObjectType->TypeInfo.ValidAccessMask |
                                     ACCESS_SYSTEM_SECURITY);
-    NewHandleEntry.GrantedAccess = TargetAccess;
 
     /* Check if we're asking for new access */
     if (TargetAccess & ~SourceAccess)
@@ -2386,6 +2441,19 @@ ObDuplicateObject(IN PEPROCESS SourceProcess,
                                          &AuxData,
                                          TargetAccess,
                                          &ObjectType->TypeInfo.GenericMapping);
+
+
+            /* Make sure the access state was created OK */
+            if (NT_SUCCESS(Status))
+            {
+                /* Add a new handle */
+                Status = ObpIncrementHandleCount(SourceObject,
+                    PassedAccessState,
+                    PreviousMode,
+                    HandleAttributes,
+                    PsGetCurrentProcess(),
+                    ObDuplicateHandle);
+            }
         }
         else
         {
@@ -2396,20 +2464,17 @@ ObDuplicateObject(IN PEPROCESS SourceProcess,
     else
     {
         /* We don't need an access state */
-        Status = STATUS_SUCCESS;
+
+        /* Add a new handle */
+        Status = ObpIncrementHandleCountEx(SourceObject,
+            &TargetAccess,
+            PreviousMode,
+            HandleAttributes,
+            PsGetCurrentProcess(),
+            ObDuplicateHandle);
     }
 
-    /* Make sure the access state was created OK */
-    if (NT_SUCCESS(Status))
-    {
-        /* Add a new handle */
-        Status = ObpIncrementHandleCount(SourceObject,
-                                         PassedAccessState,
-                                         PreviousMode,
-                                         HandleAttributes,
-                                         PsGetCurrentProcess(),
-                                         ObDuplicateHandle);
-    }
+    NewHandleEntry.GrantedAccess = TargetAccess;
 
     /* Check if we were attached */
     if (AttachedToProcess)

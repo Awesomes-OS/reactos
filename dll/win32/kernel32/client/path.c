@@ -1720,6 +1720,7 @@ GetLongPathNameA(IN LPCSTR lpszShortPath,
     {
         BaseSetLastNTError(Status);
         Result = 0;
+        goto Quickie;
     }
 
     Result = LongPathAnsi.Length;
@@ -1801,6 +1802,7 @@ GetShortPathNameA(IN LPCSTR lpszLongPath,
     {
         BaseSetLastNTError(Status);
         Result = 0;
+        goto Quickie;
     }
 
     Result = ShortPathAnsi.Length;

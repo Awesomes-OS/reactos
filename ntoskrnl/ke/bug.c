@@ -39,13 +39,13 @@ UNICODE_STRING KeRosVideoBiosDate, KeRosVideoBiosVersion;
 PVOID
 NTAPI
 KiPcToFileHeader(IN PVOID Pc,
-                 OUT PLDR_DATA_TABLE_ENTRY *LdrEntry,
+                 OUT PKLDR_DATA_TABLE_ENTRY *LdrEntry,
                  IN BOOLEAN DriversOnly,
                  OUT PBOOLEAN InKernel)
 {
     ULONG i = 0;
     PVOID ImageBase, PcBase = NULL;
-    PLDR_DATA_TABLE_ENTRY Entry;
+    PKLDR_DATA_TABLE_ENTRY Entry;
     PLIST_ENTRY ListHead, NextEntry;
 
     /* Check which list we should use */
@@ -75,7 +75,7 @@ KiPcToFileHeader(IN PVOID Pc,
 
             /* Get the loader entry */
             Entry = CONTAINING_RECORD(NextEntry,
-                                      LDR_DATA_TABLE_ENTRY,
+                                      KLDR_DATA_TABLE_ENTRY,
                                       InLoadOrderLinks);
 
             /* Move to the next entry */
@@ -104,19 +104,19 @@ KiPcToFileHeader(IN PVOID Pc,
 PVOID
 NTAPI
 KiRosPcToUserFileHeader(IN PVOID Pc,
-                        OUT PLDR_DATA_TABLE_ENTRY *LdrEntry)
+                        OUT PKLDR_DATA_TABLE_ENTRY *LdrEntry)
 {
     PVOID ImageBase, PcBase = NULL;
-    PLDR_DATA_TABLE_ENTRY Entry;
+    PKLDR_DATA_TABLE_ENTRY Entry;
     PLIST_ENTRY ListHead, NextEntry;
+    PKTHREAD Thread = KeGetCurrentThread();
 
     /*
      * We know this is valid because we should only be called after a
      * succesfull address from RtlWalkFrameChain for UserMode, which
      * validates everything for us.
      */
-    ListHead = &KeGetCurrentThread()->
-               Teb->ProcessEnvironmentBlock->Ldr->InLoadOrderModuleList;
+    ListHead = &Thread->Teb->ProcessEnvironmentBlock->Ldr->InLoadOrderModuleList;
 
     /* Set list pointers and make sure it's valid */
     NextEntry = ListHead->Flink;
@@ -127,7 +127,7 @@ KiRosPcToUserFileHeader(IN PVOID Pc,
         {
             /* Get the loader entry */
             Entry = CONTAINING_RECORD(NextEntry,
-                                      LDR_DATA_TABLE_ENTRY,
+                                      KLDR_DATA_TABLE_ENTRY,
                                       InLoadOrderLinks);
 
             /* Move to the next entry */
@@ -204,7 +204,7 @@ KeRosDumpStackFrameArray(IN PULONG_PTR Frames,
     PVOID p;
 
     /* GCC complaints that it may be used uninitialized */
-    PLDR_DATA_TABLE_ENTRY LdrEntry = NULL;
+    PKLDR_DATA_TABLE_ENTRY LdrEntry = NULL;
 
     /* Loop them */
     for (i = 0; i < FrameCount; i++)
@@ -300,11 +300,11 @@ KiInitializeBugCheck(VOID)
     LDR_RESOURCE_INFO ResourceInfo;
     PIMAGE_RESOURCE_DATA_ENTRY ResourceDataEntry;
     NTSTATUS Status;
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PKLDR_DATA_TABLE_ENTRY LdrEntry;
 
     /* Get the kernel entry */
     LdrEntry = CONTAINING_RECORD(KeLoaderBlock->LoadOrderListHead.Flink,
-                                 LDR_DATA_TABLE_ENTRY,
+                                 KLDR_DATA_TABLE_ENTRY,
                                  InLoadOrderLinks);
 
     /* Cache the Bugcheck Message Strings. Prepare the Lookup Data */
@@ -543,7 +543,7 @@ KiDumpParameterImages(IN PCHAR Message,
 {
     ULONG i;
     BOOLEAN InSystem;
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PKLDR_DATA_TABLE_ENTRY LdrEntry;
     PVOID ImageBase;
     PUNICODE_STRING DriverName;
     CHAR AnsiName[32];
@@ -720,7 +720,7 @@ KeBugCheckWithTf(IN ULONG BugCheckCode,
     PCHAR HardErrCaption = NULL, HardErrMessage = NULL;
     PVOID Pc = NULL, Memory;
     PVOID DriverBase;
-    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    PKLDR_DATA_TABLE_ENTRY LdrEntry;
     PULONG_PTR HardErrorParameters;
     KIRQL OldIrql;
 #ifdef CONFIG_SMP

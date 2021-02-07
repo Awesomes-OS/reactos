@@ -1471,7 +1471,8 @@ KeFlushEntireTb(IN BOOLEAN Invalid,
     if (TargetAffinity)
     {
         /* Send an IPI TB flush to the other processors */
-        KiIpiSendPacket(TargetAffinity,
+        KiIpiSendPacket(IpiAllButSelf,
+            TargetAffinity,
                         KiFlushTargetEntireTb,
                         NULL,
                         0,

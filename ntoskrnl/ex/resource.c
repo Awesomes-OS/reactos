@@ -137,7 +137,7 @@ ExpCheckForApcsDisabled(IN KIRQL Irql,
     /* Check if we should care and check if we should break */
     if ((ExResourceStrict) &&
         (Irql < APC_LEVEL) &&
-        !(((PETHREAD)Thread)->SystemThread) &&
+        !KiTestThreadSystemThreadFlag(Thread) &&
         !(Thread->CombinedApcDisable))
     {
         /* Bad! */
@@ -1440,7 +1440,7 @@ ExConvertExclusiveToSharedLite(IN PERESOURCE Resource)
  * @implemented NT4
  *
  *     The ExConvertExclusiveToSharedLite routine deletes a given resource
- *     from the system’s resource list.
+ *     from the systemâ€™s resource list.
  *
  * @param Resource
  *        Pointer to the resource to delete.
